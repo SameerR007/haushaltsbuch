@@ -2,6 +2,8 @@
 
 Local expense tracker. The welcome page and the setup chat are in this repo. Money chat and insights are not built yet.
 
+Money data stays in one SQLite file on this computer. The app does not use a cloud database. The only network call during setup is an OpenAI key check.
+
 ## Run
 
 ```bash
@@ -11,7 +13,23 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-`npm test` checks the setup schema and API helpers.
+`npm test` checks the local schema, setup helpers, and connection JSON.
+
+## Local database
+
+The file is created on the first call to `POST /api/setup/init` (the setup chat does this for you).
+
+| | |
+| --- | --- |
+| **Default path** | `data/haushaltsbuch.sqlite` in the directory where you start the app |
+| **Override** | `HAUSHALTSBUCH_DB_PATH` — optional absolute or relative path. The setup chat never asks for it. |
+| **Git** | `data/` and `*.sqlite` are gitignored. Do not commit the file. |
+
+```bash
+HAUSHALTSBUCH_DB_PATH=/path/to/haushaltsbuch.sqlite npm run dev
+```
+
+The file holds categories, banks, transactions, and the currency preference. It is not uploaded. Setup responses include the file name only, never the directory.
 
 ## Landing
 
@@ -39,16 +57,13 @@ localStorage.removeItem("haushaltsbuch.connection")
 
 ## Setup
 
-`/setup` is a four-step chat:
+`/setup` is a three-step chat:
 
-1. Supabase project URL and anon key. **Where do I find these?** opens the help card (supabase.com → Project Settings → API).
-2. OpenAI API key, then the service role key used once to create tables.
-3. Currency (default euro) and one or more banks with initials.
-4. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
+1. OpenAI API key, checked once. The local database file is created in the background.
+2. Currency (default euro) and one or more banks with initials.
+3. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
-**Set up again** and **Change keys** stay available, including after a key expires. Leave a key field blank on Change keys to keep the saved value. The tracker stub links to **Change keys** as well.
-
-If Supabase will not run the table SQL for that service role key, the chat shows the script and **Check tables** after you run it in the SQL editor. The key is still discarded.
+**Set up again** and **Change keys** stay available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. The tracker stub links to **Change keys** as well.
 
 ## What stays in this browser
 
@@ -56,34 +71,33 @@ Confirm and Change keys write one JSON object to `haushaltsbuch.connection`:
 
 | Field | Stored |
 | --- | --- |
-| `supabaseUrl` | Yes |
-| `anonKey` | Yes |
+| `v` | `2` |
 | `openaiApiKey` | Yes |
 | `currency` | Yes, default `EUR` |
 | `banks` | Yes, `{ name, initials }` |
-| service role key | No |
+| database path | No |
 
-The anon key and the OpenAI key are household credentials for this machine. The app does not put them in a server database, a log line, or a chat transcript. The OpenAI key is sent once to `POST /api/setup/openai`, which checks it with OpenAI and does not save it. The service role key is sent once to `POST /api/setup/create-tables`, used to apply [`supabase/setup.sql`](supabase/setup.sql), and then dropped. It is not a field on the saved connection.
+The OpenAI key is a household credential for this browser. The app does not put it in the SQLite file, a log line, or a chat transcript. It is sent to `POST /api/setup/openai`, which checks it with OpenAI and does not save it.
 
 Request and response shapes are in [docs/setup-api.md](docs/setup-api.md).
 
 ## Schema
 
-`supabase/setup.sql` is idempotent. It creates:
+The migrate in `lib/db.ts` is idempotent. It creates:
 
 - `categories` — seeded with food, rent, household, grocery, bill, miscellaneous, salary
-- `banks` — name and initials, empty
+- `banks` — name and initials, empty until confirm
 - `transactions` — date, category, amount, bank, notes, empty
-- `preferences` — one row, currency default `EUR`
+- `preferences` — one row (`id` 1), currency default `EUR`
 
-Row Level Security is on for each table. This app does not use Supabase Auth. Policies allow the `anon` role, which is the single local household. The service role is only the one-time setup credential.
+No sample transactions are inserted. Confirm updates the currency and upserts banks.
 
 ## Routes
 
 - `/` — landing
 - `/setup` — setup chat
 - `/app` — tracker stub
-- `POST /api/setup/validate` — project URL and anon key
+- `POST /api/setup/init` — create or migrate the local database
 - `POST /api/setup/openai` — check an OpenAI key, do not store it
-- `POST /api/setup/create-tables` — one-time schema apply
-- `GET /api/setup/sql` — the setup script
+- `POST /api/setup/confirm` — save currency and banks
+- `GET /api/setup/health` — whether the database is ready, plus currency and bank count

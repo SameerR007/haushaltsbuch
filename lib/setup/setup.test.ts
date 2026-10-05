@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, isAbsolute } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { hasSavedConnection, parseConnection } from "../connection";
+import { closeDb, initDatabase, publicDbName, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "./categories";
 import {
   currencyChoiceLabel,
@@ -11,28 +14,9 @@ import {
   parseCurrencyText,
   suggestInitials,
 } from "./chat-logic";
-import { createTables } from "./create-tables";
-import {
-  keyKind,
-  parseSupabaseUrl,
-  supabaseHeaders,
-} from "./guards";
-import { saveHousehold, schemaReady } from "./household";
-import { loadSetupSql } from "./schema";
 import { validateOpenAiKey } from "./validate-openai";
-import { validateSupabaseAnon } from "./validate-supabase";
 
-const PROJECT = "https://abcdefgh.supabase.co";
-const SERVICE_KEY = jwt({ role: "service_role" });
-const ANON_KEY = jwt({ role: "anon" });
-
-function jwt(payload: object): string {
-  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString(
-    "base64url",
-  );
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  return `${header}.${body}.sig`;
-}
+const OPENAI_KEY = "sk-openai-example-key";
 
 function mockFetch(
   handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
@@ -58,166 +42,184 @@ function header(init: RequestInit | undefined, name: string): string | null {
   return found?.[1] ?? null;
 }
 
-test("project URLs are hosted Supabase origins", () => {
-  assert.equal(parseSupabaseUrl(" https://abcdefgh.supabase.co/rest/v1 "), PROJECT);
-  assert.equal(parseSupabaseUrl("https://ABCDEFGH.supabase.co"), PROJECT);
-  assert.equal(parseSupabaseUrl("http://abcdefgh.supabase.co"), null);
-  assert.equal(parseSupabaseUrl("https://evil.example"), null);
-  assert.equal(parseSupabaseUrl("https://user:pw@abcdefgh.supabase.co"), null);
-  assert.equal(parseSupabaseUrl("https://abcdefgh.supabase.co:8443"), null);
-  assert.equal(parseSupabaseUrl("https://localhost/"), null);
-});
-
-test("key kinds distinguish anon and service role", () => {
-  assert.equal(keyKind(ANON_KEY), "anon");
-  assert.equal(keyKind(SERVICE_KEY), "service");
-  assert.equal(keyKind("sb_publishable_example"), "publishable");
-  assert.equal(keyKind("sb_secret_example"), "secret");
-  const publishable = supabaseHeaders("sb_publishable_example");
-  assert.equal(publishable.apikey, "sb_publishable_example");
-  assert.equal("Authorization" in publishable, false);
-  assert.equal(supabaseHeaders(ANON_KEY).Authorization, `Bearer ${ANON_KEY}`);
-});
-
-test("setup SQL is idempotent, seeded, and empty of money rows", () => {
-  const sql = loadSetupSql();
-  const file = readFileSync(join(process.cwd(), "supabase/setup.sql"), "utf8");
-  assert.equal(sql, file);
-  for (const table of ["categories", "banks", "transactions", "preferences"]) {
-    assert.match(sql, new RegExp(`create table if not exists public\\.${table}`));
-    assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`));
-    assert.match(sql, new RegExp(`create policy if not exists household_anon_all on public\\.${table}`));
+function withTempDb(fn: () => void): void {
+  const dir = mkdtempSync(join(tmpdir(), "haushaltsbuch-"));
+  const prev = process.env.HAUSHALTSBUCH_DB_PATH;
+  process.env.HAUSHALTSBUCH_DB_PATH = join(dir, "nested", "household.sqlite");
+  closeDb();
+  try {
+    fn();
+  } finally {
+    closeDb();
+    if (prev === undefined) delete process.env.HAUSHALTSBUCH_DB_PATH;
+    else process.env.HAUSHALTSBUCH_DB_PATH = prev;
+    rmSync(dir, { recursive: true, force: true });
   }
-  for (const name of EXPECTED_CATEGORIES) {
-    assert.match(sql, new RegExp(`'${name}'`));
+}
+
+function openReadonly(): Database.Database {
+  closeDb();
+  return new Database(resolveDbPath(), { readonly: true, fileMustExist: true });
+}
+
+test("default database path stays under data/ and the public name is a basename", () => {
+  const prev = process.env.HAUSHALTSBUCH_DB_PATH;
+  delete process.env.HAUSHALTSBUCH_DB_PATH;
+  try {
+    const dbPath = resolveDbPath();
+    assert.equal(dbPath, join(process.cwd(), "data", "haushaltsbuch.sqlite"));
+    assert.equal(publicDbName(dbPath), "haushaltsbuch.sqlite");
+    assert.equal(isAbsolute(publicDbName(dbPath)), false);
+    assert.equal(publicDbName("/tmp/secret-dir/books.sqlite"), "books.sqlite");
+    assert.equal(publicDbName(""), "local");
+  } finally {
+    if (prev === undefined) delete process.env.HAUSHALTSBUCH_DB_PATH;
+    else process.env.HAUSHALTSBUCH_DB_PATH = prev;
   }
-  assert.match(sql, /default 'EUR'/);
-  assert.match(sql, /insert into public\.categories/);
-  assert.match(sql, /insert into public\.preferences/);
-  assert.doesNotMatch(sql, /insert into public\.transactions/i);
-  assert.doesNotMatch(sql, /insert into public\.banks/i);
-  assert.doesNotMatch(sql, /sk-|service_role key|eyJ/);
 });
 
-test("connection JSON keeps anon and OpenAI keys and drops a service role field", () => {
+test("init migrates once, seeds categories, and does not insert money rows", () => {
+  withTempDb(() => {
+    const before = readHealth();
+    assert.deepEqual(before, { ok: true, dbReady: false, currency: null, banksCount: 0 });
+    assert.equal(existsSync(resolveDbPath()), false);
+
+    const first = initDatabase();
+    assert.equal(first.ok, true);
+    assert.equal(first.dbPath, "household.sqlite");
+    assert.equal(isAbsolute(first.dbPath), false);
+    assert.equal(first.dbPath.includes("nested"), false);
+    assert.deepEqual(first.tables, ["categories", "banks", "transactions", "preferences"]);
+
+    const second = initDatabase();
+    assert.deepEqual(second, first);
+
+    const database = openReadonly();
+    const categories = database
+      .prepare("SELECT name FROM categories ORDER BY name")
+      .all() as { name: string }[];
+    assert.deepEqual(
+      categories.map((row) => row.name),
+      [...EXPECTED_CATEGORIES].sort(),
+    );
+    const preference = database.prepare("SELECT id, currency FROM preferences").all() as {
+      id: number;
+      currency: string;
+    }[];
+    assert.deepEqual(preference, [{ id: 1, currency: "EUR" }]);
+    const transactions = database.prepare("SELECT COUNT(*) AS n FROM transactions").get() as {
+      n: number;
+    };
+    const banks = database.prepare("SELECT COUNT(*) AS n FROM banks").get() as { n: number };
+    assert.equal(transactions.n, 0);
+    assert.equal(banks.n, 0);
+    database.close();
+
+    const health = readHealth();
+    assert.deepEqual(health, { ok: true, dbReady: true, currency: "EUR", banksCount: 0 });
+  });
+});
+
+test("confirm upserts currency and banks and a later init keeps them", () => {
+  withTempDb(() => {
+    const missing = saveHousehold({ currency: "EUR", banks: [] });
+    assert.equal(missing.ok, false);
+    if (!missing.ok) assert.equal(missing.code, "invalid");
+
+    const bad = saveHousehold({
+      currency: "euro",
+      banks: [{ name: "ING", initials: "IN" }],
+    });
+    assert.equal(bad.ok, false);
+
+    const saved = saveHousehold({
+      currency: "eur",
+      banks: [
+        { name: "  ING  ", initials: "in" },
+        { name: "ING", initials: "ING" },
+      ],
+    });
+    assert.deepEqual(saved, { ok: true });
+
+    initDatabase();
+
+    const database = openReadonly();
+    const preference = database.prepare("SELECT currency FROM preferences WHERE id = 1").get() as {
+      currency: string;
+    };
+    const banks = database.prepare("SELECT name, initials FROM banks ORDER BY name").all();
+    const transactions = database.prepare("SELECT COUNT(*) AS n FROM transactions").get() as {
+      n: number;
+    };
+    assert.equal(preference.currency, "EUR");
+    assert.deepEqual(banks, [{ name: "ING", initials: "ING" }]);
+    assert.equal(transactions.n, 0);
+    database.close();
+
+    const updated = saveHousehold({
+      currency: "USD",
+      banks: [{ name: "N26", initials: "n26" }],
+    });
+    assert.equal(updated.ok, true);
+    const health = readHealth();
+    assert.deepEqual(health, { ok: true, dbReady: true, currency: "USD", banksCount: 2 });
+
+    const after = openReadonly();
+    const rows = after.prepare("SELECT name, initials FROM banks ORDER BY name").all();
+    assert.deepEqual(rows, [
+      { name: "ING", initials: "ING" },
+      { name: "N26", initials: "N26" },
+    ]);
+    after.close();
+  });
+});
+
+test("connection JSON is version 2 and drops cloud fields", () => {
   assert.equal(hasSavedConnection("1"), true);
   assert.equal(hasSavedConnection(""), false);
   assert.equal(parseConnection("1"), null);
+  assert.equal(
+    parseConnection(
+      JSON.stringify({
+        v: 1,
+        openaiApiKey: OPENAI_KEY,
+        currency: "EUR",
+        banks: [{ name: "ING", initials: "IN" }],
+      }),
+    ),
+    null,
+  );
+
   const parsed = parseConnection(
     JSON.stringify({
-      v: 1,
-      supabaseUrl: PROJECT,
-      anonKey: ANON_KEY,
-      openaiApiKey: "sk-openai-example-key",
+      v: 2,
+      openaiApiKey: OPENAI_KEY,
       currency: "EUR",
       banks: [{ name: "ING", initials: "in" }],
-      serviceRoleKey: SERVICE_KEY,
+      supabaseUrl: "https://abcdefgh.supabase.co",
+      anonKey: "eyJexample",
+      serviceRoleKey: "secret",
+      dbPath: "/tmp/haushaltsbuch.sqlite",
     }),
   );
   assert.ok(parsed);
+  assert.equal(parsed.v, 2);
   assert.equal(parsed.banks[0]?.initials, "IN");
-  assert.equal(JSON.stringify(parsed).includes(SERVICE_KEY), false);
-  assert.equal("serviceRoleKey" in parsed, false);
-});
-
-test("validate accepts anon and refuses the service role without calling Supabase", async () => {
-  let calls = 0;
-  const fetchImpl = mockFetch(() => {
-    calls += 1;
-    return new Response("{}", { status: 500 });
-  });
-  const refused = await validateSupabaseAnon(
-    { supabaseUrl: PROJECT, anonKey: SERVICE_KEY },
-    fetchImpl,
-  );
-  assert.equal(refused.ok, false);
-  assert.equal(calls, 0);
-  assert.equal(JSON.stringify(refused).includes(SERVICE_KEY), false);
-
-  const missing = await validateSupabaseAnon(
-    { supabaseUrl: PROJECT, anonKey: ANON_KEY },
-    mockFetch(
-      () =>
-        new Response(JSON.stringify({ code: "PGRST205" }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        }),
-    ),
-  );
-  assert.equal(missing.ok, true);
-
-  const bad = await validateSupabaseAnon(
-    { supabaseUrl: PROJECT, anonKey: ANON_KEY },
-    mockFetch(() => new Response("{}", { status: 401 })),
-  );
-  assert.equal(bad.ok, false);
-  if (!bad.ok) assert.equal(bad.error.includes(ANON_KEY), false);
-});
-
-test("create-tables uses the service role once and does not return it", async () => {
-  const calls: string[] = [];
-  const okFetch = mockFetch((url, init) => {
-    calls.push(`${init?.method ?? "GET"} ${url}`);
-    if (url.includes("/auth/v1/admin/users")) return new Response("[]", { status: 200 });
-    if (url.startsWith("https://api.supabase.com/")) {
-      assert.equal(header(init, "authorization"), `Bearer ${SERVICE_KEY}`);
-      const body = JSON.parse(String(init?.body)) as { query?: string };
-      assert.match(body.query ?? "", /create table if not exists public\.categories/);
-      return new Response("[]", { status: 201 });
-    }
-    if (url.includes("/categories")) {
-      return Response.json(EXPECTED_CATEGORIES.map((name) => ({ name })));
-    }
-    return Response.json([]);
-  });
-  const created = await createTables(
-    { supabaseUrl: PROJECT, serviceRoleKey: SERVICE_KEY },
-    okFetch,
-  );
-  assert.deepEqual(created, {
-    ok: true,
-    tables: ["categories", "banks", "transactions", "preferences"],
-  });
-  assert.equal(JSON.stringify(created).includes(SERVICE_KEY), false);
-  assert.equal(calls.some((call) => call.includes("api.supabase.com")), true);
-
-  let refusedCalls = 0;
-  const refused = await createTables(
-    { supabaseUrl: PROJECT, serviceRoleKey: ANON_KEY },
-    mockFetch(() => {
-      refusedCalls += 1;
-      return new Response("{}", { status: 200 });
-    }),
-  );
-  assert.equal(refused.ok, false);
-  assert.equal(refusedCalls, 0);
-
-  const ddlCalls: string[] = [];
-  const ddl = await createTables(
-    { supabaseUrl: PROJECT, serviceRoleKey: SERVICE_KEY },
-    mockFetch((url, init) => {
-      ddlCalls.push(url);
-      if (url.includes("/auth/v1/admin/users")) return new Response("{}", { status: 200 });
-      assert.equal(init?.method, "POST");
-      return new Response("{}", { status: 401 });
-    }),
-  );
-  assert.equal(ddl.ok, false);
-  if (!ddl.ok) {
-    assert.equal(ddl.code, "ddl_unavailable");
-    assert.equal(ddl.error.includes(SERVICE_KEY), false);
-  }
-  assert.equal(ddlCalls.length, 2);
+  const stored = JSON.stringify(parsed);
+  assert.equal(stored.includes("supabase"), false);
+  assert.equal(stored.includes("anonKey"), false);
+  assert.equal(stored.includes("serviceRoleKey"), false);
+  assert.equal(stored.includes("dbPath"), false);
+  assert.equal(stored.includes(OPENAI_KEY), true);
 });
 
 test("OpenAI check does not echo the key", async () => {
-  const key = "sk-openai-example-key";
   let called = "";
   const ok = await validateOpenAiKey(
-    { apiKey: key },
+    { apiKey: OPENAI_KEY },
     mockFetch((url, init) => {
       called = url;
-      assert.equal(header(init, "authorization"), `Bearer ${key}`);
+      assert.equal(header(init, "authorization"), `Bearer ${OPENAI_KEY}`);
       return new Response("{}", { status: 200 });
     }),
   );
@@ -225,69 +227,15 @@ test("OpenAI check does not echo the key", async () => {
   assert.equal(called, "https://api.openai.com/v1/models");
 
   const rejected = await validateOpenAiKey(
-    { apiKey: key },
+    { apiKey: OPENAI_KEY },
     mockFetch(() => new Response("{}", { status: 401 })),
   );
   assert.equal(rejected.ok, false);
-  assert.equal(JSON.stringify(rejected).includes(key), false);
+  assert.equal(JSON.stringify(rejected).includes(OPENAI_KEY), false);
   const skipped = await validateOpenAiKey({ apiKey: "nope" }, mockFetch(() => {
     throw new Error("should not fetch");
   }));
   assert.equal(skipped.ok, false);
-});
-
-test("household save writes currency and banks, not transactions", async () => {
-  const posts: { url: string; body: string; apikey: string | null }[] = [];
-  const result = await saveHousehold(
-    {
-      supabaseUrl: PROJECT,
-      anonKey: ANON_KEY,
-      currency: "eur",
-      banks: [{ name: "ING", initials: "in" }],
-    },
-    mockFetch(async (url, init) => {
-      posts.push({
-        url,
-        body: String(init?.body ?? ""),
-        apikey: header(init, "apikey"),
-      });
-      return new Response(null, { status: 201 });
-    }),
-  );
-  assert.equal(result.ok, true);
-  assert.equal(posts.length, 2);
-  assert.equal(
-    posts.some((post) => post.url.includes("/transactions")),
-    false,
-  );
-  const preference = posts.find((post) => post.url.includes("/preferences"));
-  const banks = posts.find((post) => post.url.includes("/banks"));
-  assert.match(preference?.body ?? "", /"currency":"EUR"/);
-  assert.match(banks?.body ?? "", /"initials":"IN"/);
-  for (const post of posts) {
-    assert.equal(post.apikey, ANON_KEY);
-    assert.equal(post.body.includes(SERVICE_KEY), false);
-  }
-});
-
-test("schema check accepts the seeded category names", async () => {
-  const ready = await schemaReady(
-    PROJECT,
-    ANON_KEY,
-    mockFetch((url) => {
-      if (url.includes("/categories")) {
-        return Response.json(EXPECTED_CATEGORIES.map((name) => ({ name })));
-      }
-      return Response.json([]);
-    }),
-  );
-  assert.equal(ready, true);
-  const missing = await schemaReady(
-    PROJECT,
-    ANON_KEY,
-    mockFetch(() => Response.json([{ name: "food" }])),
-  );
-  assert.equal(missing, false);
 });
 
 test("chat helpers", () => {
@@ -302,14 +250,28 @@ test("chat helpers", () => {
   assert.equal(normalizeBank("ING", ""), null);
 });
 
-test("setup server code does not log", () => {
-  const roots = ["lib/setup", "app/api/setup", "components/setup"];
+test("setup routes are local and the removed cloud routes are gone", () => {
+  for (const route of ["init", "openai", "confirm", "health"]) {
+    const source = readFileSync(join("app/api/setup", route, "route.ts"), "utf8");
+    assert.match(source, /runtime\s*=\s*"nodejs"/);
+  }
+  for (const gone of ["validate", "create-tables", "sql"]) {
+    assert.equal(existsSync(join("app/api/setup", gone, "route.ts")), false);
+  }
+  assert.equal(existsSync("supabase/setup.sql"), false);
+});
+
+test("setup server code does not log and does not mention a cloud database client", () => {
+  const roots = ["lib", "app/api/setup", "components/setup"];
   const files = roots.flatMap((dir) => walk(dir));
   assert.ok(files.length > 5);
   for (const file of files) {
     if (file.endsWith("setup.test.ts")) continue;
     const source = readFileSync(file, "utf8");
     assert.equal(source.includes("console."), false, file);
+    assert.equal(/supabase/i.test(source), false, file);
+    assert.equal(source.includes("serviceRole"), false, file);
+    assert.equal(source.includes("anonKey"), false, file);
   }
 });
 

@@ -1,4 +1,4 @@
-/** Default categories seeded by supabase/setup.sql. Not money rows. */
+/** Default categories seeded into the local database. Not money rows. */
 export const EXPECTED_CATEGORIES = [
   "food",
   "rent",

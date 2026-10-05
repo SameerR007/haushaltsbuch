@@ -35,6 +35,8 @@
 .setup-tools {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 14px;
 }
 
@@ -123,44 +125,6 @@
   font-size: 13px;
 }
 
-.setup-help {
-  max-width: 92%;
-  padding: 14px 16px;
-}
-
-.setup-help h2 {
-  margin: 0 0 10px;
-  font-size: 16px;
-  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-}
-
-.setup-help ol {
-  margin: 0;
-  padding-left: 1.2em;
-}
-
-.setup-help li {
-  margin: 0 0 8px;
-}
-
-.setup-help code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12.5px;
-}
-
-.setup-warn {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #fff8ee;
-  border: 1px solid #f0e0c4;
-  font-size: 13px;
-  color: var(--muted);
-}
-
 .setup-chips {
   display: flex;
   flex-wrap: wrap;
@@ -230,8 +194,7 @@
   color: var(--muted);
 }
 
-.setup-field input,
-.setup-sql {
+.setup-field input {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px;
@@ -239,15 +202,6 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   background: #fff;
   color: var(--ink);
-}
-
-.setup-sql {
-  width: 100%;
-  min-height: 140px;
-  max-height: 200px;
-  margin-top: 10px;
-  resize: vertical;
-  line-height: 1.4;
 }
 
 .setup-summary {
@@ -302,8 +256,7 @@
 
 .setup-root button:focus-visible,
 .setup-root a:focus-visible,
-.setup-root input:focus-visible,
-.setup-root textarea:focus-visible {
+.setup-root input:focus-visible {
   outline: 2px solid var(--teal);
   outline-offset: 3px;
 }
@@ -313,8 +266,7 @@
     padding: 12px 14px;
   }
 
-  .setup-msg,
-  .setup-help {
+  .setup-msg {
     max-width: 100%;
   }
 }

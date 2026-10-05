@@ -6,8 +6,8 @@ export default function Home() {
       <p className="eyebrow">Local · Private</p>
       <h1>Welcome to Haushaltsbuch</h1>
       <p className="lede">
-        Track spending in plain language. Your data stays in your Supabase
-        project — the app runs on your machine.
+        Track spending in plain language. Your money stays in a database on
+        this computer — the app runs on your machine.
       </p>
       <div className="actions">
         <Link className="primary first-only" href="/setup">
@@ -21,7 +21,7 @@ export default function Home() {
         </Link>
       </div>
       <p className="foot first-only">
-        We’ll walk you through Supabase, currency (default €), and your banks.
+        We’ll walk you through an OpenAI key, currency (default €), and your banks.
       </p>
       <p className="foot returning-only">
         Welcome back — pick up where you left off.
@@ -29,7 +29,7 @@ export default function Home() {
       <div className="pills">
         <span className="pill">Default €</span>
         <span className="pill">Chat + summary</span>
-        <span className="pill">Your Supabase</span>
+        <span className="pill">On this computer</span>
       </div>
     </main>
   );
