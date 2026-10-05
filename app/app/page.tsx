@@ -11,6 +11,8 @@ export default function TrackerStub() {
       <h1>Tracker</h1>
       <p>The tracker isn’t built yet.</p>
       <Link href="/">Back to welcome</Link>
+      {" · "}
+      <Link href="/setup">Change keys</Link>
     </main>
   );
 }
