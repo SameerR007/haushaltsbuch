@@ -1,0 +1,320 @@
+.setup-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--ink);
+  font-family: system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(ellipse 90% 50% at 50% -10%, #d7efe9 0%, transparent 55%),
+    var(--bg);
+}
+
+.setup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 252, 248, 0.9);
+  backdrop-filter: blur(8px);
+}
+
+.setup-brand {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.setup-tools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.setup-step {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--teal);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.setup-text-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.setup-text-btn:hover {
+  color: var(--ink);
+}
+
+.setup-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  margin: 0 auto;
+  padding: 20px 16px 0;
+  min-height: 0;
+}
+
+.setup-thread {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 16px;
+}
+
+.setup-msg {
+  max-width: 88%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.setup-msg strong {
+  font-weight: 650;
+}
+
+.setup-msg p {
+  margin: 0;
+}
+
+.setup-msg p + p {
+  margin-top: 8px;
+}
+
+.setup-bot {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 4px 16px rgba(26, 23, 20, 0.04);
+}
+
+.setup-user {
+  align-self: flex-end;
+  background: var(--teal);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.setup-faded {
+  opacity: 0.55;
+  font-size: 13px;
+}
+
+.setup-help {
+  max-width: 92%;
+  padding: 14px 16px;
+}
+
+.setup-help h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.setup-help ol {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.setup-help li {
+  margin: 0 0 8px;
+}
+
+.setup-help code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+
+.setup-warn {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff8ee;
+  border: 1px solid #f0e0c4;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.setup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.setup-chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink);
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.setup-chip:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.setup-chip.primary {
+  background: var(--teal);
+  color: #fff;
+  border-color: var(--teal);
+}
+
+.setup-chip.primary:hover {
+  background: var(--teal-deep);
+  color: #fff;
+}
+
+.setup-chip:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.setup-chip:disabled:hover {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.setup-chip.primary:disabled:hover {
+  background: var(--teal);
+  color: #fff;
+  border-color: var(--teal);
+}
+
+.setup-field {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setup-field label {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.setup-field input,
+.setup-sql {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #fff;
+  color: var(--ink);
+}
+
+.setup-sql {
+  width: 100%;
+  min-height: 140px;
+  max-height: 200px;
+  margin-top: 10px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.setup-summary {
+  margin: 8px 0 0;
+  padding-left: 1.1em;
+}
+
+.setup-summary li {
+  margin: 0 0 4px;
+}
+
+.setup-error {
+  margin: 0 0 10px;
+  color: #8a3d2f;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.setup-composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0 calc(20px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, var(--bg) 30%);
+}
+
+.setup-composer input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 14px;
+  background: var(--card);
+  font-family: inherit;
+  color: var(--ink);
+}
+
+.setup-composer button {
+  appearance: none;
+  border: none;
+  background: var(--teal);
+  color: #fff;
+  font-weight: 650;
+  border-radius: 14px;
+  padding: 0 16px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.setup-composer button:hover {
+  background: var(--teal-deep);
+}
+
+.setup-root button:focus-visible,
+.setup-root a:focus-visible,
+.setup-root input:focus-visible,
+.setup-root textarea:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .setup-header {
+    padding: 12px 14px;
+  }
+
+  .setup-msg,
+  .setup-help {
+    max-width: 100%;
+  }
+}
