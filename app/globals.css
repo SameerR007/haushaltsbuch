@@ -1,0 +1,190 @@
+:root {
+  --bg: #f3efe6;
+  --ink: #1a1714;
+  --muted: #6f6860;
+  --card: #fffcf8;
+  --line: #e2dbd0;
+  --teal: #0b6e63;
+  --teal-deep: #08574f;
+  --soft: #f7f1e8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -15%, #d7efe9 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 100% 0%, #f6e2c4 0%, transparent 45%),
+    var(--bg);
+  display: grid;
+  place-items: center;
+  padding: 28px 18px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  width: min(460px, 100%);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 40px 36px 34px;
+  box-shadow: 0 16px 44px rgba(26, 23, 20, 0.07);
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: clamp(28px, 5vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.lede {
+  margin: 0 auto 26px;
+  max-width: 34ch;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.primary,
+.linkish {
+  appearance: none;
+  border: none;
+  border-radius: 13px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 650;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+}
+
+.primary {
+  display: block;
+  background: var(--teal);
+  color: #fff;
+  text-decoration: none;
+}
+
+.primary:hover {
+  background: var(--teal-deep);
+}
+
+.linkish {
+  display: block;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 550;
+  font-size: 13px;
+  padding: 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.linkish:hover {
+  color: var(--ink);
+}
+
+.primary:focus-visible,
+.linkish:focus-visible,
+.stub a:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+
+.foot {
+  margin: 22px 0 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.pills {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.pill {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+
+/* First visit is the default. A non-empty haushaltsbuch.connection
+   sets data-visit="returning" on <html> before paint. */
+.returning-only {
+  display: none;
+}
+
+html[data-visit="returning"] .first-only {
+  display: none;
+}
+
+html[data-visit="returning"] .returning-only {
+  display: block;
+}
+
+.stub {
+  width: min(460px, 100%);
+  text-align: center;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--muted);
+}
+
+.stub h1 {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  color: var(--ink);
+  font-size: 28px;
+}
+
+.stub p {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.stub a {
+  color: var(--teal);
+  font-size: 14px;
+  font-weight: 650;
+}
