@@ -13,7 +13,7 @@ const visitStateScript = `try{var v=localStorage.getItem(${JSON.stringify(
 export const metadata: Metadata = {
   title: "Haushaltsbuch",
   description:
-    "Track spending in plain language. Your data stays in your Supabase project — the app runs on your machine.",
+    "Track spending in plain language. Your money stays in a database on this computer.",
 };
 
 export default function RootLayout({

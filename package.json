@@ -10,12 +10,14 @@
     "test": "node --import tsx --test lib/setup/setup.test.ts"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "next": "15.5.27",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

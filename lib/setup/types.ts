@@ -1,8 +1,4 @@
-export type SetupErrorCode =
-  | "invalid"
-  | "rejected"
-  | "ddl_unavailable"
-  | "incomplete";
+export type SetupErrorCode = "invalid" | "rejected";
 
 export type SetupError = {
   ok: false;

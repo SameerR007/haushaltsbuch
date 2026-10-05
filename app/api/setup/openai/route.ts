@@ -1,6 +1,9 @@
 import { jsonResult, readJsonBody, statusFor } from "@/lib/setup/http";
 import { openAiFields, validateOpenAiKey } from "@/lib/setup/validate-openai";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 // Checks the key with OpenAI and does not store it. Do not log the request body.
 
 export async function POST(request: Request) {
