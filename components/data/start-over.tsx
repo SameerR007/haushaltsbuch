@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearConnection } from "@/lib/connection";
-import { excelBackupLabel, SQLITE_FILENAME, XLSX_FILENAME } from "@/lib/data/copy";
+import { excelBackupLabel, sqliteSavedLine, SQLITE_FILENAME, xlsxSavedLine, XLSX_FILENAME } from "@/lib/data/copy";
 import { parseHousehold } from "@/lib/data/parse";
 
 async function downloadFile(url: string, filename: string): Promise<void> {
@@ -59,11 +59,11 @@ export function StartOver() {
     try {
       if (wantXlsx) {
         await downloadFile("/api/export/xlsx", XLSX_FILENAME);
-        saved.push(XLSX_FILENAME);
+        saved.push(xlsxSavedLine(count));
       }
       if (wantSqlite) {
         await downloadFile("/api/export/sqlite", SQLITE_FILENAME);
-        saved.push(SQLITE_FILENAME);
+        saved.push(sqliteSavedLine());
       }
       setDownloaded(saved);
       setPhase("confirm");
@@ -105,9 +105,6 @@ export function StartOver() {
 
   return (
     <main className="data-card">
-      <Link className="data-back" href="/data">
-        Back
-      </Link>
       <p className="data-steps" aria-label="Steps">
         <span className={phase === "backup" ? "is-now" : undefined}>1 WARNING</span>
         {" → "}
@@ -120,8 +117,8 @@ export function StartOver() {
         <>
           <h1>Before you start over, save a backup?</h1>
           <p className="data-lead">
-            Starting over deletes all your saved expenses, banks, currency and the OpenAI key in this
-            browser. It can&apos;t be undone.
+            Starting over deletes <strong>all your saved expenses</strong>, banks, currency and the OpenAI
+            key in this browser. It can&apos;t be undone.
           </p>
           <label className="data-check">
             <input type="checkbox" checked={wantXlsx} onChange={(event) => setWantXlsx(event.target.checked)} />

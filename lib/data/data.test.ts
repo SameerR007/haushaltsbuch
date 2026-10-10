@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,12 +14,21 @@ import { GET as getHousehold } from "../../app/api/household/route";
 import { POST as postReset } from "../../app/api/setup/reset/route";
 import { PATCH as patchTransaction } from "../../app/api/transactions/[id]/route";
 import { GET as getTransactions } from "../../app/api/transactions/route";
+import { amountKeepingSign } from "../chat/money";
 import { confirmTransactions } from "../chat/transactions";
 import { loadHousehold } from "../chat/household";
 import { PDF_DISCLOSURE_KEY, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
 import { closeDb, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "../setup/categories";
-import { excelBackupLabel, keptCountLabel, removeWarning, savedBankLine, transactionCountLabel } from "./copy";
+import {
+  excelBackupLabel,
+  keptCountLabel,
+  removeWarning,
+  savedBankLine,
+  sqliteSavedLine,
+  transactionCountLabel,
+  xlsxSavedLine,
+} from "./copy";
 
 function withTempDb(fn: () => void | Promise<void>): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "haushaltsbuch-data-"));
@@ -81,6 +90,12 @@ test("date and bank copy", () => {
   assert.match(removeWarning("ING", "IN", 0).body, /no transactions/);
   assert.equal(excelBackupLabel(3), "Excel file with all 3 expenses (.xlsx)");
   assert.equal(savedBankLine("N26", "N26"), "Saved N26 (N26). Add another bank?");
+  assert.equal(xlsxSavedLine(142), "haushaltsbuch-expenses.xlsx — 142 expenses");
+  assert.equal(sqliteSavedLine(), "haushaltsbuch.sqlite — raw database");
+  assert.equal(amountKeepingSign("12.50", -12.5), "-12.5");
+  assert.equal(amountKeepingSign("+12.50", -12.5), "+12.50");
+  assert.equal(amountKeepingSign("-3", 20), "-3");
+  assert.equal(amountKeepingSign("8", 20), "8");
 });
 
 test("confirm drops banks that were not submitted", async () => {
@@ -175,14 +190,16 @@ test("bank routes add, soft-remove, and add back without touching transactions",
     const readded = await postBank(post("http://local/api/banks", { name: "Sparkasse", initials: "XX" }));
     const readdedBody = await jsonBody(readded);
     assert.equal(readdedBody.reactivated, true);
-    assert.equal((readdedBody.bank as { initials: string }).initials, "SP");
+    assert.equal((readdedBody.bank as { initials: string }).initials, "XX");
     closeDb();
     const names = new Database(resolveDbPath(), { readonly: true, fileMustExist: true });
-    const bankCount = names.prepare("SELECT COUNT(*) AS n FROM banks WHERE name = 'Sparkasse'").get() as {
+    const sparkasseAgain = names.prepare("SELECT COUNT(*) AS n, initials FROM banks WHERE name = 'Sparkasse'").get() as {
       n: number;
+      initials: string;
     };
     names.close();
-    assert.equal(bankCount.n, 1);
+    assert.equal(sparkasseAgain.n, 1);
+    assert.equal(sparkasseAgain.initials, "XX");
 
     const hide = await postRemove(post("http://local/api/banks/remove", { name: "Sparkasse" }));
     assert.equal(hide.status, 200);
@@ -338,7 +355,8 @@ test("exports include removed banks and the sqlite file is a backup", async () =
     assert.match(xlsx.headers.get("content-disposition") ?? "", /haushaltsbuch-expenses\.xlsx/);
     assert.match(xlsx.headers.get("content-type") ?? "", /spreadsheetml/);
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(Buffer.from(await xlsx.arrayBuffer()));
+    const xlsxBytes = new Uint8Array(await xlsx.arrayBuffer());
+    await workbook.xlsx.load(xlsxBytes as unknown as Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0]);
     const sheet = workbook.worksheets[0];
     assert.ok(sheet);
     const header = (sheet.getRow(1).values as unknown[]).slice(1);
@@ -417,4 +435,124 @@ test("browser connection keeps active banks and clears only after reset", () => 
   } finally {
     Object.assign(globalThis, { localStorage: previousStorage, document: previousDocument });
   }
+});
+
+function transactionCount(): number {
+  closeDb();
+  const database = new Database(resolveDbPath(), { readonly: true, fileMustExist: true });
+  const row = database.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number };
+  database.close();
+  return row.n;
+}
+
+function fileHas(path: string, marker: string): boolean {
+  if (!existsSync(path)) return false;
+  return readFileSync(path).includes(Buffer.from(marker));
+}
+
+test("the last active bank cannot be removed", async () => {
+  await withTempDb(async () => {
+    seed();
+    assert.equal((await postRemove(post("http://local/api/banks/remove", { name: "ING" }))).status, 200);
+    const last = await postRemove(post("http://local/api/banks/remove", { name: "Sparkasse" }));
+    assert.equal(last.status, 400);
+    const body = await jsonBody(last);
+    assert.equal(body.error, "Keep at least one bank.");
+    closeDb();
+    const database = new Database(resolveDbPath(), { readonly: true, fileMustExist: true });
+    const row = database.prepare("SELECT active FROM banks WHERE name = 'Sparkasse'").get() as { active: number };
+    database.close();
+    assert.equal(row.active, 1);
+  });
+});
+
+test("reset rejects text/plain and cross-origin posts and still accepts same-origin JSON", async () => {
+  await withTempDb(async () => {
+    seed();
+    assert.equal(confirmTransactions([expense(-8, "2026-05-01", "Market")]).ok, true);
+    assert.equal(transactionCount(), 1);
+
+    const plain = await postReset(
+      new Request("http://localhost:3000/api/setup/reset", {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: JSON.stringify({ confirm: true }),
+      }),
+    );
+    assert.equal(plain.status, 415);
+    assert.equal(transactionCount(), 1);
+
+    const crossSite = await postReset(
+      new Request("http://localhost:3000/api/setup/reset", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "sec-fetch-site": "cross-site",
+        },
+        body: JSON.stringify({ confirm: true }),
+      }),
+    );
+    assert.equal(crossSite.status, 403);
+    assert.equal(transactionCount(), 1);
+
+    const otherOrigin = await postReset(
+      new Request("http://localhost:3000/api/setup/reset", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          host: "localhost:3000",
+          origin: "https://evil.example",
+          "sec-fetch-site": "same-origin",
+        },
+        body: JSON.stringify({ confirm: true }),
+      }),
+    );
+    assert.equal(otherOrigin.status, 403);
+    assert.equal(transactionCount(), 1);
+
+    const allowed = await postReset(
+      new Request("http://localhost:3000/api/setup/reset", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          host: "localhost:3000",
+          origin: "http://localhost:3000",
+          "sec-fetch-site": "same-origin",
+        },
+        body: JSON.stringify({ confirm: true }),
+      }),
+    );
+    assert.equal(allowed.status, 200);
+    assert.equal(transactionCount(), 0);
+  });
+});
+
+test("reset removes a saved note from the database file and the wal", async () => {
+  await withTempDb(async () => {
+    seed();
+    const marker = "hb-wipe-marker-7c2e91aa-unique-note";
+    assert.equal(confirmTransactions([expense(-8, "2026-05-01", marker)]).ok, true);
+    closeDb();
+    const path = resolveDbPath();
+    assert.equal(fileHas(path, marker) || fileHas(`${path}-wal`, marker), true);
+
+    const reset = await postReset(post("http://local/api/setup/reset", { confirm: true }));
+    assert.equal(reset.status, 200);
+    closeDb();
+    assert.equal(fileHas(path, marker), false);
+    assert.equal(fileHas(`${path}-wal`, marker), false);
+  });
+});
+
+test("change keys only updates the key", () => {
+  const source = readFileSync("components/setup/setup-chat.tsx", "utf8");
+  const start = source.indexOf("async function onSaveKeys");
+  assert.ok(start > 0);
+  const end = source.indexOf("function renderRich", start);
+  const body = source.slice(start, end);
+  assert.equal(body.includes("/api/setup/confirm"), false);
+  assert.equal(body.includes("/api/setup/openai"), true);
+  assert.equal(body.includes("banks: saved.banks"), true);
+  assert.equal(source.includes("Set up again"), false);
+  assert.equal(source.includes("setUpAgain"), false);
 });

@@ -158,7 +158,7 @@ Rows with `invalid_date`, `invalid_amount`, `unknown_category`, or `unknown_bank
 
 ## `POST /api/transactions/confirm`
 
-Parameterised insert of the whole batch in one database transaction. Category is checked against `categories`, and bank against active banks. A bad row saves nothing.
+Parameterised insert of the whole batch in one database transaction. Category is checked against `categories`, and bank against active banks. A bad row saves nothing. The request uses the same JSON and same-origin guard as the other writes (see [setup-api.md](setup-api.md)).
 
 ```json
 {
@@ -235,7 +235,7 @@ Validation matches confirm: a real `YYYY-MM-DD` date, a finite numeric amount (e
 
 ## `POST /api/transactions/undo`
 
-Deletes exactly the ids that belong to that `batchId`. Ids from another batch are not deleted, and a mismatch deletes nothing. Calling it again after a successful undo deletes nothing else.
+Deletes exactly the ids that belong to that `batchId`. Ids from another batch are not deleted, and a mismatch deletes nothing. Calling it again after a successful undo deletes nothing else. The request uses the same JSON and same-origin guard as confirm.
 
 ```json
 { "ids": [1], "batchId": "…" }

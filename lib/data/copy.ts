@@ -13,23 +13,34 @@ export function keptCountLabel(count: number): string {
   return `${count} transactions kept`;
 }
 
-export function removeWarning(name: string, initials: string, count: number): { title: string; body: string } {
+export function xlsxSavedLine(count: number): string {
+  const expenses = count === 1 ? "1 expense" : `${count} expenses`;
+  return `${XLSX_FILENAME} — ${expenses}`;
+}
+
+export function sqliteSavedLine(): string {
+  return `${SQLITE_FILENAME} — raw database`;
+}
+
+export function removeWarning(
+  name: string,
+  initials: string,
+  count: number,
+): { title: string; body: string; emphasis: string | null } {
   const title = `Remove ${name} (${initials})?`;
   if (count <= 0) {
     return {
       title,
+      emphasis: null,
       body: "It has no transactions. You just won't see it as a choice for new entries. You can add it back any time.",
     };
   }
-  if (count === 1) {
-    return {
-      title,
-      body: "Its 1 transaction stays saved and still shows in Expenses and the Excel export. You just won't see it as a choice for new entries.",
-    };
-  }
+  const emphasis = count === 1 ? "1 transaction" : `${count} transactions`;
+  const verb = count === 1 ? "stays" : "stay";
   return {
     title,
-    body: `Its ${count} transactions stay saved and still show in Expenses and the Excel export. You just won't see it as a choice for new entries.`,
+    emphasis,
+    body: `Its ${emphasis} ${verb} saved and still show in Expenses and the Excel export. You just won't see it as a choice for new entries.`,
   };
 }
 

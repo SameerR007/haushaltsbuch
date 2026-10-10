@@ -277,5 +277,9 @@ export function resetHousehold(): void {
     database.exec("DELETE FROM preferences");
   });
   wipe();
+  // DELETE leaves the old bytes in free pages and in the WAL. Checkpoint, then
+  // rewrite the file so a wiped note is gone from the database and the -wal file.
+  database.pragma("wal_checkpoint(TRUNCATE)");
+  database.exec("VACUUM");
   migrate(database);
 }

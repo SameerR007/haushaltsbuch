@@ -19,11 +19,25 @@ Money chat, statement import, and saving transactions are documented in [chat-ap
 
 Success is HTTP 200 and `"ok": true`.
 
+## State-changing requests
+
+Every route that writes the database uses one shared guard before it reads the body:
+
+- `Content-Type` must be `application/json`. A charset parameter is fine. Anything else, including `text/plain`, is HTTP 415 and changes nothing. `request.json()` is not called for that body, so a simple cross-site POST cannot wipe or edit data.
+- If `Sec-Fetch-Site` is present, it must be `same-origin`. Any other value is HTTP 403.
+- If `Origin` is present, its host must match the `Host` header. A different host is HTTP 403.
+
+Missing `Sec-Fetch-Site` and `Origin` are allowed. The app’s own `fetch` calls send `application/json` from the same origin, so they pass.
+
+The guard covers `POST /api/setup/init`, `POST /api/setup/openai`, `POST /api/setup/confirm`, `POST /api/setup/reset`, `POST /api/banks`, `POST /api/banks/remove`, `POST /api/banks/restore`, `PATCH /api/transactions/[id]`, `POST /api/transactions/confirm`, and `POST /api/transactions/undo`.
+
+Chat does not write the database. PDF import stays `multipart/form-data` and does not use this guard.
+
 ## `POST /api/setup/init`
 
 Creates `{cwd}/data/haushaltsbuch.sqlite` (or `HAUSHALTSBUCH_DB_PATH` when that env var is set), migrates the schema, and seeds categories plus a default `EUR` preference. Safe to call more than once. A later call does not reset a saved currency or banks, and it does not insert transactions.
 
-No request body is required. The chat sends `{}`.
+The chat sends `{}` with `Content-Type: application/json`. The guard above still applies.
 
 ```json
 {
@@ -69,7 +83,7 @@ No transaction rows are written.
 { "ok": true }
 ```
 
-`currency` is a 3-letter code. Each bank needs a name and initials of 1–4 letters or digits. The chat calls this from **Confirm**.
+`currency` is a 3-letter code. Each bank needs a name and initials of 1–4 letters or digits. The chat calls this from **Confirm** during first-time setup. **Change keys** does not call this route. It checks the key with `POST /api/setup/openai` and writes the OpenAI key back beside the banks already saved in this browser.
 
 ## `GET /api/setup/health`
 
@@ -125,7 +139,7 @@ Reads the database. It does not create the file. The response has no absolute pa
 
 ## `POST /api/banks`
 
-Adds one bank. Other banks, including their initials, stay as they are. If the name matches an active bank, nothing is changed (`alreadyActive: true`). If it matches a removed bank, that row is activated again and its initials stay as they were (`reactivated: true`). A new name is inserted.
+Adds one bank. Other banks stay as they are. If the name matches an active bank, nothing is changed, including its initials (`alreadyActive: true`). If it matches a removed bank, that row is activated again and its initials are updated to the ones in this request (`reactivated: true`). A new name is inserted.
 
 ```json
 { "name": "N26", "initials": "N26" }
@@ -167,7 +181,7 @@ Soft-removes a bank. Transactions are not deleted or edited. The bank disappears
 }
 ```
 
-An unknown name is `invalid`. Removing a bank that is already removed returns that bank and does not change `removedAt`.
+An unknown name is `invalid`. Removing a bank that is already removed returns that bank and does not change `removedAt`. Removing the last active bank is `invalid` (`Keep at least one bank.`) and changes nothing.
 
 ## `POST /api/banks/restore`
 
@@ -179,7 +193,7 @@ Sets `active` back to 1 and clears `removed_at`. Transactions are not changed.
 
 ## `POST /api/setup/reset`
 
-Deletes every transaction, bank, category, and preference, then recreates the schema defaults (the category list and `EUR`). The body must send `confirm: true`. Any other value deletes nothing. The browser clears `haushaltsbuch.connection` only after this returns `"ok": true`.
+Deletes every transaction, bank, category, and preference. `DELETE` leaves old bytes in free pages and in the `-wal` file, so the route then runs `PRAGMA wal_checkpoint(TRUNCATE)` and `VACUUM` before it recreates the schema defaults (the category list and `EUR`). The body must send `confirm: true` as JSON from this app. Any other value, a non-JSON content type, or a cross-origin request deletes nothing. The browser clears `haushaltsbuch.connection` only after this returns `"ok": true`. The setup screen does not call this route. A full wipe goes through `/data/reset`, which offers a backup first.
 
 ```json
 { "confirm": true }

@@ -42,9 +42,6 @@ export function YourData({ updated }: { updated: boolean }) {
 
   return (
     <main className="data-card">
-      <Link className="data-back" href="/">
-        Back
-      </Link>
       <h1>Your data</h1>
       {updated ? <p className="data-notice">Banks updated. Here&apos;s what&apos;s saved now.</p> : null}
       {error ? (

@@ -75,8 +75,10 @@ export type BankWriteResult = SetupResult<{
 }>;
 
 /**
- * Add one bank. Other banks are left as they are, including their initials.
- * A removed bank with the same name is activated again instead of inserted twice.
+ * Add one bank. Other banks are left as they are.
+ * A removed bank with the same name is activated again and its initials become
+ * the ones just entered, instead of inserting a second row.
+ * An active bank with the same name is left unchanged, including its initials.
  */
 export function addBank(name: unknown, initials: unknown): BankWriteResult {
   if (typeof name !== "string" || typeof initials !== "string") {
@@ -92,7 +94,9 @@ export function addBank(name: unknown, initials: unknown): BankWriteResult {
     return { ok: true, bank: current, alreadyActive: true, reactivated: false };
   }
   if (current) {
-    database.prepare("UPDATE banks SET active = 1, removed_at = NULL WHERE name = ?").run(current.name);
+    database
+      .prepare("UPDATE banks SET initials = ?, active = 1, removed_at = NULL WHERE name = ?")
+      .run(normalized.initials, current.name);
     const bank = findBank(current.name);
     if (!bank) {
       return { ok: false, code: "rejected", error: "Could not add that bank." };
@@ -116,6 +120,12 @@ export function removeBank(name: unknown): SetupResult<{ bank: BankView }> {
   if (!current) return { ok: false, code: "invalid", error: "That bank isn't in your list." };
   if (!current.active) return { ok: true, bank: current };
   const database = ensureMigrated();
+  const activeCount = database.prepare("SELECT COUNT(*) AS n FROM banks WHERE active = 1").get() as {
+    n: number;
+  };
+  if (activeCount.n <= 1) {
+    return { ok: false, code: "invalid", error: "Keep at least one bank." };
+  }
   database
     .prepare("UPDATE banks SET active = 0, removed_at = ? WHERE name = ?")
     .run(new Date().toISOString(), current.name);

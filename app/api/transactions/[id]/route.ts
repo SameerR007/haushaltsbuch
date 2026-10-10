@@ -8,7 +8,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, context: RouteContext) {
   const parsed = await readJsonBody(request);
-  if (!parsed.ok) return jsonResult(parsed, statusFor(parsed));
+  if (!parsed.ok) return parsed.response;
   const { id } = await context.params;
   const body = parsed.body;
   const patch: {

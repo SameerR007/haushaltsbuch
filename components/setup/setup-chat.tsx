@@ -139,6 +139,15 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
     return idRef.current;
   }
 
+  async function ensureInit(): Promise<boolean> {
+    const result = await postJson("/api/setup/init", {});
+    if (!result.ok) {
+      setFormError(result.error ?? "Could not prepare the local database.");
+      return false;
+    }
+    return true;
+  }
+
   function persist(connection: SavedConnection): boolean {
     try {
       writeConnection(connection);
@@ -147,15 +156,6 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
       setFormError("Could not save keys in this browser.");
       return false;
     }
-  }
-
-  async function ensureInit(): Promise<boolean> {
-    const result = await postJson("/api/setup/init", {});
-    if (!result.ok) {
-      setFormError(result.error ?? "Could not prepare the local database.");
-      return false;
-    }
-    return true;
   }
 
   function resetBankDraft() {
@@ -254,24 +254,6 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
       return;
     }
     showOpenAiStep();
-  }
-
-  async function setUpAgain() {
-    setOpenai("");
-    setCurrency("EUR");
-    setBanks([]);
-    resetBankDraft();
-    setShowOther(false);
-    setCustomCurrency("");
-    setFormError("");
-    setPhase("openai");
-    setMessages(freshThread(nid));
-    setPending(true);
-    try {
-      await ensureInit();
-    } finally {
-      setPending(false);
-    }
   }
 
   async function onOpenAi(event: FormEvent) {
@@ -723,9 +705,6 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
             <button type="button" className="setup-chip" onClick={startChangeKeys}>
               Change keys
             </button>
-            <button type="button" className="setup-chip" onClick={() => void setUpAgain()}>
-              Set up again
-            </button>
           </div>
         </div>
       );
@@ -749,14 +728,6 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
                 disabled={pending}
               >
                 Change keys
-              </button>
-              <button
-                type="button"
-                className="setup-text-btn"
-                onClick={() => void setUpAgain()}
-                disabled={pending}
-              >
-                Set up again
               </button>
             </>
           ) : null}

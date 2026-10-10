@@ -67,7 +67,7 @@ localStorage.removeItem("haushaltsbuch.connection")
 
 **Change keys** stays available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. Saving setup again clears the one-time PDF disclosure, so the tracker shows it once more. Adding or removing a bank updates the active bank list in this browser and does not clear that disclosure.
 
-Removing a bank hides it from new entries. Its transactions stay. **Set up completely new** can download `haushaltsbuch-expenses.xlsx` and, if asked, a SQLite backup, then `POST /api/setup/reset` with `confirm: true`. The browser clears `haushaltsbuch.connection` only after that succeeds, and setup starts again at the OpenAI key.
+Removing a bank hides it from new entries. Its transactions stay. The last active bank cannot be removed. Adding a bank whose name matches a removed one reactivates that row and updates its initials. **Set up completely new** (`/data/reset`) can download `haushaltsbuch-expenses.xlsx` and, if asked, a SQLite backup, then `POST /api/setup/reset` with `confirm: true`. Setup no longer has a **Set up again** button that skipped that backup. **Change keys** only checks the OpenAI key. It does not call confirm. The browser clears `haushaltsbuch.connection` only after reset succeeds, and setup starts again at the OpenAI key. Reset then checkpoints and vacuums the file so deleted rows are not left on disk.
 
 ## What stays in this browser
 
@@ -102,7 +102,7 @@ No sample transactions are inserted. Confirm updates the currency and the submit
 
 The header is **Haushaltsbuch**, **Chat**, **Expenses**, **Insights ↗** (opens in a new window), and **Summary**. Insights and Summary are placeholders.
 
-**Expenses** lists every transaction, newest first, with the household currency in the subtitle. **Download as Excel** uses `GET /api/export/xlsx`. Each cell saves on its own through `PATCH /api/transactions/[id]`. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
+**Expenses** lists every transaction, newest first, with the household currency in the subtitle. **Download as Excel** fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
 
 On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation.
 
@@ -130,11 +130,11 @@ For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. 
 - `POST /api/setup/init` — create or migrate the local database
 - `POST /api/setup/openai` — check an OpenAI key, do not store it
 - `POST /api/setup/confirm` — save currency and banks; drop or soft-remove banks that are not in the list
-- `POST /api/setup/reset` — delete household rows when `confirm` is true, then reseed defaults
+- `POST /api/setup/reset` — delete household rows when a same-origin JSON body has `confirm: true`, checkpoint, vacuum, then reseed defaults
 - `GET /api/setup/health` — whether the database is ready, plus currency and active bank count
 - `GET /api/household` — currency, active and removed banks, transaction counts
-- `POST /api/banks` — add one bank, or reactivate a removed bank with the same name
-- `POST /api/banks/remove` — soft-remove a bank; transactions stay
+- `POST /api/banks` — add one bank, or reactivate a removed bank and update its initials
+- `POST /api/banks/remove` — soft-remove a bank; transactions stay; the last active bank is refused
 - `POST /api/banks/restore` — make a removed bank active again
 - `GET /api/export/xlsx` — Excel file of every transaction
 - `GET /api/export/sqlite` — SQLite backup via `better-sqlite3` backup

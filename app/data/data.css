@@ -2,16 +2,69 @@
   position: fixed;
   inset: 0;
   z-index: 1;
-  overflow: auto;
   display: flex;
-  justify-content: center;
-  padding: 28px 18px 48px;
+  flex-direction: column;
+  overflow: hidden;
   color: var(--ink);
   font-family: system-ui, -apple-system, sans-serif;
   background:
     radial-gradient(ellipse 90% 55% at 50% -15%, #d7efe9 0%, transparent 55%),
     radial-gradient(ellipse 50% 40% at 100% 0%, #f6e2c4 0%, transparent 45%),
     var(--bg);
+}
+
+.data-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 252, 248, 0.9);
+  backdrop-filter: blur(8px);
+}
+
+.data-brand {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.data-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.data-header-back {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.data-header-back:hover {
+  color: var(--ink);
+}
+
+.data-step {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--teal);
+  letter-spacing: 0.04em;
+}
+
+.data-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  padding: 28px 18px 48px;
 }
 
 .data-card {
@@ -37,20 +90,6 @@
   margin: 0 0 6px;
   font-size: clamp(28px, 5vw, 34px);
   line-height: 1.15;
-}
-
-.data-back {
-  display: inline-block;
-  margin-bottom: 14px;
-  color: var(--teal);
-  font-size: 13px;
-  font-weight: 650;
-  text-decoration: none;
-}
-
-.data-back:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 .data-steps {
@@ -239,8 +278,19 @@
   cursor: pointer;
 }
 
-.bank-minus:hover {
+.bank-minus:hover:not(:disabled) {
   background: #fdeceb;
+}
+
+.bank-minus:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.bank-keep {
+  margin: 2px 0 10px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .data-removed {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { formatMoney, formatRowDate } from "@/lib/chat/money";
+import { amountKeepingSign, formatMoney, formatRowDate } from "@/lib/chat/money";
+import { XLSX_FILENAME } from "@/lib/data/copy";
 import { parseTransactionList } from "@/lib/data/parse";
 import type { BankView, TransactionView } from "@/lib/data/types";
 import { currencySummaryLabel } from "@/lib/setup/chat-logic";
@@ -33,7 +34,7 @@ function fieldChanged(field: Field, saved: TransactionView, draft: Draft): boole
   if (field === "notes") return draft.notes !== (saved.notes ?? "");
   if (field === "category") return draft.category !== saved.category;
   if (field === "bank") return draft.bank !== saved.bank;
-  return draft.amountInput.trim() !== String(saved.amount);
+  return amountKeepingSign(draft.amountInput, saved.amount) !== String(saved.amount);
 }
 
 function bankLabel(banks: readonly BankView[], name: string): string {
@@ -69,12 +70,26 @@ function mergeField(current: TransactionView, field: Field, next: TransactionVie
   return { ...current, amount: next.amount };
 }
 
-function payload(field: Field, draft: Draft): Record<string, string> {
+function payload(field: Field, draft: Draft, previousAmount: number): Record<string, string> {
   if (field === "date") return { date: draft.date };
   if (field === "notes") return { notes: draft.notes };
   if (field === "category") return { category: draft.category };
   if (field === "bank") return { bank: draft.bank };
-  return { amount: draft.amountInput.trim() };
+  return { amount: amountKeepingSign(draft.amountInput, previousAmount) };
+}
+
+async function downloadFile(url: string, filename: string): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("download");
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export function ExpensesBoard() {
@@ -83,6 +98,8 @@ export function ExpensesBoard() {
   const [banks, setBanks] = useState<BankView[]>([]);
   const [rows, setRows] = useState<TransactionView[]>([]);
   const [error, setError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -112,6 +129,19 @@ export function ExpensesBoard() {
     ? `Newest first · amounts in ${currencySummaryLabel(currency)}`
     : "Newest first";
 
+  async function onDownload() {
+    if (downloading) return;
+    setDownloading(true);
+    setDownloadError("");
+    try {
+      await downloadFile("/api/export/xlsx", XLSX_FILENAME);
+    } catch {
+      setDownloadError("Could not download the Excel file.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <main className="expenses">
       <div className="expenses-head">
@@ -119,9 +149,16 @@ export function ExpensesBoard() {
           <h1>Expenses</h1>
           <p>{subtitle}</p>
         </div>
-        <a className="expenses-download" href="/api/export/xlsx">
-          Download as Excel
-        </a>
+        <div className="expenses-download-wrap">
+          <button type="button" className="expenses-download" disabled={downloading} onClick={() => void onDownload()}>
+            {downloading ? "Downloading…" : "⬇ Download as Excel"}
+          </button>
+          {downloadError ? (
+            <p className="expenses-download-error" role="alert">
+              {downloadError}
+            </p>
+          ) : null}
+        </div>
       </div>
       {error ? (
         <p className="expenses-error" role="alert">
@@ -203,6 +240,14 @@ function ExpenseRow({
   }
 
   function begin(field: Field) {
+    if (field === "amount") {
+      const magnitude = Math.abs(savedRef.current.amount);
+      const next = {
+        ...draftRef.current,
+        amountInput: magnitude === 0 ? "0" : String(magnitude),
+      };
+      updateDraft(next);
+    }
     setEditing(field);
     setStatus("editing");
   }
@@ -232,7 +277,7 @@ function ExpenseRow({
       const response = await fetch(`/api/transactions/${savedRef.current.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload(field, snapshot)),
+        body: JSON.stringify(payload(field, snapshot, savedRef.current.amount)),
       });
       const data: unknown = await response.json();
       const record =
@@ -381,18 +426,22 @@ function ExpenseRow({
       </td>
       <td className="is-num">
         {editing === "amount" || failed === "amount" ? (
-          <input
-            aria-label="Amount"
-            inputMode="decimal"
-            autoFocus
-            value={draft.amountInput}
-            className={failed === "amount" ? "is-invalid" : undefined}
-            onChange={(event) => updateDraft({ ...draftRef.current, amountInput: event.target.value })}
-            onBlur={() => void persist("amount", draftRef.current)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-            }}
-          />
+          <div className="amount-edit">
+            <input
+              aria-label="Amount"
+              inputMode="decimal"
+              autoFocus
+              placeholder="12.50 keeps the sign"
+              value={draft.amountInput}
+              className={failed === "amount" ? "is-invalid" : undefined}
+              onChange={(event) => updateDraft({ ...draftRef.current, amountInput: event.target.value })}
+              onBlur={() => void persist("amount", draftRef.current)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+            />
+            <span className="amount-hint">Type 12.50 to keep the sign. + or − changes it.</span>
+          </div>
         ) : (
           <button type="button" className="cell-button is-num" onClick={() => begin("amount")}>
             {formatMoney(saved.amount, currency)}

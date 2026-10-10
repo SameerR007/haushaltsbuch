@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const parsed = await readJsonBody(request);
-  if (!parsed.ok) return jsonResult(parsed, statusFor(parsed));
+  if (!parsed.ok) return parsed.response;
   try {
     const result = addBank(parsed.body.name, parsed.body.initials);
     return jsonResult(result, statusFor(result));

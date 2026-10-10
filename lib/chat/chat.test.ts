@@ -272,6 +272,50 @@ test("batch_id migration is idempotent and keeps old rows", () => {
   });
 });
 
+test("old banks without active or removed_at stay intact and active", () => {
+  withTempDb(() => {
+    const database = new Database(resolveDbPath());
+    database.exec(`
+      CREATE TABLE banks (name TEXT PRIMARY KEY, initials TEXT NOT NULL);
+      CREATE TABLE transactions (
+        id INTEGER PRIMARY KEY,
+        date TEXT NOT NULL,
+        category TEXT NOT NULL,
+        amount REAL NOT NULL,
+        bank TEXT NOT NULL,
+        notes TEXT
+      );
+      INSERT INTO banks (name, initials) VALUES ('ING', 'IN'), ('Sparkasse', 'SP'), ('N26', 'N26');
+      INSERT INTO transactions (date, category, amount, bank, notes) VALUES
+        ('2026-01-02', 'food', -4, 'ING', 'bread'),
+        ('2026-02-03', 'rent', -900, 'Sparkasse', 'flat');
+    `);
+    database.close();
+    const migrated = ensureMigrated();
+    const columns = migrated.prepare("PRAGMA table_info(banks)").all() as { name: string }[];
+    assert.equal(columns.some((column) => column.name === "active"), true);
+    assert.equal(columns.some((column) => column.name === "removed_at"), true);
+    const banks = migrated
+      .prepare("SELECT name, initials, active, removed_at FROM banks ORDER BY name")
+      .all() as { name: string; initials: string; active: number; removed_at: string | null }[];
+    assert.deepEqual(banks, [
+      { name: "ING", initials: "IN", active: 1, removed_at: null },
+      { name: "N26", initials: "N26", active: 1, removed_at: null },
+      { name: "Sparkasse", initials: "SP", active: 1, removed_at: null },
+    ]);
+    const rows = migrated
+      .prepare("SELECT bank, notes, amount FROM transactions ORDER BY date")
+      .all();
+    assert.deepEqual(rows, [
+      { bank: "ING", notes: "bread", amount: -4 },
+      { bank: "Sparkasse", notes: "flat", amount: -900 },
+    ]);
+    ensureMigrated();
+    const again = migrated.prepare("SELECT COUNT(*) AS n FROM banks WHERE active = 1").get() as { n: number };
+    assert.equal(again.n, 3);
+  });
+});
+
 test("review flags bad fields, defaults one bank, and marks duplicates", () => {
   const banks = [{ name: "Sparkasse", initials: "SP" }];
   const categories = ["grocery", "rent", "salary"];
@@ -660,6 +704,7 @@ test("chat confirm and undo routes, and a stubbed PDF flags a duplicate", async 
     const saved = await postConfirm(
       new Request("http://local/api/transactions/confirm", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ rows: chatBody.proposal.rows }),
       }),
     );
@@ -686,6 +731,7 @@ test("chat confirm and undo routes, and a stubbed PDF flags a duplicate", async 
     const undone = await postUndo(
       new Request("http://local/api/transactions/undo", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ ids: savedBody.ids, batchId: savedBody.batchId }),
       }),
     );

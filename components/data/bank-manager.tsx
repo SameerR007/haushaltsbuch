@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { rememberActiveBanks } from "@/lib/connection";
@@ -10,6 +9,19 @@ import type { BankView, HouseholdView } from "@/lib/data/types";
 import { suggestInitials } from "@/lib/setup/chat-logic";
 
 const THATS_ALL = "That’s all";
+
+function WarningText({ body, emphasis }: { body: string; emphasis: string | null }) {
+  if (!emphasis) return body;
+  const index = body.indexOf(emphasis);
+  if (index < 0) return body;
+  return (
+    <>
+      {body.slice(0, index)}
+      <strong>{emphasis}</strong>
+      {body.slice(index + emphasis.length)}
+    </>
+  );
+}
 
 async function postJson(path: string, body: object): Promise<{ ok: boolean; error?: string; bank?: BankView; alreadyActive?: boolean }> {
   const response = await fetch(path, {
@@ -69,6 +81,7 @@ export function BankManager() {
 
   const active = household?.banks.filter((bank) => bank.active) ?? [];
   const removed = household?.banks.filter((bank) => !bank.active) ?? [];
+  const lastBank = active.length === 1;
   const warning = pendingRemove
     ? removeWarning(pendingRemove.name, pendingRemove.initials, pendingRemove.transactionCount)
     : null;
@@ -139,9 +152,6 @@ export function BankManager() {
 
   return (
     <main className="data-card">
-      <Link className="data-back" href="/data">
-        Back
-      </Link>
       <h1>Add / Remove banks</h1>
       <section className="data-panel" aria-label="Your banks">
         <p>Your banks. Tap the minus to remove one.</p>
@@ -152,16 +162,18 @@ export function BankManager() {
               type="button"
               className="bank-minus"
               aria-label={`Remove ${bank.name} (${bank.initials})`}
+              disabled={lastBank}
               onClick={() => setPendingRemove(bank)}
             >
               −
             </button>
-            <strong>
-              {bank.name} ({bank.initials})
-            </strong>
+            <span>
+              <strong>{bank.name}</strong> ({bank.initials})
+            </span>
             <span className="bank-count">{transactionCountLabel(bank.transactionCount)}</span>
           </div>
         ))}
+        {lastBank ? <p className="bank-keep">Keep at least one bank.</p> : null}
       </section>
 
       {removed.length > 0 ? (
@@ -169,9 +181,9 @@ export function BankManager() {
           <h2>REMOVED BANKS</h2>
           {removed.map((bank) => (
             <div className="removed-row" key={bank.name}>
-              <strong>
-                {bank.name} ({bank.initials})
-              </strong>
+              <span>
+                <strong>{bank.name}</strong> ({bank.initials})
+              </span>
               <span>{keptCountLabel(bank.transactionCount)}</span>
               <button type="button" className="data-chip" onClick={() => void onRestore(bank)}>
                 Add back
@@ -240,7 +252,9 @@ export function BankManager() {
         {warning ? (
           <>
             <h2>{warning.title}</h2>
-            <p>{warning.body}</p>
+            <p>
+              <WarningText body={warning.body} emphasis={warning.emphasis} />
+            </p>
             <div className="data-dialog-actions">
               <button type="button" className="data-secondary" onClick={() => setPendingRemove(null)} autoFocus>
                 Cancel

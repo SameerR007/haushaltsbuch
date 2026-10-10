@@ -13,7 +13,7 @@ function invalid(error: string): SetupError {
 
 export async function POST(request: Request) {
   const parsed = await readJsonBody(request);
-  if (!parsed.ok) return jsonResult(parsed, statusFor(parsed));
+  if (!parsed.ok) return parsed.response;
 
   const currency = parsed.body.currency;
   const banks = parsed.body.banks;
