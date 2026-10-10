@@ -1,6 +1,6 @@
 # Haushaltsbuch
 
-Local expense tracker. The welcome page and the setup chat are in this repo. Money chat and insights are not built yet.
+Local expense tracker. The welcome page, setup chat, and money chat are in this repo. Insights and Summary are placeholder pages.
 
 Money data stays in one SQLite file on this computer. The app does not use a cloud database. The only network call during setup is an OpenAI key check.
 
@@ -13,7 +13,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-`npm test` checks the local schema, setup helpers, and connection JSON.
+`npm test` checks the local schema, setup helpers, connection JSON, the SELECT-only SQL guard, confirm/undo, signed amounts, and review-row validation.
 
 ## Local database
 
@@ -63,7 +63,7 @@ localStorage.removeItem("haushaltsbuch.connection")
 2. Currency (default euro) and one or more banks with initials.
 3. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
-**Set up again** and **Change keys** stay available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. The tracker stub links to **Change keys** as well.
+**Set up again** and **Change keys** stay available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. Saving setup again clears the one-time PDF disclosure, so the tracker shows it once more.
 
 ## What stays in this browser
 
@@ -87,17 +87,43 @@ The migrate in `lib/db.ts` is idempotent. It creates:
 
 - `categories` — seeded with food, rent, household, grocery, bill, miscellaneous, salary
 - `banks` — name and initials, empty until confirm
-- `transactions` — date, category, amount, bank, notes, empty
+- `transactions` — date, category, amount, bank, notes, nullable `batch_id`, empty until a review is confirmed. Amounts are signed: expenses negative, income positive. A balance is `SUM(amount)`.
 - `preferences` — one row (`id` 1), currency default `EUR`
 
 No sample transactions are inserted. Confirm updates the currency and upserts banks.
+
+## Tracker
+
+`/app` is the money chat.
+
+The header is **Haushaltsbuch**, **Chat**, **Insights ↗** (opens in a new window), and **Summary**. Insights and Summary are placeholders.
+
+On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation.
+
+The prompts are built from `haushaltsbuch.connection` (version 2): the first saved bank name, and the saved currency’s minor units for the sample amount `12.50`. The day is the 12th of the previous full month, and the month name comes from that date. If no bank is saved, the bank is left out of the first prompt.
+
+Every new expense, including a whole statement, is a review card first: date, description, category, bank, amount, and total, then **Confirm — save N**, **Edit**, and **Cancel**. Confirm is the only write. A row flagged as a duplicate is skipped unless **Include anyway** is on, and the button count leaves those rows out. Undo deletes exactly the rows from that confirm.
+
+The paperclip attaches a PDF. The chip shows the file name, page count, and size. The first time a statement is attached (and again after setup is saved), the page says: “The whole PDF (text and page images) is sent to OpenAI to read it. Nothing else leaves your computer.” Sending a statement shows **Reading your statement…** while it is in flight.
+
+The OpenAI key is read from this browser and sent on the chat or PDF request. The server does not store it. Chat and PDF import use `gpt-5.6-luna` with high reasoning (`CHAT_MODEL` in `lib/chat/openai.ts`; override with `HAUSHALTSBUCH_CHAT_MODEL`). Requests set `store` to false. Questions go through a read-only `run_sql` tool, and the tool result is sent back to the model. New rows come back from `propose_transactions` and are not saved by that tool.
+
+For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. The stub is described in [docs/chat-api.md](docs/chat-api.md). Confirm and undo are never stubbed.
 
 ## Routes
 
 - `/` — landing
 - `/setup` — setup chat
-- `/app` — tracker stub
+- `/app` — money chat
+- `/app/insights` — placeholder, opened in a separate window
+- `/app/summary` — placeholder
 - `POST /api/setup/init` — create or migrate the local database
 - `POST /api/setup/openai` — check an OpenAI key, do not store it
 - `POST /api/setup/confirm` — save currency and banks
 - `GET /api/setup/health` — whether the database is ready, plus currency and bank count
+- `POST /api/chat` — money chat tool loop
+- `POST /api/import/pdf` — send a statement PDF to OpenAI and return a review
+- `POST /api/transactions/confirm` — save a reviewed batch
+- `POST /api/transactions/undo` — delete that batch
+
+Request and response shapes for the money routes are in [docs/chat-api.md](docs/chat-api.md).

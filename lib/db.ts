@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   category TEXT NOT NULL REFERENCES categories (name),
   amount REAL NOT NULL,
   bank TEXT NOT NULL REFERENCES banks (name),
-  notes TEXT
+  notes TEXT,
+  batch_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS preferences (
@@ -80,8 +81,16 @@ function tableNames(database: Database.Database): Set<string> {
   return new Set(rows.map((row) => row.name));
 }
 
+function ensureBatchId(database: Database.Database): void {
+  const columns = database.prepare("PRAGMA table_info(transactions)").all() as { name: string }[];
+  if (!columns.some((column) => column.name === "batch_id")) {
+    database.exec("ALTER TABLE transactions ADD COLUMN batch_id TEXT");
+  }
+}
+
 function migrate(database: Database.Database): void {
   database.exec(SCHEMA);
+  ensureBatchId(database);
   const insertCategory = database.prepare(
     "INSERT INTO categories (name) VALUES (?) ON CONFLICT(name) DO NOTHING",
   );
