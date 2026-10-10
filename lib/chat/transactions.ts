@@ -83,7 +83,7 @@ export function confirmTransactions(rawRows: unknown): ConfirmResult {
         ),
       );
       const banks = new Set(
-        (database.prepare("SELECT name FROM banks").all() as { name: string }[]).map(
+        (database.prepare("SELECT name FROM banks WHERE active = 1").all() as { name: string }[]).map(
           (row) => row.name,
         ),
       );

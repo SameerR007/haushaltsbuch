@@ -4,10 +4,12 @@ import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   readConnection,
+  rememberActiveBanks,
   writeConnection,
   type SavedBank,
   type SavedConnection,
 } from "@/lib/connection";
+import { parseHousehold } from "@/lib/data/parse";
 import {
   currencyChoiceLabel,
   currencySummaryLabel,
@@ -115,7 +117,7 @@ function collapseBankForms(messages: Msg[]): Msg[] {
   );
 }
 
-export function SetupChat() {
+export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   const idRef = useRef(100);
   const threadRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>("boot");
@@ -137,6 +139,15 @@ export function SetupChat() {
     return idRef.current;
   }
 
+  async function ensureInit(): Promise<boolean> {
+    const result = await postJson("/api/setup/init", {});
+    if (!result.ok) {
+      setFormError(result.error ?? "Could not prepare the local database.");
+      return false;
+    }
+    return true;
+  }
+
   function persist(connection: SavedConnection): boolean {
     try {
       writeConnection(connection);
@@ -145,15 +156,6 @@ export function SetupChat() {
       setFormError("Could not save keys in this browser.");
       return false;
     }
-  }
-
-  async function ensureInit(): Promise<boolean> {
-    const result = await postJson("/api/setup/init", {});
-    if (!result.ok) {
-      setFormError(result.error ?? "Could not prepare the local database.");
-      return false;
-    }
-    return true;
   }
 
   function resetBankDraft() {
@@ -191,7 +193,14 @@ export function SetupChat() {
   useEffect(() => {
     let ignore = false;
     const existing = readConnection();
-    if (existing) {
+    if (existing && startAtKeys) {
+      setSaved(existing);
+      setCurrency(existing.currency);
+      setBanks(existing.banks);
+      setOpenai("");
+      setPhase("keys");
+      setMessages([{ id: 1, from: "bot", widget: "keys" }]);
+    } else if (existing) {
       setSaved(existing);
       setCurrency(existing.currency);
       setBanks(existing.banks);
@@ -207,13 +216,28 @@ export function SetupChat() {
     }
     void (async () => {
       const result = await postJson("/api/setup/init", {});
-      if (ignore || result.ok) return;
-      setFormError(result.error ?? "Could not prepare the local database.");
+      if (!ignore && !result.ok) {
+        setFormError(result.error ?? "Could not prepare the local database.");
+      }
+      if (!existing || ignore) return;
+      try {
+        const response = await fetch("/api/household");
+        const household = parseHousehold(await response.json());
+        if (ignore || !household) return;
+        const changed = rememberActiveBanks(household);
+        const current = changed ? readConnection() : existing;
+        if (!current) return;
+        setSaved(current);
+        setCurrency(current.currency);
+        setBanks(current.banks);
+      } catch {
+        // Keep the banks already stored in this browser.
+      }
     })();
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [startAtKeys]);
 
   useEffect(() => {
     const thread = threadRef.current;
@@ -230,24 +254,6 @@ export function SetupChat() {
       return;
     }
     showOpenAiStep();
-  }
-
-  async function setUpAgain() {
-    setOpenai("");
-    setCurrency("EUR");
-    setBanks([]);
-    resetBankDraft();
-    setShowOther(false);
-    setCustomCurrency("");
-    setFormError("");
-    setPhase("openai");
-    setMessages(freshThread(nid));
-    setPending(true);
-    try {
-      await ensureInit();
-    } finally {
-      setPending(false);
-    }
   }
 
   async function onOpenAi(event: FormEvent) {
@@ -699,9 +705,6 @@ export function SetupChat() {
             <button type="button" className="setup-chip" onClick={startChangeKeys}>
               Change keys
             </button>
-            <button type="button" className="setup-chip" onClick={() => void setUpAgain()}>
-              Set up again
-            </button>
           </div>
         </div>
       );
@@ -725,14 +728,6 @@ export function SetupChat() {
                 disabled={pending}
               >
                 Change keys
-              </button>
-              <button
-                type="button"
-                className="setup-text-btn"
-                onClick={() => void setUpAgain()}
-                disabled={pending}
-              >
-                Set up again
               </button>
             </>
           ) : null}

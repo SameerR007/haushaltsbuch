@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS categories (
 
 CREATE TABLE IF NOT EXISTS banks (
   name TEXT PRIMARY KEY,
-  initials TEXT NOT NULL CHECK (length(initials) BETWEEN 1 AND 4)
+  initials TEXT NOT NULL CHECK (length(initials) BETWEEN 1 AND 4),
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  removed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -81,16 +83,36 @@ function tableNames(database: Database.Database): Set<string> {
   return new Set(rows.map((row) => row.name));
 }
 
+function columnNames(database: Database.Database, table: string): Set<string> {
+  const columns = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  return new Set(columns.map((column) => column.name));
+}
+
 function ensureBatchId(database: Database.Database): void {
-  const columns = database.prepare("PRAGMA table_info(transactions)").all() as { name: string }[];
-  if (!columns.some((column) => column.name === "batch_id")) {
+  if (!columnNames(database, "transactions").has("batch_id")) {
     database.exec("ALTER TABLE transactions ADD COLUMN batch_id TEXT");
+  }
+}
+
+/**
+ * Older files created `banks` with only name and initials.
+ * `active` is 1 for a bank the user can still pick. `removed_at` is set when it is hidden.
+ * Existing rows stay active. Transactions are not touched.
+ */
+function ensureBankFlags(database: Database.Database): void {
+  const columns = columnNames(database, "banks");
+  if (!columns.has("active")) {
+    database.exec("ALTER TABLE banks ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!columns.has("removed_at")) {
+    database.exec("ALTER TABLE banks ADD COLUMN removed_at TEXT");
   }
 }
 
 function migrate(database: Database.Database): void {
   database.exec(SCHEMA);
   ensureBatchId(database);
+  ensureBankFlags(database);
   const insertCategory = database.prepare(
     "INSERT INTO categories (name) VALUES (?) ON CONFLICT(name) DO NOTHING",
   );
@@ -135,7 +157,14 @@ export function readHealth(): HealthReport {
     const preference = database
       .prepare("SELECT currency FROM preferences WHERE id = 1")
       .get() as { currency: string } | undefined;
-    const banks = database.prepare("SELECT COUNT(*) AS n FROM banks").get() as { n: number };
+    const bankColumns = columnNames(database, "banks");
+    const banks = database
+      .prepare(
+        bankColumns.has("active")
+          ? "SELECT COUNT(*) AS n FROM banks WHERE active = 1"
+          : "SELECT COUNT(*) AS n FROM banks",
+      )
+      .get() as { n: number };
     return {
       ok: true,
       dbReady: true,
@@ -149,9 +178,14 @@ export function readHealth(): HealthReport {
 
 export type BankWrite = { name: string; initials: string };
 
+type StoredBank = { name: string; initials: string; active: number };
+
 /**
- * Creates the file if needed, then upserts the currency and banks.
- * Does not insert transactions or delete banks that are absent from `banks`.
+ * Creates the file if needed, then saves the currency and the submitted banks.
+ * A submitted name that matches a stored bank (ignoring case) reactivates that row
+ * and updates its initials. It does not insert a second copy.
+ * Banks left out of `banks` are deleted when they have no transactions.
+ * Banks left out that still have transactions are marked removed. Their rows stay.
  */
 export function saveHousehold(input: {
   currency: string;
@@ -186,18 +220,66 @@ export function saveHousehold(input: {
   }
 
   const database = ensureMigrated();
+  const existing = database
+    .prepare("SELECT name, initials, active FROM banks")
+    .all() as StoredBank[];
   const upsertPreference = database.prepare(
     `INSERT INTO preferences (id, currency) VALUES (1, ?)
      ON CONFLICT(id) DO UPDATE SET currency = excluded.currency`,
   );
-  const upsertBank = database.prepare(
-    `INSERT INTO banks (name, initials) VALUES (?, ?)
-     ON CONFLICT(name) DO UPDATE SET initials = excluded.initials`,
+  const reactivate = database.prepare(
+    "UPDATE banks SET initials = ?, active = 1, removed_at = NULL WHERE name = ?",
+  );
+  const insertBank = database.prepare(
+    "INSERT INTO banks (name, initials, active, removed_at) VALUES (?, ?, 1, NULL)",
+  );
+  const transactionCount = database.prepare(
+    "SELECT COUNT(*) AS n FROM transactions WHERE bank = ?",
+  );
+  const deleteBank = database.prepare("DELETE FROM banks WHERE name = ?");
+  const markRemoved = database.prepare(
+    "UPDATE banks SET active = 0, removed_at = ? WHERE name = ? AND active = 1",
   );
   const write = database.transaction(() => {
     upsertPreference.run(currency);
-    for (const bank of banks.values()) upsertBank.run(bank.name, bank.initials);
+    const kept = new Set<string>();
+    for (const bank of banks.values()) {
+      const matchName =
+        existing.find((row) => row.name.toLowerCase() === bank.name.toLowerCase())?.name ??
+        [...kept].find((name) => name.toLowerCase() === bank.name.toLowerCase());
+      if (matchName) {
+        reactivate.run(bank.initials, matchName);
+        kept.add(matchName);
+      } else {
+        insertBank.run(bank.name, bank.initials);
+        kept.add(bank.name);
+      }
+    }
+    const removedAt = new Date().toISOString();
+    for (const row of existing) {
+      if (kept.has(row.name)) continue;
+      const count = transactionCount.get(row.name) as { n: number };
+      if (count.n === 0) deleteBank.run(row.name);
+      else markRemoved.run(removedAt, row.name);
+    }
   });
   write();
   return { ok: true };
+}
+
+/** Delete every household row and seed categories plus the default euro preference again. */
+export function resetHousehold(): void {
+  const database = ensureMigrated();
+  const wipe = database.transaction(() => {
+    database.exec("DELETE FROM transactions");
+    database.exec("DELETE FROM banks");
+    database.exec("DELETE FROM categories");
+    database.exec("DELETE FROM preferences");
+  });
+  wipe();
+  // DELETE leaves the old bytes in free pages and in the WAL. Checkpoint, then
+  // rewrite the file so a wiped note is gone from the database and the -wal file.
+  database.pragma("wal_checkpoint(TRUNCATE)");
+  database.exec("VACUUM");
+  migrate(database);
 }

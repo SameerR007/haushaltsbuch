@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 export function TrackerHeader() {
   const pathname = usePathname();
   const chat = pathname === "/app";
+  const expenses = pathname.startsWith("/app/expenses");
   const insights = pathname.startsWith("/app/insights");
   const summary = pathname.startsWith("/app/summary");
 
@@ -17,6 +18,9 @@ export function TrackerHeader() {
       <nav className="tracker-nav" aria-label="Tracker">
         <Link className={chat ? "is-active" : undefined} href="/app">
           Chat
+        </Link>
+        <Link className={expenses ? "is-active" : undefined} href="/app/expenses">
+          Expenses
         </Link>
         <a
           className={insights ? "is-active" : undefined}

@@ -1,10 +1,12 @@
 import { undoTransactions } from "@/lib/chat/transactions";
-import { jsonResult } from "@/lib/setup/http";
+import { guardStateChange, jsonResult } from "@/lib/setup/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const blocked = guardStateChange(request);
+  if (blocked) return blocked;
   try {
     const text = await request.text();
     if (text.length > 100_000) {

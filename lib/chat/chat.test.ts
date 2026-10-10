@@ -11,7 +11,7 @@ import { POST as postPdf } from "../../app/api/import/pdf/route";
 import { POST as postConfirm } from "../../app/api/transactions/confirm/route";
 import { POST as postUndo } from "../../app/api/transactions/undo/route";
 import { confirmLabel, PDF_DISCLOSURE, reviewIntro } from "./copy";
-import { formatMoney } from "./money";
+import { formatMoney, formatRowDate } from "./money";
 import {
   CHAT_MODEL,
   CHAT_REASONING_EFFORT,
@@ -249,6 +249,17 @@ test("batch_id migration is idempotent and keeps old rows", () => {
     const migrated = ensureMigrated();
     const columns = migrated.prepare("PRAGMA table_info(transactions)").all() as { name: string }[];
     assert.equal(columns.some((column) => column.name === "batch_id"), true);
+    const bankColumns = migrated.prepare("PRAGMA table_info(banks)").all() as { name: string }[];
+    assert.equal(bankColumns.some((column) => column.name === "active"), true);
+    assert.equal(bankColumns.some((column) => column.name === "removed_at"), true);
+    const bank = migrated.prepare("SELECT name, active, removed_at FROM banks").get() as {
+      name: string;
+      active: number;
+      removed_at: string | null;
+    };
+    assert.equal(bank.name, "ING");
+    assert.equal(bank.active, 1);
+    assert.equal(bank.removed_at, null);
     const row = migrated.prepare("SELECT notes, batch_id FROM transactions").get() as {
       notes: string;
       batch_id: string | null;
@@ -258,6 +269,50 @@ test("batch_id migration is idempotent and keeps old rows", () => {
     ensureMigrated();
     const count = migrated.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number };
     assert.equal(count.n, 1);
+  });
+});
+
+test("old banks without active or removed_at stay intact and active", () => {
+  withTempDb(() => {
+    const database = new Database(resolveDbPath());
+    database.exec(`
+      CREATE TABLE banks (name TEXT PRIMARY KEY, initials TEXT NOT NULL);
+      CREATE TABLE transactions (
+        id INTEGER PRIMARY KEY,
+        date TEXT NOT NULL,
+        category TEXT NOT NULL,
+        amount REAL NOT NULL,
+        bank TEXT NOT NULL,
+        notes TEXT
+      );
+      INSERT INTO banks (name, initials) VALUES ('ING', 'IN'), ('Sparkasse', 'SP'), ('N26', 'N26');
+      INSERT INTO transactions (date, category, amount, bank, notes) VALUES
+        ('2026-01-02', 'food', -4, 'ING', 'bread'),
+        ('2026-02-03', 'rent', -900, 'Sparkasse', 'flat');
+    `);
+    database.close();
+    const migrated = ensureMigrated();
+    const columns = migrated.prepare("PRAGMA table_info(banks)").all() as { name: string }[];
+    assert.equal(columns.some((column) => column.name === "active"), true);
+    assert.equal(columns.some((column) => column.name === "removed_at"), true);
+    const banks = migrated
+      .prepare("SELECT name, initials, active, removed_at FROM banks ORDER BY name")
+      .all() as { name: string; initials: string; active: number; removed_at: string | null }[];
+    assert.deepEqual(banks, [
+      { name: "ING", initials: "IN", active: 1, removed_at: null },
+      { name: "N26", initials: "N26", active: 1, removed_at: null },
+      { name: "Sparkasse", initials: "SP", active: 1, removed_at: null },
+    ]);
+    const rows = migrated
+      .prepare("SELECT bank, notes, amount FROM transactions ORDER BY date")
+      .all();
+    assert.deepEqual(rows, [
+      { bank: "ING", notes: "bread", amount: -4 },
+      { bank: "Sparkasse", notes: "flat", amount: -900 },
+    ]);
+    ensureMigrated();
+    const again = migrated.prepare("SELECT COUNT(*) AS n FROM banks WHERE active = 1").get() as { n: number };
+    assert.equal(again.n, 3);
   });
 });
 
@@ -503,6 +558,17 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.equal(text.includes("€"), false);
   const pdf = withPdfInstructions(text);
   assert.match(pdf, /Answer only by calling propose_transactions/);
+  assert.equal(formatRowDate("2026-09-12"), "12th September 2026");
+  assert.equal(formatRowDate("2026-09-01"), "1st September 2026");
+  assert.equal(formatRowDate("2026-09-02"), "2nd September 2026");
+  assert.equal(formatRowDate("2026-09-03"), "3rd September 2026");
+  assert.equal(formatRowDate("2026-09-11"), "11th September 2026");
+  assert.equal(formatRowDate("2026-09-13"), "13th September 2026");
+  assert.equal(formatRowDate("2026-03-21"), "21st March 2026");
+  assert.equal(formatRowDate("2026-03-22"), "22nd March 2026");
+  assert.equal(formatRowDate("2026-03-23"), "23rd March 2026");
+  assert.equal(formatRowDate("2026-02-31"), "2026-02-31");
+  assert.equal(formatRowDate("yesterday"), "yesterday");
   assert.equal(formatMoney(-12.5, "EUR").includes("12.50"), true);
   assert.notEqual(formatMoney(-12.5, "EUR"), formatMoney(-12.5, "USD"));
 });
@@ -638,6 +704,7 @@ test("chat confirm and undo routes, and a stubbed PDF flags a duplicate", async 
     const saved = await postConfirm(
       new Request("http://local/api/transactions/confirm", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ rows: chatBody.proposal.rows }),
       }),
     );
@@ -664,6 +731,7 @@ test("chat confirm and undo routes, and a stubbed PDF flags a duplicate", async 
     const undone = await postUndo(
       new Request("http://local/api/transactions/undo", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ ids: savedBody.ids, batchId: savedBody.batchId }),
       }),
     );
