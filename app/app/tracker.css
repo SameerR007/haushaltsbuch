@@ -237,6 +237,16 @@
   background: #fff8ee;
 }
 
+.tracker-table tr.is-skipped td {
+  color: #8a8378;
+  background: #f4f1eb;
+}
+
+.tracker-table tr.is-skipped .tracker-cat {
+  background: #ece7e0;
+  color: #6f675f;
+}
+
 .tracker-desc {
   display: inline-flex;
   align-items: center;
@@ -244,13 +254,36 @@
   flex-wrap: wrap;
 }
 
-.tracker-flag-pill {
+.tracker-flag-pill,
+.tracker-skip-pill {
   font-size: 11px;
   font-weight: 700;
-  color: #8a5a12;
-  background: #fff1d6;
   border-radius: 999px;
   padding: 2px 7px;
+}
+
+.tracker-flag-pill {
+  color: #8a5a12;
+  background: #fff1d6;
+}
+
+.tracker-skip-pill {
+  color: #5f5952;
+  background: #e7e2da;
+}
+
+.tracker-include {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.tracker-include input {
+  accent-color: var(--teal);
 }
 
 .tracker-flag-row td {
@@ -259,6 +292,11 @@
   color: #8a5a12;
   font-size: 12.5px;
   background: transparent;
+}
+
+.tracker-flag-row.is-skipped td {
+  color: #6f675f;
+  background: #f4f1eb;
 }
 
 .tracker-cat {

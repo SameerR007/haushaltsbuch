@@ -17,6 +17,15 @@ export function rowBlocksSave(row: ReviewRow): boolean {
   return row.flags.some((flag) => BLOCKING.has(flag));
 }
 
+/** Duplicates are left out of Confirm unless the user turns on Include anyway. */
+export function rowWillSave(row: Pick<ReviewRow, "flags" | "includeDuplicate">): boolean {
+  return !(row.flags.includes("duplicate") && row.includeDuplicate !== true);
+}
+
+export function rowsToSave(rows: readonly ReviewRow[]): ReviewRow[] {
+  return rows.filter(rowWillSave);
+}
+
 export function flagLabel(flag: RowFlag): string {
   switch (flag) {
     case "invalid_date":
@@ -211,7 +220,8 @@ export function revalidateRow(row: ReviewRow, context: ReviewContext): ReviewRow
         : [...reviewed.flags, "duplicate"],
       duplicateOf: row.duplicateOf,
       duplicateKey: row.duplicateKey,
+      includeDuplicate: row.includeDuplicate === true,
     };
   }
-  return { ...reviewed, duplicateOf: null, duplicateKey: null };
+  return { ...reviewed, duplicateOf: null, duplicateKey: null, includeDuplicate: false };
 }

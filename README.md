@@ -102,11 +102,11 @@ On an empty conversation the page shows **What did you spend?**, a short subtitl
 
 The prompts are built from `haushaltsbuch.connection` (version 2): the first saved bank name, and the saved currency’s minor units for the sample amount `12.50`. The day is the 12th of the previous full month, and the month name comes from that date. If no bank is saved, the bank is left out of the first prompt.
 
-Every new expense, including a whole statement, is a review card first: date, description, category, bank, amount, and total, then **Confirm — save N**, **Edit**, and **Cancel**. Confirm is the only write. Undo deletes exactly the rows from that confirm.
+Every new expense, including a whole statement, is a review card first: date, description, category, bank, amount, and total, then **Confirm — save N**, **Edit**, and **Cancel**. Confirm is the only write. A row flagged as a duplicate is skipped unless **Include anyway** is on, and the button count leaves those rows out. Undo deletes exactly the rows from that confirm.
 
 The paperclip attaches a PDF. The chip shows the file name, page count, and size. The first time a statement is attached (and again after setup is saved), the page says: “The whole PDF (text and page images) is sent to OpenAI to read it. Nothing else leaves your computer.” Sending a statement shows **Reading your statement…** while it is in flight.
 
-The OpenAI key is read from this browser and sent on the chat or PDF request. The server does not store it. Chat and PDF import use `gpt-5.6-sol` with high reasoning (`CHAT_MODEL` in `lib/chat/openai.ts`). Questions go through a read-only `run_sql` tool. New rows come back from `propose_transactions` and are not saved by that tool.
+The OpenAI key is read from this browser and sent on the chat or PDF request. The server does not store it. Chat and PDF import use `gpt-5.6-luna` with high reasoning (`CHAT_MODEL` in `lib/chat/openai.ts`; override with `HAUSHALTSBUCH_CHAT_MODEL`). Requests set `store` to false. Questions go through a read-only `run_sql` tool, and the tool result is sent back to the model. New rows come back from `propose_transactions` and are not saved by that tool.
 
 For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. The stub is described in [docs/chat-api.md](docs/chat-api.md). Confirm and undo are never stubbed.
 

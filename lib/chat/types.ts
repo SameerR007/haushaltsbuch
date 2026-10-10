@@ -31,6 +31,8 @@ export type ReviewRow = {
   flags: RowFlag[];
   duplicateOf: number | null;
   duplicateKey: string | null;
+  /** When true, a duplicate row is saved. Omitted or false means Confirm skips it. */
+  includeDuplicate?: boolean;
 };
 
 export type ReviewContext = {

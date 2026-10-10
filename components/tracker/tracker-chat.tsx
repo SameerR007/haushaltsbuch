@@ -13,6 +13,7 @@ import {
 import { PDF_DISCLOSURE_KEY, readConnection, type SavedConnection } from "@/lib/connection";
 import { attachmentLabel, countPdfPages, isPdfBytes, MAX_PDF_BYTES, PDF_NOT_PDF, PDF_TOO_LARGE } from "@/lib/chat/pdf-meta";
 import { suggestedPrompts } from "@/lib/chat/prompts";
+import { rowsToSave } from "@/lib/chat/validate-rows";
 import type { ChatTurn, Proposal, ReviewRow } from "@/lib/chat/types";
 
 type Phase = "review" | "edit" | "saved" | "undone" | "cancelled";
@@ -234,7 +235,7 @@ export function TrackerChat() {
     actionLock.current.add(id);
     patchProposal(id, { busy: true, error: "" });
     const data = await postJson("/api/transactions/confirm", {
-      rows: item.proposal.rows.map((row) => ({
+      rows: rowsToSave(item.proposal.rows).map((row) => ({
         date: row.date,
         description: row.description,
         category: row.category,

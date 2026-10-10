@@ -17,6 +17,14 @@ class SaveError extends Error {
   }
 }
 
+function isSkipped(raw: unknown): boolean {
+  return (
+    typeof raw === "object" &&
+    raw !== null &&
+    (raw as { skipped?: unknown }).skipped === true
+  );
+}
+
 function canonical(input: string, names: Set<string>): string | null {
   for (const name of names) {
     if (name.toLowerCase() === input.toLowerCase()) return name;
@@ -85,10 +93,13 @@ export function confirmTransactions(rawRows: unknown): ConfirmResult {
       );
       const saved: number[] = [];
       for (let index = 0; index < rawRows.length; index += 1) {
-        const row = parseForSave(rawRows[index], index, categories, banks);
+        const raw = rawRows[index];
+        if (isSkipped(raw)) continue;
+        const row = parseForSave(raw, index, categories, banks);
         const info = insert.run(row.date, row.category, row.amount, row.bank, row.description, batchId);
         saved.push(Number(info.lastInsertRowid));
       }
+      if (saved.length === 0) throw new SaveError("Nothing to save.");
       return saved;
     })();
     return { ok: true, ids, batchId };

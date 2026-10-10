@@ -3,7 +3,7 @@
 import { confirmLabel, reviewIntro, REVIEW_FOOTER, totalLabel } from "@/lib/chat/copy";
 import { formatMoney, formatRowDate } from "@/lib/chat/money";
 import type { Proposal, ReviewRow } from "@/lib/chat/types";
-import { flagLabel, revalidateRow, rowBlocksSave } from "@/lib/chat/validate-rows";
+import { flagLabel, revalidateRow, rowBlocksSave, rowsToSave } from "@/lib/chat/validate-rows";
 
 type Phase = "review" | "edit" | "saved" | "undone" | "cancelled";
 
@@ -27,8 +27,9 @@ export function ReviewCard({
   onUndo: () => void;
 }) {
   const rows = proposal.rows;
-  const blocked = rows.some(rowBlocksSave);
-  const total = rows.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+  const saving = rowsToSave(rows);
+  const blocked = saving.some(rowBlocksSave);
+  const total = saving.reduce((sum, row) => sum + (row.amount ?? 0), 0);
   const showTotal = rows.some((row) => row.amount !== null);
 
   function update(index: number, patch: Partial<ReviewRow>) {
@@ -61,8 +62,8 @@ export function ReviewCard({
       {phase === "saved" || phase === "undone" ? (
         <p className="tracker-card-status">
           {phase === "saved"
-            ? `Saved ${rows.length} ${rows.length === 1 ? "transaction" : "transactions"}.`
-            : `Removed ${rows.length === 1 ? "that transaction" : `those ${rows.length} transactions`}.`}
+            ? `Saved ${saving.length} ${saving.length === 1 ? "transaction" : "transactions"}.`
+            : `Removed ${saving.length === 1 ? "that transaction" : `those ${saving.length} transactions`}.`}
         </p>
       ) : (
         <p>{reviewIntro(rows.length, proposal.sourceName)}</p>
@@ -112,10 +113,10 @@ export function ReviewCard({
             <button
               type="button"
               className="tracker-confirm"
-              disabled={busy || rows.length === 0 || blocked}
+              disabled={busy || saving.length === 0 || blocked}
               onClick={onConfirm}
             >
-              {confirmLabel(rows.length)}
+              {confirmLabel(saving.length)}
             </button>
             <button type="button" className="tracker-quiet" disabled={busy} onClick={() => onPhase("edit")}>
               Edit
@@ -162,7 +163,8 @@ function Row({
   onChange: (patch: Partial<ReviewRow>) => void;
   onRemove: () => void;
 }) {
-  const flagged = row.flags.length > 0;
+  const skipped = row.flags.includes("duplicate") && row.includeDuplicate !== true;
+  const flagged = row.flags.length > 0 && !skipped;
   const bankLabel = row.bank
     ? row.bankInitials
       ? `${row.bank} (${row.bankInitials})`
@@ -170,7 +172,7 @@ function Row({
     : "—";
   return (
     <>
-      <tr className={flagged ? "is-flagged" : undefined}>
+      <tr className={skipped ? "is-skipped" : flagged ? "is-flagged" : undefined}>
         <td>
           {editing ? (
             <input
@@ -194,7 +196,11 @@ function Row({
           ) : (
             <span className="tracker-desc">
               {row.description || "—"}
-              {row.flags.includes("duplicate") && <span className="tracker-flag-pill">Duplicate</span>}
+              {row.flags.includes("duplicate") && (
+                <span className={skipped ? "tracker-skip-pill" : "tracker-flag-pill"}>
+                  {skipped ? "Skipped — already saved" : "Duplicate"}
+                </span>
+              )}
             </span>
           )}
         </td>
@@ -249,12 +255,24 @@ function Row({
           )}
         </td>
       </tr>
-      {(flagged || editing) && (
-        <tr className="tracker-flag-row">
+      {(flagged || skipped || editing) && (
+        <tr className={skipped ? "tracker-flag-row is-skipped" : "tracker-flag-row"}>
           <td colSpan={5}>
-            {row.flags.map((flag) => (
-              <span key={flag}>{flagLabel(flag)} </span>
-            ))}
+            {row.flags
+              .filter((flag) => !(skipped && flag === "duplicate"))
+              .map((flag) => (
+                <span key={flag}>{flagLabel(flag)} </span>
+              ))}
+            {row.flags.includes("duplicate") && (
+              <label className="tracker-include">
+                <input
+                  type="checkbox"
+                  checked={row.includeDuplicate === true}
+                  onChange={(event) => onChange({ includeDuplicate: event.target.checked })}
+                />
+                Include anyway
+              </label>
+            )}
             {editing && (
               <button type="button" className="tracker-remove" onClick={onRemove}>
                 Remove row

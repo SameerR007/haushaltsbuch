@@ -1,8 +1,14 @@
 import type { ChatTurn } from "./types";
 import { previousMonthIso } from "./prompts";
 
-/** Latest GPT-5.x flagship. Every money-chat and statement request uses this id. */
-export const CHAT_MODEL = "gpt-5.6-sol";
+/** GPT-5.6 Luna. HAUSHALTSBUCH_CHAT_MODEL overrides this for the process. */
+export const CHAT_MODEL = "gpt-5.6-luna";
+
+export function resolveChatModel(): string {
+  const override = process.env.HAUSHALTSBUCH_CHAT_MODEL?.trim();
+  if (override && override.length <= 80 && !/\s/.test(override)) return override;
+  return CHAT_MODEL;
+}
 
 export const CHAT_REASONING_EFFORT = "high" as const;
 
@@ -75,7 +81,7 @@ type ModelResponse = {
   output?: unknown[];
 };
 
-export type ToolHandler = (name: string, args: unknown) => unknown;
+export type ToolHandler = (name: string, args: unknown) => unknown | Promise<unknown>;
 
 function toolsFor(mode: "chat" | "pdf") {
   return mode === "pdf" ? [PROPOSE_TOOL] : [SQL_TOOL, PROPOSE_TOOL];
@@ -114,18 +120,16 @@ export function buildResponsesPayload(input: {
   input: unknown;
   mode: "chat" | "pdf";
   toolChoice: ToolChoice;
-  previousResponseId?: string;
 }): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
-    model: CHAT_MODEL,
+  return {
+    model: resolveChatModel(),
+    store: false,
     reasoning: { effort: CHAT_REASONING_EFFORT },
     instructions: input.instructions,
     input: input.input,
     tools: toolsFor(input.mode),
     tool_choice: input.toolChoice,
   };
-  if (input.previousResponseId) payload.previous_response_id = input.previousResponseId;
-  return payload;
 }
 
 function inputHasFile(input: unknown): boolean {
@@ -326,8 +330,7 @@ export async function runChatTurn(options: {
   executeTool: ToolHandler;
 }): Promise<{ reply: string; proposalArgs: unknown | null }> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  let input: unknown = toModelInput(options.messages, options.pdf);
-  let previousId: string | undefined;
+  let input: unknown[] = toModelInput(options.messages, options.pdf);
   let reply = "";
   let proposalArgs: unknown = null;
   const stub = process.env.HAUSHALTSBUCH_STUB_OPENAI === "1";
@@ -338,7 +341,6 @@ export async function runChatTurn(options: {
       input,
       mode: options.mode,
       toolChoice: round === 0 ? choiceFor(options.mode) : "auto",
-      previousResponseId: previousId,
     });
     let response: ModelResponse;
     if (stub) {
@@ -365,19 +367,21 @@ export async function runChatTurn(options: {
       if (call.name === "propose_transactions") proposalArgs = call.args;
       let result: unknown;
       try {
-        result = options.executeTool(call.name, call.args);
+        result = await options.executeTool(call.name, call.args);
       } catch {
         result = { ok: false, error: "The tool failed." };
       }
       outputs.push({
         type: "function_call_output",
         call_id: call.callId,
-        output: JSON.stringify(result).slice(0, 80_000),
+        output: JSON.stringify(result ?? { ok: false, error: "The tool returned nothing." }).slice(0, 80_000),
       });
     }
     if (options.mode === "pdf" && proposalArgs) break;
-    previousId = response.id;
-    input = outputs;
+    const echoed = (response.output ?? []).filter(
+      (item) => typeof item === "object" && item !== null,
+    );
+    input = [...input, ...echoed, ...outputs];
   }
 
   if (options.apiKey) reply = reply.split(options.apiKey).join("").trim();
