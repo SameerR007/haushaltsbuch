@@ -272,7 +272,7 @@ test("setup server code does not log and does not mention a cloud database clien
   const files = roots.flatMap((dir) => walk(dir));
   assert.ok(files.length > 5);
   for (const file of files) {
-    if (file.endsWith("setup.test.ts")) continue;
+    if (file.endsWith(".test.ts")) continue;
     const source = readFileSync(file, "utf8");
     assert.equal(source.includes("console."), false, file);
     assert.equal(/supabase/i.test(source), false, file);

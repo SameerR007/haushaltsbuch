@@ -11,6 +11,12 @@
  */
 export const CONNECTION_STORAGE_KEY = "haushaltsbuch.connection";
 
+/**
+ * Set after the user accepts the PDF disclosure.
+ * Cleared when setup is saved again, so the notice shows once per setup.
+ */
+export const PDF_DISCLOSURE_KEY = "haushaltsbuch.pdfDisclosureAck";
+
 /** True when `value` is a non-empty connection marker. */
 export function hasSavedConnection(value: string | null | undefined): boolean {
   return typeof value === "string" && value.length > 0;
@@ -69,9 +75,10 @@ export function parseConnection(raw: string | null | undefined): SavedConnection
 }
 
 export function readConnection(): SavedConnection | null {
-  if (typeof window === "undefined") return null;
+  const storage = globalThis.localStorage;
+  if (!storage) return null;
   try {
-    return parseConnection(window.localStorage.getItem(CONNECTION_STORAGE_KEY));
+    return parseConnection(storage.getItem(CONNECTION_STORAGE_KEY));
   } catch {
     return null;
   }
@@ -84,8 +91,9 @@ export function writeConnection(value: SavedConnection): void {
     currency: value.currency,
     banks: value.banks,
   };
-  window.localStorage.setItem(CONNECTION_STORAGE_KEY, JSON.stringify(stored));
+  globalThis.localStorage.setItem(CONNECTION_STORAGE_KEY, JSON.stringify(stored));
+  globalThis.localStorage.removeItem(PDF_DISCLOSURE_KEY);
   // The landing CSS reads this attribute. A client navigation back to /
   // does not re-run the head script, so set it for the current tab too.
-  document.documentElement.dataset.visit = "returning";
+  globalThis.document.documentElement.dataset.visit = "returning";
 }
