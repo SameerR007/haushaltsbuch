@@ -546,7 +546,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
               value={locked ? "" : bankName}
               disabled={busy}
               autoComplete="off"
-              placeholder="Bank name"
+              placeholder="Sparkasse"
               onChange={(event) => {
                 const value = event.target.value;
                 setBankName(value);
@@ -563,7 +563,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
               autoComplete="off"
               spellCheck={false}
               maxLength={4}
-              placeholder="Initials"
+              placeholder="SPK"
               aria-describedby={showHint ? `bank-hint-${message.id}` : undefined}
               onChange={(event) => {
                 setInitialsTouched(true);
