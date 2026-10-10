@@ -9,6 +9,7 @@ import { closeDb, initDatabase, publicDbName, readHealth, resolveDbPath, saveHou
 import { EXPECTED_CATEGORIES } from "./categories";
 import {
   currencyChoiceLabel,
+  currencySummaryLabel,
   looksLikeSecret,
   normalizeBank,
   parseCurrencyText,
@@ -241,9 +242,14 @@ test("OpenAI check does not echo the key", async () => {
 test("chat helpers", () => {
   assert.equal(suggestInitials("ing diba"), "ID");
   assert.equal(suggestInitials("N26"), "N26");
+  assert.equal(suggestInitials("Commerzbank"), "COM");
+  assert.equal(suggestInitials("a b c d"), "ABC");
   assert.equal(parseCurrencyText("keep euro"), "EUR");
   assert.equal(parseCurrencyText("CHF"), "CHF");
   assert.equal(currencyChoiceLabel("USD"), "USD ($)");
+  assert.equal(currencySummaryLabel("EUR"), "euro (€)");
+  assert.equal(currencySummaryLabel("GBP"), "GBP (£)");
+  assert.equal(currencySummaryLabel("CHF"), "CHF");
   assert.equal(looksLikeSecret("my key sk-abc"), true);
   assert.equal(looksLikeSecret("one bank"), false);
   assert.deepEqual(normalizeBank("  ING  ", "in"), { name: "ING", initials: "IN" });

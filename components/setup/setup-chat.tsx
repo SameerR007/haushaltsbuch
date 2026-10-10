@@ -10,7 +10,7 @@ import {
 } from "@/lib/connection";
 import {
   currencyChoiceLabel,
-  looksLikeSecret,
+  currencySummaryLabel,
   normalizeBank,
   parseCurrencyText,
   suggestInitials,
@@ -21,7 +21,6 @@ type Phase =
   | "saved"
   | "openai"
   | "currency"
-  | "banks"
   | "bank"
   | "bank-next"
   | "confirm"
@@ -31,7 +30,6 @@ type Phase =
 type Widget =
   | "openai"
   | "currency"
-  | "banks"
   | "bank"
   | "bank-next"
   | "confirm"
@@ -56,19 +54,17 @@ type ApiBody = {
   code?: unknown;
 };
 
-const EMPTY_CONNECTION_NOTE = "Use the fields in the chat for keys.";
+const ADD_BANK = "Add your bank — name and initials.";
+const ADD_ANOTHER_BANK = "Add another bank — name and initials.";
+const THATS_ALL = "That’s all";
+const INITIALS_HINT = "Initials are guessed from the name. You can edit them.";
 
 function stepLabel(phase: Phase): string {
   if (phase === "saved") return "Setup · saved";
   if (phase === "keys") return "Setup · keys";
   if (phase === "boot") return "Setup";
   if (phase === "openai") return "Setup · step 1 of 3";
-  if (
-    phase === "currency" ||
-    phase === "banks" ||
-    phase === "bank" ||
-    phase === "bank-next"
-  ) {
+  if (phase === "currency" || phase === "bank" || phase === "bank-next") {
     return "Setup · step 2 of 3";
   }
   return "Setup · step 3 of 3";
@@ -111,6 +107,14 @@ function freshThread(nid: () => number): Msg[] {
   ];
 }
 
+function collapseBankForms(messages: Msg[]): Msg[] {
+  return messages.map((message) =>
+    message.widget === "bank"
+      ? { id: message.id, from: message.from, text: message.text }
+      : message,
+  );
+}
+
 export function SetupChat() {
   const idRef = useRef(100);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -120,7 +124,6 @@ export function SetupChat() {
   const [openai, setOpenai] = useState("");
   const [currency, setCurrency] = useState("EUR");
   const [banks, setBanks] = useState<SavedBank[]>([]);
-  const [many, setMany] = useState(false);
   const [bankName, setBankName] = useState("");
   const [bankInitials, setBankInitials] = useState("");
   const [initialsTouched, setInitialsTouched] = useState(false);
@@ -128,7 +131,6 @@ export function SetupChat() {
   const [customCurrency, setCustomCurrency] = useState("");
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState("");
-  const [draft, setDraft] = useState("");
 
   function nid() {
     idRef.current += 1;
@@ -152,6 +154,12 @@ export function SetupChat() {
       return false;
     }
     return true;
+  }
+
+  function resetBankDraft() {
+    setBankName("");
+    setBankInitials("");
+    setInitialsTouched(false);
   }
 
   function showOpenAiStep() {
@@ -228,13 +236,9 @@ export function SetupChat() {
     setOpenai("");
     setCurrency("EUR");
     setBanks([]);
-    setBankName("");
-    setBankInitials("");
-    setInitialsTouched(false);
-    setMany(false);
+    resetBankDraft();
     setShowOther(false);
     setCustomCurrency("");
-    setDraft("");
     setFormError("");
     setPhase("openai");
     setMessages(freshThread(nid));
@@ -270,13 +274,14 @@ export function SetupChat() {
     setCurrency(code);
     setShowOther(false);
     setFormError("");
-    setPhase("banks");
+    resetBankDraft();
+    setPhase("bank");
     const userId = nid();
     const botId = nid();
     setMessages((prev) => [
       ...prev,
       { id: userId, from: "user", text: currencyChoiceLabel(code) },
-      { id: botId, from: "bot", widget: "banks" },
+      { id: botId, from: "bot", widget: "bank", text: ADD_BANK },
     ]);
   }
 
@@ -290,30 +295,6 @@ export function SetupChat() {
     chooseCurrency(code);
   }
 
-  function chooseBankCount(manyBanks: boolean) {
-    if (phase !== "banks") return;
-    setMany(manyBanks);
-    setBankName("");
-    setBankInitials("");
-    setInitialsTouched(false);
-    setFormError("");
-    setPhase("bank");
-    const userId = nid();
-    const botId = nid();
-    setMessages((prev) => [
-      ...prev,
-      { id: userId, from: "user", text: manyBanks ? "More than one" : "One bank" },
-      { id: botId, from: "bot", widget: "bank" },
-    ]);
-  }
-
-  function goConfirm(list: SavedBank[]) {
-    setBanks(list);
-    setPhase("confirm");
-    const id = nid();
-    setMessages((prev) => [...prev, { id, from: "bot", widget: "confirm" }]);
-  }
-
   function onSaveBank(event: FormEvent) {
     event.preventDefault();
     if (phase !== "bank") return;
@@ -325,28 +306,32 @@ export function SetupChat() {
     setFormError("");
     const nextBanks = [...banks.filter((item) => item.name !== bank.name), bank];
     setBanks(nextBanks);
-    setBankName("");
-    setBankInitials("");
-    setInitialsTouched(false);
-    if (many) {
-      setPhase("bank-next");
-      const userId = nid();
-      const botId = nid();
-      setMessages((prev) => [
-        ...prev,
-        { id: userId, from: "user", text: `${bank.name} (${bank.initials})` },
-        { id: botId, from: "bot", widget: "bank-next" },
-      ]);
-      return;
-    }
-    goConfirm(nextBanks);
+    resetBankDraft();
+    setPhase("bank-next");
+    const userId = nid();
+    const botId = nid();
+    const savedLabel = `${bank.name} (${bank.initials})`;
+    setMessages((prev) => [
+      ...collapseBankForms(prev),
+      { id: userId, from: "user", text: savedLabel },
+      {
+        id: botId,
+        from: "bot",
+        widget: "bank-next",
+        text: `Saved ${savedLabel}. Add another bank?`,
+      },
+    ]);
   }
 
   function addAnother() {
     setFormError("");
+    resetBankDraft();
     setPhase("bank");
     const id = nid();
-    setMessages((prev) => [...prev, { id, from: "bot", widget: "bank" }]);
+    setMessages((prev) => [
+      ...prev.filter((message) => message.widget !== "bank-next"),
+      { id, from: "bot", widget: "bank", text: ADD_ANOTHER_BANK },
+    ]);
   }
 
   function finishBanks() {
@@ -355,11 +340,19 @@ export function SetupChat() {
       return;
     }
     setFormError("");
-    goConfirm(banks);
+    setPhase("confirm");
+    setMessages([
+      { id: nid(), from: "user", text: THATS_ALL },
+      { id: nid(), from: "bot", widget: "confirm" },
+    ]);
   }
 
   async function onConfirm() {
     if (pending || phase !== "confirm") return;
+    if (banks.length === 0) {
+      setFormError("Add at least one bank.");
+      return;
+    }
     setFormError("");
     setPending(true);
     const savedBanks = banks;
@@ -420,44 +413,7 @@ export function SetupChat() {
     }
   }
 
-  function onSend(event: FormEvent) {
-    event.preventDefault();
-    const text = draft.trim();
-    if (!text || pending) return;
-    setDraft("");
-    if (looksLikeSecret(text)) {
-      setFormError(EMPTY_CONNECTION_NOTE);
-      return;
-    }
-    if (phase === "currency") {
-      const code = parseCurrencyText(text);
-      if (!code) {
-        setFormError("Choose euro, USD, GBP, or a 3-letter code.");
-        return;
-      }
-      chooseCurrency(code);
-      return;
-    }
-    if (phase === "banks") {
-      if (/^one\b/i.test(text)) {
-        chooseBankCount(false);
-        return;
-      }
-      if (/\b(more|several|many)\b/i.test(text)) {
-        chooseBankCount(true);
-        return;
-      }
-    }
-    if (phase === "bank") {
-      setBankName(text);
-      if (!initialsTouched) setBankInitials(suggestInitials(text));
-      return;
-    }
-    setFormError("Use the choices in the chat.");
-  }
-
   const activeWidgetId = [...messages].reverse().find((message) => message.widget)?.id;
-  const showComposer = phase !== "boot";
 
   function renderRich(rich: Rich) {
     if (rich === "welcome") {
@@ -469,11 +425,7 @@ export function SetupChat() {
       );
     }
     if (rich === "next") {
-      return (
-        <>
-          Next: pick currency (default €) → banks → confirm. No cloud database to connect.
-        </>
-      );
+      return <>Next: pick currency (default €) → banks → confirm.</>;
     }
     if (rich === "tables") {
       return (
@@ -497,8 +449,7 @@ export function SetupChat() {
       return (
         <form onSubmit={(event) => void onOpenAi(event)} data-testid="openai-form">
           <p>
-            Paste your <strong>OpenAI API key</strong>. We ask once and keep it in this
-            browser.
+            Paste your <strong>OpenAI API key</strong>.
           </p>
           <div className="setup-field">
             <label htmlFor="openai-key">OpenAI API key</label>
@@ -577,41 +528,11 @@ export function SetupChat() {
         </div>
       );
     }
-    if (message.widget === "banks") {
-      return (
-        <div>
-          <p>Do you use one bank or more than one?</p>
-          <div className="setup-chips">
-            <button
-              type="button"
-              className="setup-chip primary"
-              disabled={busy}
-              onClick={() => chooseBankCount(false)}
-            >
-              One bank
-            </button>
-            <button
-              type="button"
-              className="setup-chip"
-              disabled={busy}
-              onClick={() => chooseBankCount(true)}
-            >
-              More than one
-            </button>
-          </div>
-        </div>
-      );
-    }
     if (message.widget === "bank") {
-      const lead =
-        many && banks.length > 0
-          ? "Add another bank — name and initials."
-          : many
-            ? "Add the first bank — name and initials."
-            : "What are the name and initials for that bank?";
+      const showHint = !locked && bankName.trim().length > 0;
       return (
-        <form onSubmit={onSaveBank}>
-          <p>{lead}</p>
+        <form onSubmit={onSaveBank} data-testid="bank-form">
+          <p>{message.text ?? ADD_BANK}</p>
           <div className="setup-field">
             <label htmlFor={`bank-name-${message.id}`}>Bank name</label>
             <input
@@ -619,6 +540,7 @@ export function SetupChat() {
               value={locked ? "" : bankName}
               disabled={busy}
               autoComplete="off"
+              placeholder="e.g. ING"
               onChange={(event) => {
                 const value = event.target.value;
                 setBankName(value);
@@ -635,12 +557,21 @@ export function SetupChat() {
               autoComplete="off"
               spellCheck={false}
               maxLength={4}
+              placeholder="e.g. ING"
+              aria-describedby={showHint ? `bank-hint-${message.id}` : undefined}
               onChange={(event) => {
                 setInitialsTouched(true);
-                setBankInitials(event.target.value.toUpperCase());
+                setBankInitials(
+                  event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4),
+                );
               }}
             />
           </div>
+          {showHint ? (
+            <p className="setup-hint" id={`bank-hint-${message.id}`}>
+              {INITIALS_HINT}
+            </p>
+          ) : null}
           <div className="setup-chips">
             <button className="setup-chip primary" type="submit" disabled={busy}>
               Save bank
@@ -651,8 +582,8 @@ export function SetupChat() {
     }
     if (message.widget === "bank-next") {
       return (
-        <div>
-          <p>Add another bank?</p>
+        <div data-testid="bank-next">
+          <p>{message.text}</p>
           <div className="setup-chips">
             <button
               type="button"
@@ -660,10 +591,10 @@ export function SetupChat() {
               disabled={busy}
               onClick={addAnother}
             >
-              Add another
+              Add another bank
             </button>
             <button type="button" className="setup-chip" disabled={busy} onClick={finishBanks}>
-              That’s all
+              {THATS_ALL}
             </button>
           </div>
         </div>
@@ -675,7 +606,7 @@ export function SetupChat() {
           <p>Here’s what we’ll keep.</p>
           <ul className="setup-summary">
             <li>Database · on this computer</li>
-            <li>Currency · {currencyChoiceLabel(currency)}</li>
+            <li>Currency · {currencySummaryLabel(currency)}</li>
             <li>Banks · {bankList(banks)}</li>
             <li>OpenAI key · this browser only</li>
           </ul>
@@ -757,7 +688,7 @@ export function SetupChat() {
           <p>This browser is already set up. Money stays on this computer.</p>
           <ul className="setup-summary">
             <li>Database · on this computer</li>
-            <li>Currency · {currencyChoiceLabel(saved.currency)}</li>
+            <li>Currency · {currencySummaryLabel(saved.currency)}</li>
             <li>Banks · {bankList(saved.banks)}</li>
             <li>OpenAI key · saved in this browser</li>
           </ul>
@@ -830,26 +761,12 @@ export function SetupChat() {
               </div>
             ),
           )}
+          {formError ? (
+            <p className="setup-error" role="alert">
+              {formError}
+            </p>
+          ) : null}
         </div>
-        {showComposer ? (
-          <>
-            {formError ? (
-              <p className="setup-error" role="alert">
-                {formError}
-              </p>
-            ) : null}
-            <form className="setup-composer" onSubmit={onSend}>
-              <input
-                type="text"
-                value={draft}
-                placeholder="Or type a message…"
-                aria-label="Message"
-                onChange={(event) => setDraft(event.target.value)}
-              />
-              <button type="submit">Send</button>
-            </form>
-          </>
-        ) : null}
       </main>
     </div>
   );

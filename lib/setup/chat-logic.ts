@@ -33,6 +33,14 @@ export function currencyChoiceLabel(code: string): string {
   return code;
 }
 
+/** Summary line on confirm and the saved card. Euro matches the setup mocks. */
+export function currencySummaryLabel(code: string): string {
+  if (code === "EUR") return "euro (€)";
+  if (code === "USD") return "USD ($)";
+  if (code === "GBP") return "GBP (£)";
+  return code;
+}
+
 export function normalizeBank(name: string, initials: string): {
   name: string;
   initials: string;
