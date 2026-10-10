@@ -4,7 +4,7 @@ The setup chat calls these routes. Money stays in one SQLite file on this machin
 
 The server does not store the OpenAI key and never logs it. Responses never include a key or an absolute database path.
 
-Money chat is not part of this API.
+Money chat, statement import, and saving transactions are documented in [chat-api.md](chat-api.md).
 
 ## Shared error
 
