@@ -124,6 +124,7 @@ export function buildResponsesPayload(input: {
   return {
     model: resolveChatModel(),
     store: false,
+    include: ["reasoning.encrypted_content"],
     reasoning: { effort: CHAT_REASONING_EFFORT },
     instructions: input.instructions,
     input: input.input,

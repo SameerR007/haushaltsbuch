@@ -564,11 +564,13 @@ test("OpenAI request uses the model constant, high reasoning, and detail auto", 
     const body = JSON.parse(calls[0]?.body ?? "{}") as {
       model: string;
       store: boolean;
+      include: string[];
       reasoning: { effort: string };
       previous_response_id?: string;
     };
     assert.equal(body.model, CHAT_MODEL);
     assert.equal(body.store, false);
+    assert.deepEqual(body.include, ["reasoning.encrypted_content"]);
     assert.equal(body.previous_response_id, undefined);
     assert.equal(body.reasoning.effort, CHAT_REASONING_EFFORT);
     assert.equal(calls[0]?.body.includes(OPENAI_KEY), false);

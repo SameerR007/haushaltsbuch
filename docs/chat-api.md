@@ -21,7 +21,7 @@ Success is HTTP 200 and `"ok": true`.
 
 ## Model
 
-Chat and statement import both call the OpenAI Responses API. The model id is the single constant `CHAT_MODEL` in `lib/chat/openai.ts` (`gpt-5.6-luna`, GPT-5.6 Luna, which supports high reasoning). Set `HAUSHALTSBUCH_CHAT_MODEL` to use a different id. Every request sets `reasoning.effort` to `high` and `store` to `false`, so OpenAI is asked not to store the household data.
+Chat and statement import both call the OpenAI Responses API. The model id is the single constant `CHAT_MODEL` in `lib/chat/openai.ts` (`gpt-5.6-luna`, GPT-5.6 Luna, which supports high reasoning). Set `HAUSHALTSBUCH_CHAT_MODEL` to use a different id. Every request sets `reasoning.effort` to `high`, `store` to `false`, and `include` to `["reasoning.encrypted_content"]`, so OpenAI is asked not to store the household data and echoed reasoning items still carry encrypted content.
 
 The server runs a tool loop and waits for each tool result before the next request. Each round sends the full input again: the conversation, the model’s function calls, and the tool outputs. It does not send `previous_response_id`, because that only works for stored responses. Responses are plain JSON. There is no streaming.
 
