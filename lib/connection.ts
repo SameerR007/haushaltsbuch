@@ -3,7 +3,7 @@
  *
  * Read on the landing page (see `app/layout.tsx`) before first paint:
  * - missing or empty → first visit: “Get started” only
- * - any non-empty string → returning: “Open tracker” and “Set up again”
+ * - any non-empty string → returning: “Open tracker” and “Review the data”
  *
  * Setup writes version 2 JSON (see `SavedConnection`) when the chat is confirmed.
  * The OpenAI key stays in this browser. The database path is not stored.
@@ -30,6 +30,7 @@ export type SavedBank = {
 /**
  * Browser-only OpenAI key and household preferences.
  * Version 2 has no project URL, anon key, or database path.
+ * `banks` lists active banks only. It may be empty after every bank is removed.
  */
 export type SavedConnection = {
   v: 2;
@@ -53,7 +54,7 @@ export function parseConnection(raw: string | null | undefined): SavedConnection
   if (!row.openaiApiKey.startsWith("sk-") || row.openaiApiKey.length < 10) return null;
   if (row.openaiApiKey.length > 300) return null;
   if (!/^[A-Z]{3}$/.test(row.currency)) return null;
-  if (!Array.isArray(row.banks) || row.banks.length === 0) return null;
+  if (!Array.isArray(row.banks)) return null;
 
   const banks: SavedBank[] = [];
   for (const bank of row.banks) {
@@ -84,7 +85,10 @@ export function readConnection(): SavedConnection | null {
   }
 }
 
-export function writeConnection(value: SavedConnection): void {
+export function writeConnection(
+  value: SavedConnection,
+  options?: { clearPdfDisclosure?: boolean },
+): void {
   const stored: SavedConnection = {
     v: 2,
     openaiApiKey: value.openaiApiKey,
@@ -92,8 +96,42 @@ export function writeConnection(value: SavedConnection): void {
     banks: value.banks,
   };
   globalThis.localStorage.setItem(CONNECTION_STORAGE_KEY, JSON.stringify(stored));
-  globalThis.localStorage.removeItem(PDF_DISCLOSURE_KEY);
+  if (options?.clearPdfDisclosure !== false) {
+    globalThis.localStorage.removeItem(PDF_DISCLOSURE_KEY);
+  }
   // The landing CSS reads this attribute. A client navigation back to /
   // does not re-run the head script, so set it for the current tab too.
   globalThis.document.documentElement.dataset.visit = "returning";
+}
+
+/** Keep the browser key, and store only banks the server still treats as active. */
+export function rememberActiveBanks(input: {
+  currency: string | null;
+  banks: readonly { name: string; initials: string; active: boolean }[];
+}): boolean {
+  const existing = readConnection();
+  if (!existing || !input.currency || !/^[A-Z]{3}$/.test(input.currency)) return false;
+  const banks: SavedBank[] = input.banks
+    .filter((bank) => bank.active)
+    .map((bank) => ({ name: bank.name, initials: bank.initials }));
+  const same =
+    existing.currency === input.currency &&
+    existing.banks.length === banks.length &&
+    existing.banks.every(
+      (bank, index) => bank.name === banks[index]?.name && bank.initials === banks[index]?.initials,
+    );
+  if (same) return false;
+  writeConnection({ ...existing, currency: input.currency, banks }, { clearPdfDisclosure: false });
+  return true;
+}
+
+/** Drop the browser connection only after the server has confirmed a full reset. */
+export function clearConnection(): void {
+  const storage = globalThis.localStorage;
+  if (storage) {
+    storage.removeItem(CONNECTION_STORAGE_KEY);
+    storage.removeItem(PDF_DISCLOSURE_KEY);
+  }
+  const root = globalThis.document?.documentElement;
+  if (root?.dataset) delete root.dataset.visit;
 }

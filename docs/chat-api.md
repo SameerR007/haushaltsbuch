@@ -4,6 +4,10 @@ The tracker chat calls these routes. Money stays in the SQLite file on this mach
 
 Amounts are signed. An expense is negative. Income, including salary and other incoming money, is positive. A balance is `SUM(amount)`.
 
+Stored dates stay `YYYY-MM-DD`. The app displays them as an ordinal day, a full month name, and a year, for example `12th September 2026`. That formatting does not parse phrases such as “today”.
+
+Removed banks are left out of the saved bank list, the system prompt, and new-entry choices. A transaction that already names a removed bank still comes back from `run_sql`, the expenses list, and the Excel export.
+
 Nothing is written until `POST /api/transactions/confirm`.
 
 ## Shared error
@@ -154,7 +158,7 @@ Rows with `invalid_date`, `invalid_amount`, `unknown_category`, or `unknown_bank
 
 ## `POST /api/transactions/confirm`
 
-Parameterised insert of the whole batch in one database transaction. Category and bank are checked against the tables. A bad row saves nothing.
+Parameterised insert of the whole batch in one database transaction. Category is checked against `categories`, and bank against active banks. A bad row saves nothing.
 
 ```json
 {
@@ -178,6 +182,56 @@ Parameterised insert of the whole batch in one database transaction. Category an
 ```
 
 `batch_id` is a nullable column added by the idempotent migrate in `lib/db.ts`. New rows from this route set it. Older rows stay `NULL`.
+
+Category and bank are checked against active banks only. A removed bank is not a valid choice for a new row.
+
+## `GET /api/transactions`
+
+Returns every transaction, newest first (`ORDER BY date DESC, id DESC`). Removed banks are included in `banks` with `active: false`. There is no delete route.
+
+```json
+{
+  "ok": true,
+  "currency": "EUR",
+  "currencyLabel": "euro (€)",
+  "categories": ["food", "grocery"],
+  "banks": [{ "name": "ING", "initials": "IN", "active": true, "removedAt": null, "transactionCount": 1 }],
+  "transactions": [
+    {
+      "id": 1,
+      "date": "2026-09-12",
+      "category": "grocery",
+      "bank": "ING",
+      "amount": -12.5,
+      "notes": "Groceries"
+    }
+  ]
+}
+```
+
+## `PATCH /api/transactions/[id]`
+
+Updates one row. Send any of `date`, `category`, `bank`, `amount`, and `notes`. Omitted fields stay as they are. The `UPDATE` is parameterised and never writes `batch_id`.
+
+Validation matches confirm: a real `YYYY-MM-DD` date, a finite numeric amount (expenses negative, income positive), a category from `categories`, and a bank that is active or already stored on this row. A bad field saves nothing.
+
+```json
+{ "notes": "Groceries", "amount": -12.5 }
+```
+
+```json
+{
+  "ok": true,
+  "transaction": {
+    "id": 1,
+    "date": "2026-09-12",
+    "category": "grocery",
+    "bank": "ING",
+    "amount": -12.5,
+    "notes": "Groceries"
+  }
+}
+```
 
 ## `POST /api/transactions/undo`
 

@@ -11,7 +11,7 @@ import { POST as postPdf } from "../../app/api/import/pdf/route";
 import { POST as postConfirm } from "../../app/api/transactions/confirm/route";
 import { POST as postUndo } from "../../app/api/transactions/undo/route";
 import { confirmLabel, PDF_DISCLOSURE, reviewIntro } from "./copy";
-import { formatMoney } from "./money";
+import { formatMoney, formatRowDate } from "./money";
 import {
   CHAT_MODEL,
   CHAT_REASONING_EFFORT,
@@ -249,6 +249,17 @@ test("batch_id migration is idempotent and keeps old rows", () => {
     const migrated = ensureMigrated();
     const columns = migrated.prepare("PRAGMA table_info(transactions)").all() as { name: string }[];
     assert.equal(columns.some((column) => column.name === "batch_id"), true);
+    const bankColumns = migrated.prepare("PRAGMA table_info(banks)").all() as { name: string }[];
+    assert.equal(bankColumns.some((column) => column.name === "active"), true);
+    assert.equal(bankColumns.some((column) => column.name === "removed_at"), true);
+    const bank = migrated.prepare("SELECT name, active, removed_at FROM banks").get() as {
+      name: string;
+      active: number;
+      removed_at: string | null;
+    };
+    assert.equal(bank.name, "ING");
+    assert.equal(bank.active, 1);
+    assert.equal(bank.removed_at, null);
     const row = migrated.prepare("SELECT notes, batch_id FROM transactions").get() as {
       notes: string;
       batch_id: string | null;
@@ -503,6 +514,17 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.equal(text.includes("€"), false);
   const pdf = withPdfInstructions(text);
   assert.match(pdf, /Answer only by calling propose_transactions/);
+  assert.equal(formatRowDate("2026-09-12"), "12th September 2026");
+  assert.equal(formatRowDate("2026-09-01"), "1st September 2026");
+  assert.equal(formatRowDate("2026-09-02"), "2nd September 2026");
+  assert.equal(formatRowDate("2026-09-03"), "3rd September 2026");
+  assert.equal(formatRowDate("2026-09-11"), "11th September 2026");
+  assert.equal(formatRowDate("2026-09-13"), "13th September 2026");
+  assert.equal(formatRowDate("2026-03-21"), "21st March 2026");
+  assert.equal(formatRowDate("2026-03-22"), "22nd March 2026");
+  assert.equal(formatRowDate("2026-03-23"), "23rd March 2026");
+  assert.equal(formatRowDate("2026-02-31"), "2026-02-31");
+  assert.equal(formatRowDate("yesterday"), "yesterday");
   assert.equal(formatMoney(-12.5, "EUR").includes("12.50"), true);
   assert.notEqual(formatMoney(-12.5, "EUR"), formatMoney(-12.5, "USD"));
 });

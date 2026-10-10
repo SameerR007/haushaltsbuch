@@ -16,8 +16,8 @@ export default function Home() {
         <Link className="primary returning-only" href="/app">
           Open tracker
         </Link>
-        <Link className="linkish returning-only" href="/setup">
-          Set up again
+        <Link className="linkish returning-only" href="/data">
+          Review the data
         </Link>
       </div>
       <p className="foot first-only">

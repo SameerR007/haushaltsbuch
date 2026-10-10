@@ -22,7 +22,7 @@ export function loadHousehold(): Household {
     (a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99) || a.localeCompare(b),
   );
   const banks = database
-    .prepare("SELECT name, initials FROM banks ORDER BY rowid")
+    .prepare("SELECT name, initials FROM banks WHERE active = 1 ORDER BY rowid")
     .all() as BankRef[];
   const existing = database
     .prepare(

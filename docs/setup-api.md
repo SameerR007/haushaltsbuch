@@ -49,7 +49,14 @@ Checks an OpenAI key with OpenAI. The server does not store it. The browser writ
 
 ## `POST /api/setup/confirm`
 
-Migrates the database if needed, then upserts `preferences.currency` and each bank. Banks already stored and omitted from this body are left in place. No transaction rows are written.
+Migrates the database if needed, then saves `preferences.currency` and the banks in this body. A name that matches a stored bank, ignoring case, reactivates that row and updates its initials. It does not insert a second copy.
+
+Banks left out of this body are not kept around as choices:
+
+- A left-out bank with no transactions is deleted.
+- A left-out bank that still has transactions is marked removed (`active` 0, `removed_at` set). Its transactions stay linked to it.
+
+No transaction rows are written.
 
 ```json
 {
@@ -72,7 +79,7 @@ Reads the database. It does not create the file.
 { "ok": true, "dbReady": true, "currency": "EUR", "banksCount": 1 }
 ```
 
-Before init, `dbReady` is `false`, `currency` is `null`, and `banksCount` is `0`.
+Before init, `dbReady` is `false`, `currency` is `null`, and `banksCount` is `0`. `banksCount` counts active banks only. Removed banks stay in the file and are not included.
 
 ## `localStorage`
 
@@ -89,4 +96,103 @@ The browser writes this after confirm. The server does not.
 }
 ```
 
-There is no project URL, anon key, service role key, or database path. Any non-empty value of that key makes the landing page show **Open tracker**. Only version 2 objects are read back as a saved setup.
+There is no project URL, anon key, service role key, or database path. Any non-empty value of that key makes the landing page show **Open tracker** and **Review the data**. Only version 2 objects are read back as a saved setup. `banks` is the active list and may be empty after every bank is removed. Removed banks are not stored in this browser.
+
+## `GET /api/household`
+
+Reads the database. It does not create the file. The response has no absolute path and no OpenAI key.
+
+```json
+{
+  "ok": true,
+  "database": "on this computer",
+  "currency": "EUR",
+  "currencyLabel": "euro (€)",
+  "transactionCount": 14,
+  "banks": [
+    {
+      "name": "ING",
+      "initials": "IN",
+      "active": true,
+      "removedAt": null,
+      "transactionCount": 14
+    }
+  ]
+}
+```
+
+`banks` includes removed banks with `active: false` and a `removedAt` timestamp. `transactionCount` on the household and on each bank counts every linked transaction.
+
+## `POST /api/banks`
+
+Adds one bank. Other banks, including their initials, stay as they are. If the name matches an active bank, nothing is changed (`alreadyActive: true`). If it matches a removed bank, that row is activated again and its initials stay as they were (`reactivated: true`). A new name is inserted.
+
+```json
+{ "name": "N26", "initials": "N26" }
+```
+
+```json
+{
+  "ok": true,
+  "bank": {
+    "name": "N26",
+    "initials": "N26",
+    "active": true,
+    "removedAt": null,
+    "transactionCount": 0
+  },
+  "alreadyActive": false,
+  "reactivated": false
+}
+```
+
+## `POST /api/banks/remove`
+
+Soft-removes a bank. Transactions are not deleted or edited. The bank disappears from setup lists, new-entry dropdowns, and the chat’s saved bank list. Old transactions still name it.
+
+```json
+{ "name": "Sparkasse" }
+```
+
+```json
+{
+  "ok": true,
+  "bank": {
+    "name": "Sparkasse",
+    "initials": "SP",
+    "active": false,
+    "removedAt": "2026-10-10T12:00:00.000Z",
+    "transactionCount": 14
+  }
+}
+```
+
+An unknown name is `invalid`. Removing a bank that is already removed returns that bank and does not change `removedAt`.
+
+## `POST /api/banks/restore`
+
+Sets `active` back to 1 and clears `removed_at`. Transactions are not changed.
+
+```json
+{ "name": "Sparkasse" }
+```
+
+## `POST /api/setup/reset`
+
+Deletes every transaction, bank, category, and preference, then recreates the schema defaults (the category list and `EUR`). The body must send `confirm: true`. Any other value deletes nothing. The browser clears `haushaltsbuch.connection` only after this returns `"ok": true`.
+
+```json
+{ "confirm": true }
+```
+
+```json
+{ "ok": true }
+```
+
+## `GET /api/export/xlsx`
+
+Downloads `haushaltsbuch-expenses.xlsx`. Columns are Date (`YYYY-MM-DD`), Description, Category, Bank, and Amount. Amounts stay signed. Transactions whose bank was removed are included. The file is built with ExcelJS.
+
+## `GET /api/export/sqlite`
+
+Downloads `haushaltsbuch.sqlite`, a consistent snapshot from `better-sqlite3`’s `backup()` API. It is not a raw copy of the open database file. If the file does not exist yet, the response is `invalid`.

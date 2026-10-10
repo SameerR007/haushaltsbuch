@@ -10,7 +10,8 @@ import {
   PLACEHOLDER_FOLLOWUP,
   READING_STATEMENT,
 } from "@/lib/chat/copy";
-import { PDF_DISCLOSURE_KEY, readConnection, type SavedConnection } from "@/lib/connection";
+import { PDF_DISCLOSURE_KEY, readConnection, rememberActiveBanks, type SavedConnection } from "@/lib/connection";
+import { parseHousehold } from "@/lib/data/parse";
 import { attachmentLabel, countPdfPages, isPdfBytes, MAX_PDF_BYTES, PDF_NOT_PDF, PDF_TOO_LARGE } from "@/lib/chat/pdf-meta";
 import { suggestedPrompts } from "@/lib/chat/prompts";
 import { rowsToSave } from "@/lib/chat/validate-rows";
@@ -69,6 +70,7 @@ export function TrackerChat() {
   const [formError, setFormError] = useState("");
   const [connection, setConnection] = useState<SavedConnection | null>(null);
   const [ready, setReady] = useState(false);
+  const [banksReady, setBanksReady] = useState(false);
   const [ack, setAck] = useState(false);
 
   function nextId() {
@@ -77,13 +79,30 @@ export function TrackerChat() {
   }
 
   useEffect(() => {
-    setConnection(readConnection());
+    const existing = readConnection();
+    setConnection(existing);
     try {
       setAck(window.localStorage.getItem(PDF_DISCLOSURE_KEY) === "1");
     } catch {
       setAck(false);
     }
     setReady(true);
+    let ignore = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/household");
+        const household = parseHousehold(await response.json());
+        if (ignore || !household) return;
+        if (rememberActiveBanks(household)) setConnection(readConnection());
+      } catch {
+        // Prompts keep the banks already stored in this browser.
+      } finally {
+        if (!ignore) setBanksReady(true);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -93,12 +112,13 @@ export function TrackerChat() {
   }, [items, pending]);
 
   const started = items.some((item) => item.kind === "user");
-  const prompts = ready
-    ? suggestedPrompts({
-        bankName: connection?.banks[0]?.name ?? null,
-        currency: connection?.currency ?? null,
-      })
-    : [];
+  const prompts =
+    ready && banksReady
+      ? suggestedPrompts({
+          bankName: connection?.banks[0]?.name ?? null,
+          currency: connection?.currency ?? null,
+        })
+      : [];
   const showDisclosure = Boolean(attachment) && !ack;
 
   function patchProposal(id: number, patch: Partial<Extract<Item, { kind: "proposal" }>>) {

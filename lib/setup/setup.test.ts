@@ -163,14 +163,11 @@ test("confirm upserts currency and banks and a later init keeps them", () => {
     });
     assert.equal(updated.ok, true);
     const health = readHealth();
-    assert.deepEqual(health, { ok: true, dbReady: true, currency: "USD", banksCount: 2 });
+    assert.deepEqual(health, { ok: true, dbReady: true, currency: "USD", banksCount: 1 });
 
     const after = openReadonly();
-    const rows = after.prepare("SELECT name, initials FROM banks ORDER BY name").all();
-    assert.deepEqual(rows, [
-      { name: "ING", initials: "ING" },
-      { name: "N26", initials: "N26" },
-    ]);
+    const rows = after.prepare("SELECT name, initials, active FROM banks ORDER BY name").all();
+    assert.deepEqual(rows, [{ name: "N26", initials: "N26", active: 1 }]);
     after.close();
   });
 });
@@ -206,6 +203,16 @@ test("connection JSON is version 2 and drops cloud fields", () => {
   assert.ok(parsed);
   assert.equal(parsed.v, 2);
   assert.equal(parsed.banks[0]?.initials, "IN");
+  const emptyBanks = parseConnection(
+    JSON.stringify({
+      v: 2,
+      openaiApiKey: OPENAI_KEY,
+      currency: "EUR",
+      banks: [],
+    }),
+  );
+  assert.ok(emptyBanks);
+  assert.deepEqual(emptyBanks.banks, []);
   const stored = JSON.stringify(parsed);
   assert.equal(stored.includes("supabase"), false);
   assert.equal(stored.includes("anonKey"), false);

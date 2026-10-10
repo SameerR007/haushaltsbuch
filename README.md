@@ -13,7 +13,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-`npm test` checks the local schema, setup helpers, connection JSON, the SELECT-only SQL guard, confirm/undo, signed amounts, and review-row validation.
+`npm test` checks the local schema, setup helpers, connection JSON, the SELECT-only SQL guard, confirm/undo, signed amounts, review-row validation, bank soft-remove, reset, exports, and expense edits.
 
 ## Local database
 
@@ -39,7 +39,7 @@ The welcome screen picks first visit or returning from `localStorage`. There is 
 | --- | --- |
 | **Key** | `haushaltsbuch.connection` |
 | **Missing or `""`** | First visit. **Get started** links to `/setup`. |
-| **Any non-empty string** | Returning. **Open tracker** links to `/app`. **Set up again** links to `/setup`. |
+| **Any non-empty string** | Returning. **Open tracker** links to `/app`. **Review the data** links to `/data`. |
 
 The key is read in `app/layout.tsx` before first paint (`html[data-visit="returning"]`). The constant lives in `lib/connection.ts`.
 
@@ -63,7 +63,11 @@ localStorage.removeItem("haushaltsbuch.connection")
 2. Currency (default euro) and one or more banks with initials.
 3. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
-**Set up again** and **Change keys** stay available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. Saving setup again clears the one-time PDF disclosure, so the tracker shows it once more.
+**Review the data** opens **Your data**: database on this computer, currency, active banks, and whether an OpenAI key is saved in this browser. From there: **Open tracker**, **Change keys**, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**.
+
+**Change keys** stays available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. Saving setup again clears the one-time PDF disclosure, so the tracker shows it once more. Adding or removing a bank updates the active bank list in this browser and does not clear that disclosure.
+
+Removing a bank hides it from new entries. Its transactions stay. **Set up completely new** can download `haushaltsbuch-expenses.xlsx` and, if asked, a SQLite backup, then `POST /api/setup/reset` with `confirm: true`. The browser clears `haushaltsbuch.connection` only after that succeeds, and setup starts again at the OpenAI key.
 
 ## What stays in this browser
 
@@ -86,17 +90,19 @@ Request and response shapes are in [docs/setup-api.md](docs/setup-api.md).
 The migrate in `lib/db.ts` is idempotent. It creates:
 
 - `categories` — seeded with food, rent, household, grocery, bill, miscellaneous, salary
-- `banks` — name and initials, empty until confirm
-- `transactions` — date, category, amount, bank, notes, nullable `batch_id`, empty until a review is confirmed. Amounts are signed: expenses negative, income positive. A balance is `SUM(amount)`.
+- `banks` — name, initials, `active` (1 or 0), and `removed_at`. Empty until confirm. Older files gain `active` and `removed_at` on migrate; existing rows stay active. Transactions are not rewritten.
+- `transactions` — date, category, amount, bank, notes, nullable `batch_id`, empty until a review is confirmed. Amounts are signed: expenses negative, income positive. A balance is `SUM(amount)`. Dates are stored as `YYYY-MM-DD` and shown as `12th September 2026`.
 - `preferences` — one row (`id` 1), currency default `EUR`
 
-No sample transactions are inserted. Confirm updates the currency and upserts banks.
+No sample transactions are inserted. Confirm updates the currency and the submitted banks. A bank left out of that list is deleted when it has no transactions, or marked removed when it does. A later confirm that names a removed bank activates it again instead of inserting a duplicate.
 
 ## Tracker
 
 `/app` is the money chat.
 
-The header is **Haushaltsbuch**, **Chat**, **Insights ↗** (opens in a new window), and **Summary**. Insights and Summary are placeholders.
+The header is **Haushaltsbuch**, **Chat**, **Expenses**, **Insights ↗** (opens in a new window), and **Summary**. Insights and Summary are placeholders.
+
+**Expenses** lists every transaction, newest first, with the household currency in the subtitle. **Download as Excel** uses `GET /api/export/xlsx`. Each cell saves on its own through `PATCH /api/transactions/[id]`. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
 
 On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation.
 
@@ -113,16 +119,29 @@ For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. 
 ## Routes
 
 - `/` — landing
-- `/setup` — setup chat
+- `/data` — your data, for a returning browser
+- `/data/banks` — add or soft-remove banks
+- `/data/reset` — backup, then delete everything and start setup again
+- `/setup` — setup chat. `?mode=keys` opens Change keys
 - `/app` — money chat
+- `/app/expenses` — editable expenses
 - `/app/insights` — placeholder, opened in a separate window
 - `/app/summary` — placeholder
 - `POST /api/setup/init` — create or migrate the local database
 - `POST /api/setup/openai` — check an OpenAI key, do not store it
-- `POST /api/setup/confirm` — save currency and banks
-- `GET /api/setup/health` — whether the database is ready, plus currency and bank count
+- `POST /api/setup/confirm` — save currency and banks; drop or soft-remove banks that are not in the list
+- `POST /api/setup/reset` — delete household rows when `confirm` is true, then reseed defaults
+- `GET /api/setup/health` — whether the database is ready, plus currency and active bank count
+- `GET /api/household` — currency, active and removed banks, transaction counts
+- `POST /api/banks` — add one bank, or reactivate a removed bank with the same name
+- `POST /api/banks/remove` — soft-remove a bank; transactions stay
+- `POST /api/banks/restore` — make a removed bank active again
+- `GET /api/export/xlsx` — Excel file of every transaction
+- `GET /api/export/sqlite` — SQLite backup via `better-sqlite3` backup
 - `POST /api/chat` — money chat tool loop
 - `POST /api/import/pdf` — send a statement PDF to OpenAI and return a review
+- `GET /api/transactions` — expenses, newest first
+- `PATCH /api/transactions/[id]` — edit one expense; does not change `batch_id`
 - `POST /api/transactions/confirm` — save a reviewed batch
 - `POST /api/transactions/undo` — delete that batch
 
