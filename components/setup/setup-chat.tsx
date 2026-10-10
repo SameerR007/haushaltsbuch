@@ -513,7 +513,7 @@ export function SetupChat() {
                   value={customCurrency}
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="CHF"
+                  placeholder="Currency code"
                   disabled={pending}
                   onChange={(event) => setCustomCurrency(event.target.value)}
                 />
@@ -540,7 +540,7 @@ export function SetupChat() {
               value={locked ? "" : bankName}
               disabled={busy}
               autoComplete="off"
-              placeholder="e.g. ING"
+              placeholder="Bank name"
               onChange={(event) => {
                 const value = event.target.value;
                 setBankName(value);
@@ -557,7 +557,7 @@ export function SetupChat() {
               autoComplete="off"
               spellCheck={false}
               maxLength={4}
-              placeholder="e.g. ING"
+              placeholder="Initials"
               aria-describedby={showHint ? `bank-hint-${message.id}` : undefined}
               onChange={(event) => {
                 setInitialsTouched(true);
