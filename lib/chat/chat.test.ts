@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
-import { PDF_DISCLOSURE_KEY, writeConnection } from "../connection";
+import { PDF_DISCLOSURE_KEY, clearPdfDisclosureAck, writeConnection } from "../connection";
 import { closeDb, ensureMigrated, resolveDbPath, saveHousehold } from "../db";
 import { POST as postChat } from "../../app/api/chat/route";
 import { POST as postPdf } from "../../app/api/import/pdf/route";
@@ -852,6 +852,37 @@ test("chat and PDF import reject a cross-site call without requiring JSON", asyn
     }),
   );
   assert.equal(multipart.status, 400);
+});
+
+test("a leftover PDF acknowledgement is removed and not stored again", () => {
+  const store = new Map<string, string>();
+  const previousStorage = globalThis.localStorage;
+  Object.assign(globalThis, {
+    localStorage: {
+      setItem: (key: string, value: string) => store.set(key, value),
+      getItem: (key: string) => store.get(key) ?? null,
+      removeItem: (key: string) => store.delete(key),
+    },
+  });
+  try {
+    store.set(PDF_DISCLOSURE_KEY, "1");
+    clearPdfDisclosureAck();
+    assert.equal(store.has(PDF_DISCLOSURE_KEY), false);
+  } finally {
+    Object.assign(globalThis, { localStorage: previousStorage });
+  }
+
+  const chat = readFileSync("components/tracker/tracker-chat.tsx", "utf8");
+  assert.match(chat, /clearPdfDisclosureAck\(\)/);
+  assert.match(chat, /setAck\(false\);\s*setAttachment\(/);
+  assert.match(chat, /attachment\?\.file\) && !ack/);
+  assert.match(chat, /if \(attachment && !ack\) return/);
+  assert.match(chat, /function cancelDisclosure\(\)/);
+  assert.match(chat, /onDrop=\{onDropPdf\}/);
+  assert.match(chat, />\s*Continue\s*</);
+  assert.match(chat, />\s*Cancel\s*</);
+  assert.equal(chat.includes("localStorage.setItem"), false);
+  assert.equal(chat.includes("PDF_DISCLOSURE_KEY"), false);
 });
 
 test("saving setup clears the PDF disclosure", () => {
