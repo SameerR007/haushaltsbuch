@@ -10,7 +10,7 @@ Removed banks are left out of the saved bank list, the system prompt, and new-en
 
 Nothing is written until `POST /api/transactions/confirm`.
 
-The Chat tab keeps the current conversation in this browser under `haushaltsbuch.chat`: messages, review cards (including confirmed or undone), and whether the suggested prompts were already used. Reloading the page or switching to Expenses or Summary restores that conversation. Restoring does not write to the database. The OpenAI key is not stored there, and an attached PDF is kept as its file name, size, and page count only. **New chat** deletes that stored conversation and returns to the empty prompts. Transactions already confirmed stay in the database.
+The Chat tab keeps the current conversation in this browser under `haushaltsbuch.chat`: messages, review cards (including confirmed or undone), and whether the suggested prompts were already used. Reloading the page or switching to Expenses or Summary restores that conversation. Restoring does not write to the database. The OpenAI key is not stored there, and an attached PDF is kept as its file name, size, and page count only. **New chat** deletes that stored conversation and returns to the empty prompts. Transactions already confirmed stay in the database. **Set up completely new** removes `haushaltsbuch.chat` together with the connection, so a wiped household does not restore old review cards.
 
 ## Shared error
 
