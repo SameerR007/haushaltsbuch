@@ -14,8 +14,8 @@ import { clearStoredChat } from "./chat/persist";
 export const CONNECTION_STORAGE_KEY = "haushaltsbuch.connection";
 
 /**
- * Set after the user accepts the PDF disclosure.
- * Cleared when setup is saved again, so the notice shows once per setup.
+ * Leftover key from when the PDF notice was remembered.
+ * Nothing writes it. Chat load, saving setup, and a full reset remove it.
  */
 export const PDF_DISCLOSURE_KEY = "haushaltsbuch.pdfDisclosureAck";
 
@@ -98,9 +98,7 @@ export function writeConnection(
     banks: value.banks,
   };
   globalThis.localStorage.setItem(CONNECTION_STORAGE_KEY, JSON.stringify(stored));
-  if (options?.clearPdfDisclosure !== false) {
-    globalThis.localStorage.removeItem(PDF_DISCLOSURE_KEY);
-  }
+  if (options?.clearPdfDisclosure !== false) clearPdfDisclosureAck();
   // The landing CSS reads this attribute. A client navigation back to /
   // does not re-run the head script, so set it for the current tab too.
   globalThis.document.documentElement.dataset.visit = "returning";
@@ -127,13 +125,20 @@ export function rememberActiveBanks(input: {
   return true;
 }
 
+/** Remove a stored PDF acknowledgement left by an older version of the tracker. */
+export function clearPdfDisclosureAck(): void {
+  try {
+    globalThis.localStorage?.removeItem(PDF_DISCLOSURE_KEY);
+  } catch {
+    // Storage can be blocked. The notice still shows for each new PDF.
+  }
+}
+
 /** Drop the browser connection and chat only after the server has confirmed a full reset. */
 export function clearConnection(): void {
   const storage = globalThis.localStorage;
-  if (storage) {
-    storage.removeItem(CONNECTION_STORAGE_KEY);
-    storage.removeItem(PDF_DISCLOSURE_KEY);
-  }
+  if (storage) storage.removeItem(CONNECTION_STORAGE_KEY);
+  clearPdfDisclosureAck();
   clearStoredChat();
   const root = globalThis.document?.documentElement;
   if (root?.dataset) delete root.dataset.visit;

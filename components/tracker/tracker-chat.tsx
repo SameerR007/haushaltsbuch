@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { ReviewCard } from "@/components/tracker/review-card";
 import {
   EMPTY_HEADING,
@@ -11,7 +11,7 @@ import {
   READING_STATEMENT,
   REATTACH_PDF,
 } from "@/lib/chat/copy";
-import { PDF_DISCLOSURE_KEY, readConnection, rememberActiveBanks, type SavedConnection } from "@/lib/connection";
+import { clearPdfDisclosureAck, readConnection, rememberActiveBanks, type SavedConnection } from "@/lib/connection";
 import { parseHousehold } from "@/lib/data/parse";
 import { attachmentLabel, countPdfPages, isPdfBytes, MAX_PDF_BYTES, PDF_NOT_PDF, PDF_TOO_LARGE } from "@/lib/chat/pdf-meta";
 import {
@@ -110,6 +110,7 @@ export function TrackerChat() {
       setFormError("");
       setPending(false);
       setPromptsUsed(false);
+      setAck(false);
       idRef.current = 1;
       sendLock.current = false;
       actionLock.current.clear();
@@ -122,11 +123,8 @@ export function TrackerChat() {
   useEffect(() => {
     const existing = readConnection();
     setConnection(existing);
-    try {
-      setAck(window.localStorage.getItem(PDF_DISCLOSURE_KEY) === "1");
-    } catch {
-      setAck(false);
-    }
+    clearPdfDisclosureAck();
+    setAck(false);
     setReady(true);
     let ignore = false;
     void (async () => {
@@ -163,7 +161,7 @@ export function TrackerChat() {
           currency: connection?.currency ?? null,
         })
       : [];
-  const showDisclosure = Boolean(attachment) && !ack;
+  const showDisclosure = Boolean(attachment?.file) && !ack;
 
   function patchProposal(id: number, patch: Partial<Extract<Item, { kind: "proposal" }>>) {
     setItems((current) =>
@@ -173,6 +171,7 @@ export function TrackerChat() {
 
   async function onPickFile(file: File | undefined) {
     setFormError("");
+    if (fileRef.current) fileRef.current.value = "";
     if (!file) return;
     if (file.size > MAX_PDF_BYTES) {
       setFormError(PDF_TOO_LARGE);
@@ -183,6 +182,7 @@ export function TrackerChat() {
       setFormError(PDF_NOT_PDF);
       return;
     }
+    setAck(false);
     setAttachment({
       file,
       name: file.name || "statement.pdf",
@@ -191,13 +191,19 @@ export function TrackerChat() {
     });
   }
 
+  function onDropPdf(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    void onPickFile(event.dataTransfer.files?.[0]);
+  }
+
   function acknowledge() {
-    try {
-      window.localStorage.setItem(PDF_DISCLOSURE_KEY, "1");
-    } catch {
-      // The notice stays dismissed for this visit even if storage is blocked.
-    }
     setAck(true);
+  }
+
+  function cancelDisclosure() {
+    setAttachment(null);
+    setAck(false);
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   function history(): ChatTurn[] {
@@ -357,7 +363,7 @@ export function TrackerChat() {
   }
 
   return (
-    <main className="tracker-main">
+    <main className="tracker-main" onDragOver={(event) => event.preventDefault()} onDrop={onDropPdf}>
       {hydrated && hasThread ? (
         <div className="tracker-thread" ref={threadRef} aria-live="polite">
           {items.map((item) => {
@@ -435,9 +441,14 @@ export function TrackerChat() {
         {showDisclosure && (
           <div className="tracker-notice">
             <p>{PDF_DISCLOSURE}</p>
-            <button type="button" className="tracker-confirm" onClick={acknowledge}>
-              Continue
-            </button>
+            <div className="tracker-notice-actions">
+              <button type="button" className="tracker-confirm" onClick={acknowledge}>
+                Continue
+              </button>
+              <button type="button" className="tracker-quiet" onClick={cancelDisclosure}>
+                Cancel
+              </button>
+            </div>
           </div>
         )}
         {attachment && (
@@ -451,6 +462,7 @@ export function TrackerChat() {
                 aria-label="Remove file"
                 onClick={() => {
                   setAttachment(null);
+                  setAck(false);
                   if (fileRef.current) fileRef.current.value = "";
                 }}
               >

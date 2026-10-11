@@ -462,6 +462,12 @@
   line-height: 1.45;
 }
 
+.tracker-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .tracker-chip-row {
   margin-bottom: 8px;
   padding-left: 56px;

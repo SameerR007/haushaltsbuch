@@ -69,7 +69,7 @@ localStorage.removeItem("haushaltsbuch.connection")
 
 **Set up completely new** keeps **Download backup** in the card, then **Back to your data** at the bottom. The last step keeps **Keep my data** as the teal button at the bottom of the card.
 
-**Change keys** stays available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. Saving setup again clears the one-time PDF disclosure, so the tracker shows it once more. Adding or removing a bank updates the active bank list in this browser and does not clear that disclosure.
+**Change keys** stays available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. Each PDF attachment asks again before anything is sent. Chat removes a leftover `haushaltsbuch.pdfDisclosureAck` when it loads. Saving setup and **Set up completely new** remove that key as well. Adding or removing a bank updates the active bank list in this browser.
 
 Removing a bank hides it from new entries. Its transactions stay. The last active bank cannot be removed. Adding a bank whose name matches a removed one reactivates that row and updates its initials. **Set up completely new** (`/data/reset`) can download `haushaltsbuch-expenses.xlsx` and, if asked, a SQLite backup, then `POST /api/setup/reset` with `confirm: true`. Setup no longer has a **Set up again** button that skipped that backup. **Change keys** only checks the OpenAI key. It does not call confirm. The browser clears `haushaltsbuch.connection` only after reset succeeds, and setup starts again at the OpenAI key. Reset then checkpoints and vacuums the file so deleted rows are not left on disk.
 
@@ -116,7 +116,7 @@ The prompts are built from `haushaltsbuch.connection` (version 2): the first sav
 
 Every new transaction, including a whole statement, is a review card first. A statement proposes every row, expenses and income, even when the request says “expenses”. The card shows date, description, category, bank, amount, and total, then **Confirm — save N**, **Edit**, and **Cancel**. Confirm is the only write. A row flagged as a duplicate is skipped unless **Include anyway** is on, and the button count leaves those rows out. Undo deletes exactly the rows from that confirm.
 
-The paperclip attaches a PDF. The chip shows the file name, page count, and size. The first time a statement is attached (and again after setup is saved), the page says: “The whole PDF (text and page images) is sent to OpenAI to read it. Nothing else leaves your computer.” Sending a statement shows **Reading your statement…** while it is in flight.
+The paperclip or a drop attaches a PDF. The chip shows the file name, page count, and size. Each time a PDF is picked or dropped, the page says: “The whole PDF (text and page images) is sent to OpenAI to read it. Nothing else leaves your computer.” **Continue** keeps the file. Nothing is sent until the message is sent. **Cancel** removes the attachment. Sending a statement shows **Reading your statement…** while it is in flight.
 
 The OpenAI key is read from this browser and sent on the chat or PDF request. The server does not store it. Chat and PDF import use `gpt-5.6-luna` with high reasoning (`CHAT_MODEL` in `lib/chat/openai.ts`; override with `HAUSHALTSBUCH_CHAT_MODEL`). Requests set `store` to false. Questions go through a read-only `run_sql` tool, and the tool result is sent back to the model. New rows come back from `propose_transactions` and are not saved by that tool.
 
