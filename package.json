@@ -10,11 +10,15 @@
     "test": "node --import tsx --test --test-concurrency=1 lib/setup/setup.test.ts lib/chat/chat.test.ts lib/data/data.test.ts lib/data/summary.test.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "4.0.91",
+    "@ai-sdk/openai-compatible": "3.0.67",
+    "ai": "7.0.137",
     "better-sqlite3": "^13.0.3",
     "exceljs": "^4.4.0",
     "next": "15.5.27",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
