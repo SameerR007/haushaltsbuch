@@ -636,6 +636,51 @@
   font-size: 13px;
 }
 
+.expenses-empty {
+  min-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 16px 48px;
+}
+
+.expenses-empty-lead,
+.expenses-empty-note {
+  margin: 0;
+  max-width: 48ch;
+  line-height: 1.5;
+}
+
+.expenses-empty-lead {
+  color: var(--ink);
+  font-size: 16.5px;
+}
+
+.expenses-empty-note {
+  margin-top: 10px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.expenses-go-chat {
+  display: inline-flex;
+  align-items: center;
+  background: var(--teal);
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.expenses-go-chat:hover {
+  background: var(--teal-deep);
+}
+
 .amount-edit {
   display: flex;
   flex-direction: column;

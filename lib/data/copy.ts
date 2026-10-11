@@ -1,6 +1,17 @@
 export const XLSX_FILENAME = "haushaltsbuch-expenses.xlsx";
 export const SQLITE_FILENAME = "haushaltsbuch.sqlite";
 
+export const EXPENSES_EMPTY_LEAD =
+  "Here you will see all your expenses once you have added some. Go to Chat to add your first expense, or import a bank statement PDF.";
+export const EXPENSES_EMPTY_NOTE =
+  "Your expenses stay saved on this computer between openings of the app, unless you choose to set up completely new.";
+export const EXPENSES_EMPTY_ACTION = "Go to Chat";
+
+/** Excel download is for a sheet that already has rows. */
+export function showExpensesDownload(rowCount: number): boolean {
+  return rowCount > 0;
+}
+
 export function transactionCountLabel(count: number): string {
   if (count <= 0) return "no transactions";
   if (count === 1) return "1 transaction";

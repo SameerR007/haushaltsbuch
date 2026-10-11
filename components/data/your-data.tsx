@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { TRACKER_HOME } from "@/components/tracker/nav";
 import { CONNECTION_STORAGE_KEY, hasSavedConnection, rememberActiveBanks } from "@/lib/connection";
 import { parseHousehold } from "@/lib/data/parse";
 import type { HouseholdView } from "@/lib/data/types";
@@ -56,7 +57,7 @@ export function YourData({ updated }: { updated: boolean }) {
         <li>OpenAI key · {keySaved ? "saved in this browser" : "not saved in this browser"}</li>
       </ul>
       <div className="data-actions">
-        <Link className="data-primary" href="/app">
+        <Link className="data-primary" href={TRACKER_HOME}>
           Open tracker
         </Link>
         <Link className="data-secondary" href="/setup?mode=keys">

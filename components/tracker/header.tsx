@@ -4,13 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CHAT_CHANGED_EVENT, readStoredChat, requestNewChat, showNewChatButton } from "@/lib/chat/persist";
+import { isTrackerNavActive, TRACKER_NAV } from "@/components/tracker/nav";
 
 export function TrackerHeader() {
   const pathname = usePathname();
   const chat = pathname === "/app";
-  const expenses = pathname.startsWith("/app/expenses");
-  const insights = pathname.startsWith("/app/insights");
-  const summary = pathname.startsWith("/app/summary");
   const [showNew, setShowNew] = useState(false);
 
   useEffect(() => {
@@ -33,24 +31,28 @@ export function TrackerHeader() {
           </button>
         ) : null}
         <nav className="tracker-nav" aria-label="Tracker">
-          <Link className={chat ? "is-active" : undefined} href="/app">
-            Chat
-          </Link>
-          <Link className={expenses ? "is-active" : undefined} href="/app/expenses">
-            Expenses
-          </Link>
-          <a
-            className={insights ? "is-active" : undefined}
-            href="/app/insights"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Insights, opens in a new window"
-          >
-            Insights ↗
-          </a>
-          <Link className={summary ? "is-active" : undefined} href="/app/summary">
-            Summary
-          </Link>
+          {TRACKER_NAV.map((item) =>
+            item.external ? (
+              <a
+                key={item.href}
+                className={isTrackerNavActive(pathname, item) ? "is-active" : undefined}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Insights, opens in a new window"
+              >
+                {item.label}
+              </a>
+            ) : (
+              <Link
+                key={item.href}
+                className={isTrackerNavActive(pathname, item) ? "is-active" : undefined}
+                href={item.href}
+              >
+                {item.label}
+              </Link>
+            ),
+          )}
         </nav>
       </div>
     </header>

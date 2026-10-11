@@ -21,11 +21,16 @@ import { loadHousehold } from "../chat/household";
 import { PDF_DISCLOSURE_KEY, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
 import { closeDb, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "../setup/categories";
+import { isTrackerNavActive, TRACKER_HOME, TRACKER_NAV } from "../../components/tracker/nav";
 import {
   excelBackupLabel,
+  EXPENSES_EMPTY_ACTION,
+  EXPENSES_EMPTY_LEAD,
+  EXPENSES_EMPTY_NOTE,
   keptCountLabel,
   removeWarning,
   savedBankLine,
+  showExpensesDownload,
   sqliteSavedLine,
   transactionCountLabel,
   xlsxSavedLine,
@@ -114,6 +119,37 @@ test("comma decimals keep the row sign", () => {
   assert.equal(parseAmount(amountKeepingSign("1.234,50", -10)), -1234.5);
   assert.equal(amountKeepingSign("1,234.50", 10), "1234.5");
   assert.equal(parseAmount(amountKeepingSign("1 234,50", -1)), -1234.5);
+});
+
+test("tracker nav order, Open tracker, and the empty expenses state", () => {
+  assert.deepEqual(
+    TRACKER_NAV.map((item) => item.label),
+    ["Expenses", "Chat", "Summary", "Insights ↗"],
+  );
+  assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.external, true);
+  assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.href, "/app/insights");
+  assert.equal(TRACKER_HOME, "/app/expenses");
+  assert.equal(TRACKER_NAV[0]?.href, TRACKER_HOME);
+  assert.equal(isTrackerNavActive("/app", TRACKER_NAV[1]!), true);
+  assert.equal(isTrackerNavActive("/app/expenses", TRACKER_NAV[1]!), false);
+  assert.equal(isTrackerNavActive("/app/expenses", TRACKER_NAV[0]!), true);
+  assert.equal(isTrackerNavActive("/app", TRACKER_NAV[0]!), false);
+  assert.equal(
+    EXPENSES_EMPTY_LEAD,
+    "Here you will see all your expenses once you have added some. Go to Chat to add your first expense, or import a bank statement PDF.",
+  );
+  assert.equal(
+    EXPENSES_EMPTY_NOTE,
+    "Your expenses stay saved on this computer between openings of the app, unless you choose to set up completely new.",
+  );
+  assert.equal(EXPENSES_EMPTY_ACTION, "Go to Chat");
+  assert.equal(showExpensesDownload(0), false);
+  assert.equal(showExpensesDownload(1), true);
+  for (const file of ["app/page.tsx", "components/data/your-data.tsx", "components/setup/setup-chat.tsx"]) {
+    const source = readFileSync(file, "utf8");
+    assert.equal(source.includes("TRACKER_HOME"), true, file);
+    assert.equal(source.includes('href="/app"'), false, file);
+  }
 });
 
 test("confirm drops banks that were not submitted", async () => {
