@@ -2,7 +2,7 @@
 
 `GET /api/summary` reads the local SQLite file and returns totals for two inclusive date ranges. It does not call OpenAI and it does not write.
 
-Amounts stay signed. A positive amount is income. A negative amount is an expense. Salary and other income count as income when their amounts are positive. A negative salary is an expense. Removed banks stay in the result.
+Amounts stay signed. A positive amount is income. A negative amount is an expense. Salary and other income count as income when their amounts are positive. A negative salary is an expense. A positive refund stored in a spending category, such as grocery, also counts as income. It is not subtracted from that category’s spend: category totals add up only the negative amounts. Removed banks stay in the result.
 
 Dates in the query are `YYYY-MM-DD`. The page shows them as an ordinal day, a full month name, and a year, for example `3rd September 2026`.
 
@@ -45,7 +45,7 @@ HTTP 200:
 }
 ```
 
-`income` is the sum of positive amounts. `expenses` is the sum of negative amounts. `net` is the sum of every amount in the range. `categories` groups only negative amounts. `incomeRows` lists every positive row, including a removed bank’s initials. `largest` is the five most negative amounts. `latestFrom` and `latestTo` are the calendar month of the newest transaction, or null when the file has no transactions.
+`income` is the sum of positive amounts. `expenses` is the sum of negative amounts. `net` is the sum of every amount in the range. `categories` groups only negative amounts, so a refund does not reduce the category it was filed under. `incomeRows` lists up to 200 positive rows, largest amount first, including a removed bank’s initials. The income total still includes every positive amount when the list is capped. `largest` is the five most negative amounts. `latestFrom` and `latestTo` are the calendar month of the newest transaction, or null when the file has no transactions.
 
 There is no spending-by-bank block.
 

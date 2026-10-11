@@ -160,20 +160,43 @@ test("summary rejects a reversed range and classifies by the amount sign", async
     assert.equal(bad.status, 400);
 
     const database = ensureMigrated();
-    database
-      .prepare("INSERT INTO transactions (date, category, amount, bank, notes) VALUES (?, ?, ?, ?, ?)")
-      .run("2026-06-02", "salary", -10, "North Bank", "Correction");
-    database
-      .prepare("INSERT INTO transactions (date, category, amount, bank, notes) VALUES (?, ?, ?, ?, ?)")
-      .run("2026-06-03", "grocery", 15, "North Bank", "Refund");
+    const insert = database.prepare(
+      "INSERT INTO transactions (date, category, amount, bank, notes) VALUES (?, ?, ?, ?, ?)",
+    );
+    insert.run("2026-06-02", "salary", -10, "North Bank", "Correction");
+    insert.run("2026-06-03", "grocery", -40, "North Bank", "Shop");
+    insert.run("2026-06-04", "grocery", 15, "North Bank", "Refund");
     const june = await getSummary("?from=2026-06-01&to=2026-06-30");
     assert.equal(june.body.income, 15);
-    assert.equal(june.body.expenses, -10);
-    assert.equal(june.body.net, 5);
-    const incomeRows = june.body.incomeRows as { category: string }[];
-    const expenseCategories = june.body.categories as { category: string }[];
+    assert.equal(june.body.expenses, -50);
+    assert.equal(june.body.net, -35);
+    const incomeRows = june.body.incomeRows as { category: string; notes: string }[];
+    const expenseCategories = june.body.categories as { category: string; amount: number }[];
     assert.deepEqual(incomeRows.map((row) => row.category), ["grocery"]);
-    assert.deepEqual(expenseCategories.map((row) => row.category), ["salary"]);
+    assert.equal(incomeRows[0]?.notes, "Refund");
+    assert.equal(expenseCategories.find((row) => row.category === "grocery")?.amount, -40);
+    assert.equal(expenseCategories.find((row) => row.category === "salary")?.amount, -10);
+  });
+});
+
+test("the income list stops at 200 rows and the total still includes every positive amount", async () => {
+  await withTempDb(async () => {
+    seed();
+    const database = ensureMigrated();
+    const insert = database.prepare(
+      "INSERT INTO transactions (date, category, amount, bank, notes) VALUES (?, ?, ?, ?, ?)",
+    );
+    for (let amount = 1; amount <= 201; amount += 1) {
+      insert.run("2026-05-01", "salary", amount, "North Bank", `Pay ${amount}`);
+    }
+    const may = await getSummary("?from=2026-05-01&to=2026-05-31");
+    assert.equal(may.status, 200);
+    assert.equal(may.body.income, (201 * 202) / 2);
+    const rows = may.body.incomeRows as { amount: number }[];
+    assert.equal(rows.length, 200);
+    assert.equal(rows[0]?.amount, 201);
+    assert.equal(rows[199]?.amount, 2);
+    assert.equal(rows.some((row) => row.amount === 1), false);
   });
 });
 

@@ -125,7 +125,8 @@ function incomeRows(from: string, to: string): SummaryRow[] {
        FROM transactions t
        LEFT JOIN banks b ON b.name = t.bank
        WHERE t.date >= ? AND t.date <= ? AND t.amount > 0
-       ORDER BY t.amount DESC, t.date DESC, t.id DESC`,
+       ORDER BY t.amount DESC, t.date DESC, t.id DESC
+       LIMIT 200`,
     )
     .all(from, to) as JoinedRow[];
   return found.map(mapRow);
@@ -148,7 +149,8 @@ function largestExpenses(from: string, to: string): SummaryRow[] {
 
 /**
  * Read-only totals for two inclusive date ranges.
- * A positive amount is income. A negative amount is an expense.
+ * A positive amount is income, including a refund stored in a spending category.
+ * That refund is not subtracted from the category total. Categories sum only negative amounts.
  * Salary and other income are income when they are stored as positive amounts.
  * Removed banks stay in the joins. Nothing is written.
  */
