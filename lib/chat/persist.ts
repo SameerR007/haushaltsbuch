@@ -217,12 +217,11 @@ export function buildStoredChat(input: {
     if (item.kind === "status") continue;
     const parsed = parseItem(item);
     if (parsed) items.push(parsed);
-    if (items.length >= MAX_ITEMS) break;
   }
   return {
     v: 1,
     promptsUsed: input.promptsUsed || items.some((item) => item.kind === "user"),
-    items,
+    items: items.slice(-MAX_ITEMS),
     attachment: input.attachment ? parseAttachment(input.attachment) : null,
   };
 }
@@ -240,12 +239,11 @@ export function parseStoredChat(raw: string | null): StoredChat | null {
   for (const item of value.items) {
     const parsed = parseItem(item);
     if (parsed) items.push(parsed);
-    if (items.length >= MAX_ITEMS) break;
   }
   return {
     v: 1,
     promptsUsed: value.promptsUsed === true || items.some((item) => item.kind === "user"),
-    items,
+    items: items.slice(-MAX_ITEMS),
     attachment: parseAttachment(value.attachment),
   };
 }
@@ -260,6 +258,26 @@ export function showNewChatButton(chat: StoredChat | null): boolean {
   return chat.items.some(
     (item) => item.kind === "user" || item.kind === "assistant" || item.kind === "proposal",
   );
+}
+
+/** A review or edit card has not been confirmed. New chat would discard it. */
+export function needsNewChatConfirm(chat: StoredChat | null): boolean {
+  if (!chat) return false;
+  return chat.items.some(
+    (item) => item.kind === "proposal" && (item.phase === "review" || item.phase === "edit"),
+  );
+}
+
+/** Drop the oldest items until the transcript fits. An empty transcript still replaces a stale copy. */
+export function fitStoredChat(chat: StoredChat): StoredChat {
+  let next = chat;
+  while (JSON.stringify(next).length > MAX_JSON && next.items.length > 0) {
+    next = { ...next, items: next.items.slice(1) };
+  }
+  if (JSON.stringify(next).length > MAX_JSON) {
+    next = { ...next, items: [], attachment: null };
+  }
+  return next;
 }
 
 function notifyChanged(): void {
@@ -278,8 +296,7 @@ export function readStoredChat(): StoredChat | null {
 
 export function writeStoredChat(chat: StoredChat): void {
   try {
-    const json = JSON.stringify(chat);
-    if (json.length > MAX_JSON) return;
+    const json = JSON.stringify(fitStoredChat(chat));
     globalThis.localStorage?.setItem(CHAT_STORAGE_KEY, json);
     notifyChanged();
   } catch {

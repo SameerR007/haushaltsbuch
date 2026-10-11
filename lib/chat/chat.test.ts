@@ -10,12 +10,13 @@ import { POST as postChat } from "../../app/api/chat/route";
 import { POST as postPdf } from "../../app/api/import/pdf/route";
 import { POST as postConfirm } from "../../app/api/transactions/confirm/route";
 import { POST as postUndo } from "../../app/api/transactions/undo/route";
-import { confirmLabel, PDF_DISCLOSURE, reviewIntro } from "./copy";
+import { confirmLabel, NEW_CHAT_CONFIRM, PDF_DISCLOSURE, reviewIntro } from "./copy";
 import {
   CHAT_RESET_EVENT,
   CHAT_STORAGE_KEY,
   buildStoredChat,
   clearStoredChat,
+  needsNewChatConfirm,
   parseStoredChat,
   readStoredChat,
   requestNewChat,
@@ -32,7 +33,7 @@ import {
   toModelInput,
 } from "./openai";
 import { attachmentLabel, countPdfPages, formatFileSize } from "./pdf-meta";
-import { householdInstructions, previousFullMonth, RUN_SQL_RULE, SIGNED_AMOUNT_RULE, suggestedPrompts, withPdfInstructions } from "./prompts";
+import { householdInstructions, MODEL_TURN_LIMIT, previousFullMonth, recentModelTurns, RUN_SQL_RULE, SIGNED_AMOUNT_RULE, suggestedPrompts, withPdfInstructions } from "./prompts";
 import { executeReadOnlyQuery, guardReadQuery, SQL_ROW_CAP } from "./sql-guard";
 import { confirmTransactions, undoTransactions } from "./transactions";
 import { reviewProposedRows, rowsToSave } from "./validate-rows";
@@ -588,6 +589,12 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.equal(formatSummaryMoney(12.5, "EUR").includes("\u2212"), false);
   assert.equal(formatSummaryMoney(12.5, "EUR").includes("-"), false);
   assert.equal(formatMoney(-12.5, "EUR").includes("12.50"), true);
+  assert.match(formatMoney(-12.5, "EUR"), /€/);
+  assert.match(formatMoney(-12.5, "INR"), /₹12\.50/);
+  assert.match(formatMoney(-12.5, "CHF"), /CHF/);
+  assert.match(formatMoney(1000, "JPY"), /¥1,000/);
+  assert.equal(formatMoney(-12.5, "XYZ"), "-12.50");
+  assert.equal(formatMoney(-12.5, "XYZ").includes("XYZ"), false);
   assert.notEqual(formatMoney(-12.5, "EUR"), formatMoney(-12.5, "USD"));
 });
 
@@ -910,6 +917,33 @@ test("chat storage keeps the transcript and not the key or a PDF", () => {
     true,
   );
   assert.equal(showNewChatButton(stored), true);
+  const reviewCard = stored.items.find((item) => item.kind === "proposal" && item.phase === "review");
+  const savedCard = stored.items.find((item) => item.kind === "proposal" && item.phase === "saved");
+  if (reviewCard?.kind !== "proposal" || savedCard?.kind !== "proposal") {
+    throw new Error("expected review and saved cards");
+  }
+  assert.equal(
+    needsNewChatConfirm({ v: 1, promptsUsed: true, items: [reviewCard], attachment: null }),
+    true,
+  );
+  assert.equal(
+    needsNewChatConfirm({ v: 1, promptsUsed: true, items: [{ ...reviewCard, phase: "edit" }], attachment: null }),
+    true,
+  );
+  assert.equal(
+    needsNewChatConfirm({ v: 1, promptsUsed: true, items: [savedCard], attachment: null }),
+    false,
+  );
+  assert.equal(
+    needsNewChatConfirm({
+      v: 1,
+      promptsUsed: true,
+      items: [{ ...reviewCard, phase: "undone" }, { ...reviewCard, phase: "cancelled" }],
+      attachment: null,
+    }),
+    false,
+  );
+  assert.equal(NEW_CHAT_CONFIRM.includes("not saved"), true);
 
   const store = new Map<string, string>();
   const previousStorage = globalThis.localStorage;
@@ -955,6 +989,114 @@ test("chat storage keeps the transcript and not the key or a PDF", () => {
       fetch: previousFetch,
     });
   }
+});
+
+test("stored chat keeps the latest 60 items and replaces an oversized copy", () => {
+  const many = Array.from({ length: 65 }, (_, index) => ({
+    id: index + 1,
+    kind: "user" as const,
+    text: `message ${index + 1}`,
+  }));
+  const built = buildStoredChat({ promptsUsed: true, items: many, attachment: null });
+  assert.equal(built.items.length, 60);
+  const oldest = built.items[0];
+  const newest = built.items.at(-1);
+  if (oldest?.kind !== "user" || newest?.kind !== "user") throw new Error("expected user rows");
+  assert.equal(oldest.text, "message 6");
+  assert.equal(newest.text, "message 65");
+  const parsed = parseStoredChat(JSON.stringify({ v: 1, promptsUsed: true, items: many, attachment: null }));
+  const parsedNewest = parsed?.items.at(-1);
+  assert.equal(parsed?.items.length, 60);
+  if (parsedNewest?.kind !== "user") throw new Error("expected the latest user row");
+  assert.equal(parsedNewest.text, "message 65");
+  const savedAtEnd = buildStoredChat({
+    promptsUsed: true,
+    items: [
+      ...many.slice(0, 64),
+      {
+        id: 70,
+        kind: "proposal" as const,
+        phase: "saved" as const,
+        error: "",
+        savedIds: [3],
+        batchId: "batch-9",
+        proposal: {
+          sourceName: null,
+          currency: "EUR",
+          categories: ["grocery"],
+          banks: [{ name: "ING", initials: "IN" }],
+          rows: [
+            {
+              date: "2026-09-12",
+              dateInput: "2026-09-12",
+              description: "Groceries",
+              category: "grocery",
+              bank: "ING",
+              bankInitials: "IN",
+              amount: -12.5,
+              amountInput: "-12.5",
+              flags: [],
+              duplicateOf: null,
+              duplicateKey: null,
+            },
+          ],
+        },
+      },
+    ],
+    attachment: null,
+  });
+  const kept = savedAtEnd.items.at(-1);
+  assert.equal(kept?.kind, "proposal");
+  if (kept?.kind === "proposal") assert.equal(kept.phase, "saved");
+
+  const heavy = buildStoredChat({
+    promptsUsed: true,
+    items: Array.from({ length: 60 }, (_, index) => ({
+      id: index + 1,
+      kind: "user" as const,
+      text: `${index + 1} ${"x".repeat(8000)}`,
+    })),
+    attachment: null,
+  });
+  assert.ok(JSON.stringify(heavy).length > 400_000);
+  const store = new Map<string, string>();
+  const previousStorage = globalThis.localStorage;
+  const previousWindow = globalThis.window;
+  Object.assign(globalThis, {
+    localStorage: {
+      setItem: (key: string, value: string) => store.set(key, value),
+      getItem: (key: string) => store.get(key) ?? null,
+      removeItem: (key: string) => store.delete(key),
+    },
+    window: { dispatchEvent: () => true },
+  });
+  try {
+    store.set(CHAT_STORAGE_KEY, "STALE");
+    writeStoredChat(heavy);
+    const raw = store.get(CHAT_STORAGE_KEY) ?? "";
+    assert.notEqual(raw, "STALE");
+    assert.ok(raw.length <= 400_000);
+    const back = parseStoredChat(raw);
+    assert.ok(back);
+    assert.ok(back.items.length > 0);
+    assert.ok(back.items.length < 60);
+    const last = back.items.at(-1);
+    const first = back.items[0];
+    if (last?.kind !== "user" || first?.kind !== "user") throw new Error("expected user rows");
+    assert.equal(Number(last.text.slice(0, last.text.indexOf(" "))), 60);
+    assert.ok(Number(first.text.slice(0, first.text.indexOf(" "))) > 1);
+  } finally {
+    Object.assign(globalThis, { localStorage: previousStorage, window: previousWindow });
+  }
+
+  const turns = recentModelTurns(Array.from({ length: 25 }, (_, index) => index));
+  assert.equal(turns.length, MODEL_TURN_LIMIT);
+  assert.deepEqual(turns, Array.from({ length: 20 }, (_, index) => index + 5));
+  const header = readFileSync("components/tracker/header.tsx", "utf8");
+  assert.match(header, /needsNewChatConfirm/);
+  assert.match(header, /window\.confirm\(NEW_CHAT_CONFIRM\)/);
+  const chatRoute = readFileSync("app/api/chat/route.ts", "utf8");
+  assert.match(chatRoute, /MODEL_TURN_LIMIT/);
 });
 
 test("copy matches the tracker and example tags are absent", () => {

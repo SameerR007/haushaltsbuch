@@ -25,7 +25,7 @@ import {
   type StoredProposal,
   type StoredUser,
 } from "@/lib/chat/persist";
-import { suggestedPrompts } from "@/lib/chat/prompts";
+import { recentModelTurns, suggestedPrompts } from "@/lib/chat/prompts";
 import { rowsToSave } from "@/lib/chat/validate-rows";
 import type { ChatTurn, Proposal, ReviewRow } from "@/lib/chat/types";
 
@@ -266,9 +266,10 @@ export function TrackerChat() {
         { id: statusId, kind: "status", text: file ? READING_STATEMENT : "Working…" },
       ]);
 
+      const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: text }]);
       const data = file
-        ? await postPdf(saved.openaiApiKey, text, file, prior)
-        : await postChat(saved.openaiApiKey, [...prior, { role: "user", content: text }]);
+        ? await postPdf(saved.openaiApiKey, text, file, turns.slice(0, -1))
+        : await postChat(saved.openaiApiKey, turns);
       setItems((current) => {
         const without = current.filter((item) => item.id !== statusId);
         if (!data) {

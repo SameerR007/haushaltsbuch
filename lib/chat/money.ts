@@ -1,3 +1,5 @@
+import { describeCurrency } from "../currency";
+
 /**
  * Turn a typed amount into a plain signed number string.
  * Spaces are removed. A comma is the decimal mark (14,25). When both separators
@@ -39,11 +41,13 @@ export function amountKeepingSign(input: string, previous: number): string {
 /** Format a signed amount with the household currency. The symbol comes from Intl. */
 export function formatMoney(amount: number, currency: string): string {
   if (!Number.isFinite(amount)) return "";
-  if (!/^[A-Z]{3}$/.test(currency)) return amount.toFixed(2);
+  const known = describeCurrency(currency);
+  if (!known) return amount.toFixed(2);
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency,
+      currency: known.code,
+      currencyDisplay: "narrowSymbol",
     }).format(amount);
   } catch {
     return amount.toFixed(2);
