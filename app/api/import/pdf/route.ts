@@ -7,7 +7,7 @@ import {
   PDF_TOO_LARGE,
   safePdfName,
 } from "@/lib/chat/pdf-meta";
-import { householdInstructions, todayIso, withPdfInstructions } from "@/lib/chat/prompts";
+import { householdInstructions, MODEL_TURN_LIMIT, recentModelTurns, todayIso, withPdfInstructions } from "@/lib/chat/prompts";
 import type { ChatTurn, Proposal } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
 import { looksLikeOpenAiKey } from "@/lib/setup/guards";
@@ -33,7 +33,7 @@ function parseMessages(value: string | null): ChatTurn[] {
   }
   if (!Array.isArray(parsed)) return [];
   const messages: ChatTurn[] = [];
-  for (const item of parsed.slice(0, 40)) {
+  for (const item of parsed.slice(-MODEL_TURN_LIMIT)) {
     if (typeof item !== "object" || item === null) continue;
     const record = item as { role?: unknown; content?: unknown };
     if (record.role !== "user" && record.role !== "assistant") continue;
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
 
     const household = loadHousehold();
     const prior = parseMessages(typeof form.get("messages") === "string" ? String(form.get("messages")) : null);
-    const messages: ChatTurn[] = [...prior, { role: "user", content: instruction.trim() }];
+    const messages: ChatTurn[] = recentModelTurns([...prior, { role: "user", content: instruction.trim() }]);
     let proposalArgs: unknown = null;
     await runChatTurn({
       apiKey,

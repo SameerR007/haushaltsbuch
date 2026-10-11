@@ -39,7 +39,7 @@ The welcome screen picks first visit or returning from `localStorage`. There is 
 | --- | --- |
 | **Key** | `haushaltsbuch.connection` |
 | **Missing or `""`** | First visit. **Get started** links to `/setup`. |
-| **Any non-empty string** | Returning. **Open tracker** links to `/app`. **Review the data** links to `/data`. |
+| **Any non-empty string** | Returning. **Open tracker** links to `/app/expenses`. **Review the data** links to `/data`. |
 
 The key is read in `app/layout.tsx` before first paint (`html[data-visit="returning"]`). The constant lives in `lib/connection.ts`.
 
@@ -100,11 +100,11 @@ No sample transactions are inserted. Confirm updates the currency and the submit
 
 `/app` is the money chat.
 
-The header is **Haushaltsbuch**, **Chat**, **Expenses**, **Insights ↗** (opens in a new window), and **Summary**. Insights and Summary are placeholders.
+The header is **Haushaltsbuch**, then **Expenses**, **Chat**, **Summary**, and **Insights ↗** (opens in a new window). Insights and Summary are placeholders. **Open tracker** (welcome, setup, and Your data) opens Expenses at `/app/expenses`.
 
-**Expenses** lists every transaction, newest first, with the household currency in the subtitle. **Download as Excel** fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
+**Expenses** lists every transaction, newest first, with the household currency in the subtitle. With no transactions it explains that rows will show up after you add them in Chat or from a statement PDF, notes that they stay on this computer unless you set up completely new, and offers **Go to Chat**. **Download as Excel** stays hidden until there is at least one row, then fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign, including a comma decimal such as `14,25`. The amount field selects its current value on focus. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
 
-On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation.
+On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation. Switching tabs or reloading keeps that conversation in this browser (`haushaltsbuch.chat`), the latest 60 items. If the stored transcript would be larger than 400 KB, the oldest items are dropped until it fits. **New chat** appears once there is a message, an attached PDF, or a review card. It clears the stored conversation and brings the prompts back. It asks first only when a review card is still unconfirmed. It does not delete transactions already saved. Each message sends at most the last 20 turns to OpenAI. **Set up completely new** removes that stored conversation as well.
 
 The prompts are built from `haushaltsbuch.connection` (version 2): the first saved bank name, and the saved currency’s minor units for the sample amount `12.50`. The day is the 12th of the previous full month, and the month name comes from that date. If no bank is saved, the bank is left out of the first prompt.
 

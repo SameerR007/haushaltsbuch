@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TRACKER_HOME } from "@/components/tracker/nav";
 
 export default function Home() {
   return (
@@ -13,7 +14,7 @@ export default function Home() {
         <Link className="primary first-only" href="/setup">
           Get started
         </Link>
-        <Link className="primary returning-only" href="/app">
+        <Link className="primary returning-only" href={TRACKER_HOME}>
           Open tracker
         </Link>
         <Link className="linkish returning-only" href="/data">

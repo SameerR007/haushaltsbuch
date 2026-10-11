@@ -9,33 +9,34 @@ import {
   PLACEHOLDER_EMPTY,
   PLACEHOLDER_FOLLOWUP,
   READING_STATEMENT,
+  REATTACH_PDF,
 } from "@/lib/chat/copy";
 import { PDF_DISCLOSURE_KEY, readConnection, rememberActiveBanks, type SavedConnection } from "@/lib/connection";
 import { parseHousehold } from "@/lib/data/parse";
 import { attachmentLabel, countPdfPages, isPdfBytes, MAX_PDF_BYTES, PDF_NOT_PDF, PDF_TOO_LARGE } from "@/lib/chat/pdf-meta";
-import { suggestedPrompts } from "@/lib/chat/prompts";
+import {
+  buildStoredChat,
+  CHAT_RESET_EVENT,
+  readStoredChat,
+  showNewChatButton,
+  writeStoredChat,
+  clearStoredChat,
+  type StoredAssistant,
+  type StoredProposal,
+  type StoredUser,
+} from "@/lib/chat/persist";
+import { recentModelTurns, suggestedPrompts } from "@/lib/chat/prompts";
 import { rowsToSave } from "@/lib/chat/validate-rows";
 import type { ChatTurn, Proposal, ReviewRow } from "@/lib/chat/types";
 
-type Phase = "review" | "edit" | "saved" | "undone" | "cancelled";
-
 type Item =
-  | { id: number; kind: "user"; text: string }
-  | { id: number; kind: "assistant"; text: string; setupLink?: boolean }
+  | StoredUser
+  | StoredAssistant
   | { id: number; kind: "status"; text: string }
-  | {
-      id: number;
-      kind: "proposal";
-      phase: Phase;
-      proposal: Proposal;
-      savedIds?: number[];
-      batchId?: string;
-      error: string;
-      busy: boolean;
-    };
+  | (StoredProposal & { busy: boolean });
 
 type Attachment = {
-  file: File;
+  file: File | null;
   name: string;
   size: number;
   pages: number | null;
@@ -72,11 +73,51 @@ export function TrackerChat() {
   const [ready, setReady] = useState(false);
   const [banksReady, setBanksReady] = useState(false);
   const [ack, setAck] = useState(false);
+  const [promptsUsed, setPromptsUsed] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   function nextId() {
     idRef.current += 1;
     return idRef.current;
   }
+
+  useEffect(() => {
+    const stored = readStoredChat();
+    if (stored) {
+      setPromptsUsed(stored.promptsUsed);
+      setItems(
+        stored.items.map((item) => (item.kind === "proposal" ? { ...item, busy: false } : item)),
+      );
+      if (stored.attachment) setAttachment({ ...stored.attachment, file: null });
+      const maxId = stored.items.reduce((max, item) => Math.max(max, item.id), 1);
+      idRef.current = maxId;
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const stored = buildStoredChat({ promptsUsed, items, attachment });
+    if (!showNewChatButton(stored)) clearStoredChat();
+    else writeStoredChat(stored);
+  }, [hydrated, promptsUsed, items, attachment]);
+
+  useEffect(() => {
+    function reset() {
+      setItems([]);
+      setDraft("");
+      setAttachment(null);
+      setFormError("");
+      setPending(false);
+      setPromptsUsed(false);
+      idRef.current = 1;
+      sendLock.current = false;
+      actionLock.current.clear();
+      if (fileRef.current) fileRef.current.value = "";
+    }
+    window.addEventListener(CHAT_RESET_EVENT, reset);
+    return () => window.removeEventListener(CHAT_RESET_EVENT, reset);
+  }, []);
 
   useEffect(() => {
     const existing = readConnection();
@@ -111,7 +152,10 @@ export function TrackerChat() {
     node.scrollTop = node.scrollHeight;
   }, [items, pending]);
 
-  const started = items.some((item) => item.kind === "user");
+  const hasThread = items.some(
+    (item) => item.kind === "user" || item.kind === "assistant" || item.kind === "proposal",
+  );
+  const started = promptsUsed || items.some((item) => item.kind === "user");
   const prompts =
     ready && banksReady
       ? suggestedPrompts({
@@ -179,9 +223,14 @@ export function TrackerChat() {
     event.preventDefault();
     const text = draft.trim();
     if (!text || pending || sendLock.current) return;
+    if (attachment && !attachment.file) {
+      setFormError(REATTACH_PDF);
+      return;
+    }
     if (attachment && !ack) return;
     const saved = connection ?? readConnection();
     if (!saved?.openaiApiKey) {
+      setPromptsUsed(true);
       setItems((current) => [
         ...current,
         { id: nextId(), kind: "user", text },
@@ -203,17 +252,24 @@ export function TrackerChat() {
       setAttachment(null);
       setFormError("");
       setPending(true);
+      setPromptsUsed(true);
       if (fileRef.current) fileRef.current.value = "";
       const statusId = nextId();
       setItems((current) => [
         ...current.filter((item) => item.kind !== "status"),
-        { id: nextId(), kind: "user", text },
+        {
+          id: nextId(),
+          kind: "user",
+          text,
+          ...(file ? { statementName: file.name || "statement.pdf" } : {}),
+        },
         { id: statusId, kind: "status", text: file ? READING_STATEMENT : "Working…" },
       ]);
 
+      const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: text }]);
       const data = file
-        ? await postPdf(saved.openaiApiKey, text, file, prior)
-        : await postChat(saved.openaiApiKey, [...prior, { role: "user", content: text }]);
+        ? await postPdf(saved.openaiApiKey, text, file, turns.slice(0, -1))
+        : await postChat(saved.openaiApiKey, turns);
       setItems((current) => {
         const without = current.filter((item) => item.id !== statusId);
         if (!data) {
@@ -302,13 +358,14 @@ export function TrackerChat() {
 
   return (
     <main className="tracker-main">
-      {started ? (
+      {hydrated && hasThread ? (
         <div className="tracker-thread" ref={threadRef} aria-live="polite">
           {items.map((item) => {
             if (item.kind === "user") {
               return (
                 <p key={item.id} className="tracker-user">
                   {item.text}
+                  {item.statementName ? <span className="tracker-statement">{item.statementName}</span> : null}
                 </p>
               );
             }
@@ -348,7 +405,7 @@ export function TrackerChat() {
             );
           })}
         </div>
-      ) : (
+      ) : hydrated ? (
         <div className="tracker-empty">
           <h1>{EMPTY_HEADING}</h1>
           <p>{EMPTY_SUBTITLE}</p>
@@ -370,6 +427,8 @@ export function TrackerChat() {
             </div>
           )}
         </div>
+      ) : (
+        <div className="tracker-empty" />
       )}
 
       <form className="tracker-form" onSubmit={(event) => void onSend(event)}>
@@ -385,6 +444,7 @@ export function TrackerChat() {
           <div className="tracker-chip-row">
             <span className="tracker-chip">
               {attachmentLabel(attachment.name, attachment.pages, attachment.size)}
+              {!attachment.file ? <span className="tracker-chip-note">Reattach to send</span> : null}
               <button
                 type="button"
                 className="tracker-chip-remove"
@@ -468,6 +528,7 @@ async function postPdf(
     form.set("apiKey", apiKey);
     form.set("instruction", instruction);
     form.set("messages", JSON.stringify(messages));
+    if (!attachment.file) return null;
     form.set("file", attachment.file, attachment.name);
     const response = await fetch("/api/import/pdf", { method: "POST", body: form });
     return readBody(response);
