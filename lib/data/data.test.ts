@@ -15,6 +15,7 @@ import { POST as postReset } from "../../app/api/setup/reset/route";
 import { PATCH as patchTransaction } from "../../app/api/transactions/[id]/route";
 import { GET as getTransactions } from "../../app/api/transactions/route";
 import { amountKeepingSign } from "../chat/money";
+import { parseAmount } from "../chat/validate-rows";
 import { confirmTransactions } from "../chat/transactions";
 import { loadHousehold } from "../chat/household";
 import { PDF_DISCLOSURE_KEY, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
@@ -96,6 +97,23 @@ test("date and bank copy", () => {
   assert.equal(amountKeepingSign("+12.50", -12.5), "+12.50");
   assert.equal(amountKeepingSign("-3", 20), "-3");
   assert.equal(amountKeepingSign("8", 20), "8");
+});
+
+test("comma decimals keep the row sign", () => {
+  assert.equal(amountKeepingSign("14,25", -12.5), "-14.25");
+  assert.equal(parseAmount(amountKeepingSign("14,25", -12.5)), -14.25);
+  assert.equal(amountKeepingSign("14,25", 80), "14.25");
+  assert.equal(parseAmount(amountKeepingSign("14,25", 80)), 14.25);
+  assert.equal(amountKeepingSign("12.50", -4), "-12.5");
+  assert.equal(amountKeepingSign("8", 20), "8");
+  assert.equal(amountKeepingSign("+14,25", -12.5), "+14.25");
+  assert.equal(parseAmount(amountKeepingSign("+14,25", -12.5)), 14.25);
+  assert.equal(amountKeepingSign("-3,5", 20), "-3.5");
+  assert.equal(parseAmount(amountKeepingSign("-3,5", 20)), -3.5);
+  assert.equal(amountKeepingSign("1.234,50", -10), "-1234.5");
+  assert.equal(parseAmount(amountKeepingSign("1.234,50", -10)), -1234.5);
+  assert.equal(amountKeepingSign("1,234.50", 10), "1234.5");
+  assert.equal(parseAmount(amountKeepingSign("1 234,50", -1)), -1234.5);
 });
 
 test("confirm drops banks that were not submitted", async () => {

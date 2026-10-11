@@ -31,6 +31,34 @@
   text-decoration: none;
 }
 
+.tracker-header-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 18px;
+  min-width: 0;
+}
+
+.tracker-new-chat {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tracker-new-chat:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
 .tracker-nav {
   display: flex;
   align-items: center;
@@ -161,6 +189,13 @@
   padding: 12px 16px;
   font-size: 14.5px;
   line-height: 1.4;
+}
+
+.tracker-statement {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.85;
 }
 
 .tracker-assistant,
@@ -442,6 +477,11 @@
   padding: 6px 8px 6px 12px;
   color: #5f5952;
   font-size: 13px;
+}
+
+.tracker-chip-note {
+  color: #8a5a12;
+  font-size: 12px;
 }
 
 .tracker-chip-remove {

@@ -1,9 +1,33 @@
 /**
+ * Turn a typed amount into a plain signed number string.
+ * Spaces are removed. A comma is the decimal mark (14,25). When both separators
+ * appear, the later one is the decimal mark (1.234,50 or 1,234.50).
+ */
+function normalizeAmountInput(input: string): string {
+  const compact = input.trim().replace(/[\s\u00a0\u202f]/g, "").replace(/^\u2212/, "-");
+  if (!compact) return "";
+  const sign = compact[0] === "+" || compact[0] === "-" ? compact[0] : "";
+  const body = sign ? compact.slice(1) : compact;
+  const lastComma = body.lastIndexOf(",");
+  const lastDot = body.lastIndexOf(".");
+  let digits = body;
+  if (lastComma >= 0 && lastDot >= 0) {
+    digits = lastComma > lastDot ? body.replace(/\./g, "").replace(",", ".") : body.replace(/,/g, "");
+  } else if (lastComma >= 0) {
+    const commas = body.match(/,/g)?.length ?? 0;
+    digits = commas > 1 ? body.replace(/,/g, "") : body.replace(",", ".");
+  } else if ((body.match(/\./g)?.length ?? 0) > 1) {
+    digits = body.replace(/\./g, "");
+  }
+  return sign + digits;
+}
+
+/**
  * An unsigned edit keeps the row's sign. A leading + or - is used as typed.
- * "12.50" on an expense stays negative. "+12.50" becomes income.
+ * "12.50" or "14,25" on an expense stays negative. "+12.50" becomes income.
  */
 export function amountKeepingSign(input: string, previous: number): string {
-  const trimmed = input.trim();
+  const trimmed = normalizeAmountInput(input);
   if (!trimmed || /^[+-]/.test(trimmed)) return trimmed;
   const value = Number(trimmed);
   if (!Number.isFinite(value)) return trimmed;

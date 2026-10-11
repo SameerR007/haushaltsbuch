@@ -102,9 +102,9 @@ No sample transactions are inserted. Confirm updates the currency and the submit
 
 The header is **Haushaltsbuch**, **Chat**, **Expenses**, **Insights ↗** (opens in a new window), and **Summary**. Insights and Summary are placeholders.
 
-**Expenses** lists every transaction, newest first, with the household currency in the subtitle. **Download as Excel** fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
+**Expenses** lists every transaction, newest first, with the household currency in the subtitle. **Download as Excel** fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign, including a comma decimal such as `14,25`. The amount field selects its current value on focus. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
 
-On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation.
+On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation. Switching tabs or reloading keeps that conversation in this browser (`haushaltsbuch.chat`). **New chat** appears once there is a message, an attached PDF, or a review card. It clears the stored conversation and brings the prompts back. It does not delete transactions already saved.
 
 The prompts are built from `haushaltsbuch.connection` (version 2): the first saved bank name, and the saved currency’s minor units for the sample amount `12.50`. The day is the 12th of the previous full month, and the month name comes from that date. If no bank is saved, the bank is left out of the first prompt.
 

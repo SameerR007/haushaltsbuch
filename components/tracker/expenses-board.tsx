@@ -434,6 +434,8 @@ function ExpenseRow({
               placeholder="12.50 keeps the sign"
               value={draft.amountInput}
               className={failed === "amount" ? "is-invalid" : undefined}
+              onFocus={(event) => event.currentTarget.select()}
+              onMouseUp={(event) => event.preventDefault()}
               onChange={(event) => updateDraft({ ...draftRef.current, amountInput: event.target.value })}
               onBlur={() => void persist("amount", draftRef.current)}
               onKeyDown={(event) => {
