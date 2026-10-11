@@ -30,6 +30,7 @@ import {
   EXPENSES_EMPTY_NOTE,
   keptCountLabel,
   removeWarning,
+  removedBankLine,
   savedBankLine,
   showExpensesDownload,
   sqliteSavedLine,
@@ -97,6 +98,7 @@ test("date and bank copy", () => {
   assert.match(removeWarning("ING", "IN", 0).body, /no transactions/);
   assert.equal(excelBackupLabel(3), "Excel file with all 3 expenses (.xlsx)");
   assert.equal(savedBankLine("N26", "N26"), "Saved N26 (N26). Add another bank?");
+  assert.equal(removedBankLine("Sparkasse", "SP"), "Removed Sparkasse (SP). Its transactions stay saved.");
   assert.equal(xlsxSavedLine(142), "haushaltsbuch-expenses.xlsx — 142 expenses");
   assert.equal(sqliteSavedLine(), "haushaltsbuch.sqlite — raw database");
   assert.equal(amountKeepingSign("12.50", -12.5), "-12.5");
@@ -125,16 +127,25 @@ test("comma decimals keep the row sign", () => {
 test("tracker nav order, Open tracker, and the empty expenses state", () => {
   assert.deepEqual(
     TRACKER_NAV.map((item) => item.label),
-    ["Expenses", "Chat", "Summary", "Insights ↗"],
+    ["Home", "Expenses", "Chat", "Summary", "Insights ↗"],
   );
+  assert.equal(TRACKER_NAV[0]?.href, "/");
   assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.external, true);
   assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.href, "/app/insights");
   assert.equal(TRACKER_HOME, "/app/expenses");
-  assert.equal(TRACKER_NAV[0]?.href, TRACKER_HOME);
-  assert.equal(isTrackerNavActive("/app", TRACKER_NAV[1]!), true);
-  assert.equal(isTrackerNavActive("/app/expenses", TRACKER_NAV[1]!), false);
-  assert.equal(isTrackerNavActive("/app/expenses", TRACKER_NAV[0]!), true);
-  assert.equal(isTrackerNavActive("/app", TRACKER_NAV[0]!), false);
+  assert.equal(TRACKER_NAV[1]?.href, TRACKER_HOME);
+  const home = TRACKER_NAV[0]!;
+  const expenses = TRACKER_NAV[1]!;
+  const chat = TRACKER_NAV[2]!;
+  assert.equal(isTrackerNavActive("/", home), true);
+  assert.equal(isTrackerNavActive("/app", home), false);
+  assert.equal(isTrackerNavActive("/app/expenses", home), false);
+  assert.equal(isTrackerNavActive("/app/summary", home), false);
+  assert.equal(isTrackerNavActive("/app/insights", home), false);
+  assert.equal(isTrackerNavActive("/app", chat), true);
+  assert.equal(isTrackerNavActive("/app/expenses", chat), false);
+  assert.equal(isTrackerNavActive("/app/expenses", expenses), true);
+  assert.equal(isTrackerNavActive("/app", expenses), false);
   assert.equal(
     EXPENSES_EMPTY_LEAD,
     "Here you will see all your expenses once you have added some. Go to Chat to add your first expense, or import a bank statement PDF.",
@@ -151,6 +162,26 @@ test("tracker nav order, Open tracker, and the empty expenses state", () => {
     assert.equal(source.includes("TRACKER_HOME"), true, file);
     assert.equal(source.includes('href="/app"'), false, file);
   }
+
+  const banks = readFileSync("components/data/bank-manager.tsx", "utf8");
+  const addAt = banks.indexOf("Add a bank");
+  const doneAt = banks.indexOf('className="data-done"');
+  assert.ok(addAt > 0 && doneAt > addAt);
+  assert.match(banks, /className="data-primary" href=\{changed \? "\/data\?updated=1" : "\/data"\}/);
+  assert.match(banks, /Done/);
+  assert.match(banks, /removedBankLine/);
+  assert.match(banks, /That’s all/);
+  assert.match(banks, /href="\/data\?updated=1"/);
+  const chrome = readFileSync("components/data/data-chrome.tsx", "utf8");
+  assert.match(chrome, /← Back/);
+  const yours = readFileSync("components/data/your-data.tsx", "utf8");
+  assert.match(yours, /className="data-primary"/);
+  assert.match(yours, /Back to welcome/);
+  const reset = readFileSync("components/data/start-over.tsx", "utf8");
+  assert.match(reset, /Download backup/);
+  assert.match(reset, /Back to your data/);
+  assert.match(reset, /Keep my data/);
+  assert.equal(reset.includes(">Cancel<"), false);
 });
 
 test("confirm drops banks that were not submitted", async () => {

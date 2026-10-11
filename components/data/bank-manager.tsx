@@ -1,9 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { rememberActiveBanks } from "@/lib/connection";
-import { keptCountLabel, removeWarning, savedBankLine, transactionCountLabel } from "@/lib/data/copy";
+import { keptCountLabel, removeWarning, removedBankLine, savedBankLine, transactionCountLabel } from "@/lib/data/copy";
 import { parseHousehold } from "@/lib/data/parse";
 import type { BankView, HouseholdView } from "@/lib/data/types";
 import { suggestInitials } from "@/lib/setup/chat-logic";
@@ -42,7 +42,6 @@ async function postJson(path: string, body: object): Promise<{ ok: boolean; erro
 }
 
 export function BankManager() {
-  const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [household, setHousehold] = useState<HouseholdView | null>(null);
   const [error, setError] = useState("");
@@ -53,6 +52,8 @@ export function BankManager() {
   const [initialsTouched, setInitialsTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedLine, setSavedLine] = useState("");
+  const [removedLine, setRemovedLine] = useState("");
+  const [changed, setChanged] = useState(false);
 
   async function load() {
     const response = await fetch("/api/household");
@@ -96,7 +97,9 @@ export function BankManager() {
         setError(result.error ?? "Could not remove that bank.");
         return;
       }
+      setRemovedLine(removedBankLine(pendingRemove.name, pendingRemove.initials));
       setPendingRemove(null);
+      setChanged(true);
       await load();
     } catch {
       setError("Could not remove that bank.");
@@ -113,6 +116,7 @@ export function BankManager() {
         setError(result.error ?? "Could not add that bank back.");
         return;
       }
+      setChanged(true);
       await load();
     } catch {
       setError("Could not add that bank back.");
@@ -137,6 +141,7 @@ export function BankManager() {
       setName("");
       setInitials("");
       setInitialsTouched(false);
+      setChanged(true);
       await load();
     } catch {
       setError("Could not add that bank.");
@@ -174,6 +179,11 @@ export function BankManager() {
           </div>
         ))}
         {lastBank ? <p className="bank-keep">Keep at least one bank.</p> : null}
+        {removedLine ? (
+          <p className="data-notice" role="status">
+            {removedLine}
+          </p>
+        ) : null}
       </section>
 
       {removed.length > 0 ? (
@@ -201,9 +211,9 @@ export function BankManager() {
               <button type="button" className="data-chip primary" onClick={addAnother}>
                 Add another bank
               </button>
-              <button type="button" className="data-chip" onClick={() => router.push("/data?updated=1")}>
+              <Link className="data-chip" href="/data?updated=1">
                 {THATS_ALL}
-              </button>
+              </Link>
             </div>
           </div>
         ) : (
@@ -247,6 +257,12 @@ export function BankManager() {
           {error}
         </p>
       ) : null}
+
+      <div className="data-done">
+        <Link className="data-primary" href={changed ? "/data?updated=1" : "/data"}>
+          Done
+        </Link>
+      </div>
 
       <dialog className="data-dialog" ref={dialogRef} onClose={() => setPendingRemove(null)}>
         {warning ? (
