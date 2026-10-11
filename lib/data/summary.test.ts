@@ -91,6 +91,10 @@ test("summary ranges use exact months and the same length otherwise", () => {
   assert.equal(changePercent(114.3, 1298.3), 8.8);
   assert.equal(SUMMARY_EMPTY.includes("today"), false);
   assert.equal(/this month/i.test(summaryEmptyRange("1st September 2026 – 30th September 2026")), false);
+  assert.equal(
+    summaryEmptyRange(plainRangeLabel("2025-03-01", "2025-03-31")),
+    "No expenses in 1 March 2025 – 31 March 2025 yet",
+  );
   assert.match(summaryOpensOn("1st September 2026 – 30th September 2026"), /^Opens on the latest month that has data: /);
   assert.match(summaryAmountsNote("euro (€)"), /^Amounts in /);
 });
@@ -235,12 +239,17 @@ test("summary route stays read-only and has no bank breakdown", () => {
   assert.equal(page.includes('openPicker("toolbar-start")'), true);
   assert.equal(page.includes("formatRowDate(summary."), false);
   assert.equal(page.includes("plainRangeLabel(summary.latestFrom"), true);
+  assert.equal(page.includes("summaryEmptyRange(plainRangeLabel("), true);
+  assert.equal(page.includes("summaryEmptyRange(rangeLabel("), false);
   assert.equal(page.includes("formatRowDate(row.date)"), true);
   assert.equal(page.includes("formatSummaryMoney"), true);
   assert.match(css, /\.summary-date-wrap \{[^}]*position:\s*relative/);
   assert.match(css, /\.summary-date-wrap \.summary-calendar \{[^}]*position:\s*absolute/);
   assert.match(css, /\.summary-lines li > div,\s*\.summary-lines a \{[^}]*min-width:\s*0/);
   assert.match(css, /\.summary-line-amount \{[^}]*white-space:\s*nowrap/);
+  assert.match(css, /\.summary-legend-name \{[^}]*overflow-wrap:\s*break-word/);
+  assert.equal(/\.summary-legend-name \{[^}]*overflow-wrap:\s*anywhere/.test(css), false);
+  assert.match(css, /\.summary-card-amount \{[^}]*clamp\(16px, 8\.2cqi, 28px\)/);
   assert.match(css, /\.summary-card-amount\.is-expense \{[^}]*color:\s*var\(--ink\)/);
   assert.match(css, /\.summary-card-amount\.is-net \{[^}]*color:\s*var\(--teal\)/);
   assert.equal(/\.summary-card-amount\.is-expense \{[^}]*#9f2d22/.test(css), false);

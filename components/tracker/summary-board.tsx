@@ -24,7 +24,6 @@ import {
   monthYearLabel,
   previousPeriod,
   plainRangeLabel,
-  rangeLabel,
   recentMonthRanges,
   sharePercent,
   wholeYearLabel,
@@ -294,7 +293,7 @@ export function SummaryBoard() {
 
       {summary && hasRange && !hasRows ? (
         <div className="summary-empty">
-          <p>{summary.from && summary.to ? summaryEmptyRange(rangeLabel(summary.from, summary.to)) : SUMMARY_EMPTY}</p>
+          <p>{summary.from && summary.to ? summaryEmptyRange(plainRangeLabel(summary.from, summary.to)) : SUMMARY_EMPTY}</p>
           <Link className="expenses-go-chat" href="/app">
             {SUMMARY_GO_CHAT}
           </Link>

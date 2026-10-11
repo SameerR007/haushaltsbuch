@@ -110,7 +110,7 @@ export function rangeLabel(from: string, to: string): string {
   return `${formatRowDate(from)} – ${formatRowDate(to)}`;
 }
 
-/** Picker fields and the "Opens on…" line. Lists keep rangeLabel. */
+/** Picker fields, the "Opens on…" line, and the empty-range message. Lists keep rangeLabel. */
 export function plainRangeLabel(from: string, to: string): string {
   return `${formatPlainDate(from)} – ${formatPlainDate(to)}`;
 }

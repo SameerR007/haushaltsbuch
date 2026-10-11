@@ -1057,15 +1057,26 @@
   text-transform: uppercase;
 }
 
+.summary-card {
+  container-type: inline-size;
+}
+
 .summary-card-amount {
   margin: 6px 0 4px;
-  font-size: 28px;
+  max-width: 100%;
+  min-width: 0;
+  font-size: clamp(16px, 8.2cqi, 28px);
   font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 .summary-card-delta {
   margin: 0;
+  max-width: 100%;
+  min-width: 0;
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .summary-card-amount.is-income,
@@ -1170,7 +1181,8 @@
 
 .summary-legend-name {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .summary-swatch {
