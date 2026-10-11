@@ -10,8 +10,21 @@ import { POST as postChat } from "../../app/api/chat/route";
 import { POST as postPdf } from "../../app/api/import/pdf/route";
 import { POST as postConfirm } from "../../app/api/transactions/confirm/route";
 import { POST as postUndo } from "../../app/api/transactions/undo/route";
-import { confirmLabel, PDF_DISCLOSURE, reviewIntro } from "./copy";
+import { confirmLabel, NEW_CHAT_CONFIRM, PDF_DISCLOSURE, reviewIntro } from "./copy";
+import {
+  CHAT_RESET_EVENT,
+  CHAT_STORAGE_KEY,
+  buildStoredChat,
+  clearStoredChat,
+  needsNewChatConfirm,
+  parseStoredChat,
+  readStoredChat,
+  requestNewChat,
+  showNewChatButton,
+  writeStoredChat,
+} from "./persist";
 import { formatMoney, formatRowDate } from "./money";
+import { MODEL_TURN_LIMIT, recentModelTurns } from "./prompts";
 import {
   CHAT_MODEL,
   CHAT_REASONING_EFFORT,
@@ -788,6 +801,296 @@ test("saving setup clears the PDF disclosure", () => {
   } finally {
     Object.assign(globalThis, { localStorage: previousStorage, document: previousDocument });
   }
+});
+
+test("chat storage keeps the transcript and not the key or a PDF", () => {
+  const row = {
+    date: "2026-09-12",
+    dateInput: "2026-09-12",
+    description: "Groceries",
+    category: "grocery",
+    bank: "ING",
+    bankInitials: "IN",
+    amount: -12.5,
+    amountInput: "-12.5",
+    flags: [],
+    duplicateOf: null,
+    duplicateKey: null,
+  };
+  const stored = buildStoredChat({
+    promptsUsed: false,
+    items: [
+      { id: 1, kind: "user", text: "coffee 3,50", statementName: "october.pdf" },
+      { id: 2, kind: "status", text: "Working…" },
+      { id: 3, kind: "assistant", text: "Nothing is saved yet." },
+      {
+        id: 4,
+        kind: "proposal",
+        phase: "review",
+        busy: true,
+        error: "",
+        proposal: Object.assign(
+          {
+            sourceName: "october.pdf",
+            currency: "EUR",
+            categories: ["grocery"],
+            banks: [{ name: "ING", initials: "IN" }],
+            rows: [row],
+          },
+          { apiKey: "sk-should-not-stick", bytes: "%PDF-1.4" },
+        ),
+      },
+      {
+        id: 5,
+        kind: "proposal",
+        phase: "saved",
+        busy: false,
+        error: "",
+        savedIds: [9],
+        batchId: "batch-1",
+        proposal: {
+          sourceName: null,
+          currency: "EUR",
+          categories: ["grocery"],
+          banks: [{ name: "ING", initials: "IN" }],
+          rows: [row],
+        },
+      },
+    ],
+    attachment: {
+      name: "statement.pdf",
+      size: 1200,
+      pages: 2,
+      file: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]),
+    },
+  });
+  const json = JSON.stringify(stored);
+  assert.equal(json.includes("sk-should-not-stick"), false);
+  assert.equal(json.includes("%PDF"), false);
+  assert.equal(json.includes("Working"), false);
+  assert.equal(stored.promptsUsed, true);
+  assert.deepEqual(
+    stored.items.map((item) => item.kind),
+    ["user", "assistant", "proposal", "proposal"],
+  );
+  const review = stored.items.find((item) => item.kind === "proposal" && item.phase === "review");
+  assert.ok(review && review.kind === "proposal");
+  assert.equal("busy" in review, false);
+  assert.deepEqual(rowsToSave(review.proposal.rows).map((entry) => entry.amount), [-12.5]);
+  const saved = stored.items.find((item) => item.kind === "proposal" && item.phase === "saved");
+  assert.ok(saved && saved.kind === "proposal");
+  assert.deepEqual(saved.savedIds, [9]);
+  assert.equal(saved.batchId, "batch-1");
+  assert.deepEqual(stored.attachment, { name: "statement.pdf", size: 1200, pages: 2 });
+
+  const roundTrip = parseStoredChat(json);
+  assert.deepEqual(roundTrip, stored);
+  assert.equal(parseStoredChat("{"), null);
+  assert.equal(parseStoredChat("x".repeat(400_001)), null);
+  assert.equal(parseStoredChat(JSON.stringify({ v: 2, items: [] })), null);
+
+  assert.equal(showNewChatButton(null), false);
+  assert.equal(showNewChatButton({ v: 1, promptsUsed: true, items: [], attachment: null }), false);
+  assert.equal(showNewChatButton({ v: 1, promptsUsed: false, items: [], attachment: stored.attachment }), true);
+  assert.equal(
+    showNewChatButton({
+      v: 1,
+      promptsUsed: false,
+      items: [{ id: 1, kind: "user", text: "hi" }],
+      attachment: null,
+    }),
+    true,
+  );
+  assert.equal(
+    showNewChatButton({
+      v: 1,
+      promptsUsed: false,
+      items: [{ id: 1, kind: "assistant", text: "hi" }],
+      attachment: null,
+    }),
+    true,
+  );
+  assert.equal(showNewChatButton(stored), true);
+  const reviewCard = stored.items.find((item) => item.kind === "proposal" && item.phase === "review");
+  const savedCard = stored.items.find((item) => item.kind === "proposal" && item.phase === "saved");
+  if (reviewCard?.kind !== "proposal" || savedCard?.kind !== "proposal") {
+    throw new Error("expected review and saved cards");
+  }
+  assert.equal(
+    needsNewChatConfirm({ v: 1, promptsUsed: true, items: [reviewCard], attachment: null }),
+    true,
+  );
+  assert.equal(
+    needsNewChatConfirm({ v: 1, promptsUsed: true, items: [{ ...reviewCard, phase: "edit" }], attachment: null }),
+    true,
+  );
+  assert.equal(
+    needsNewChatConfirm({ v: 1, promptsUsed: true, items: [savedCard], attachment: null }),
+    false,
+  );
+  assert.equal(
+    needsNewChatConfirm({
+      v: 1,
+      promptsUsed: true,
+      items: [{ ...reviewCard, phase: "undone" }, { ...reviewCard, phase: "cancelled" }],
+      attachment: null,
+    }),
+    false,
+  );
+  assert.equal(NEW_CHAT_CONFIRM.includes("not saved"), true);
+
+  const store = new Map<string, string>();
+  const previousStorage = globalThis.localStorage;
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  const events: string[] = [];
+  let fetches = 0;
+  Object.assign(globalThis, {
+    localStorage: {
+      setItem: (key: string, value: string) => store.set(key, value),
+      getItem: (key: string) => store.get(key) ?? null,
+      removeItem: (key: string) => store.delete(key),
+    },
+    window: {
+      dispatchEvent(event: Event) {
+        events.push(event.type);
+        return true;
+      },
+    },
+    fetch: () => {
+      fetches += 1;
+      return Promise.reject(new Error("restore must not call the network"));
+    },
+  });
+  try {
+    writeStoredChat(stored);
+    assert.equal(fetches, 0);
+    assert.deepEqual(readStoredChat(), stored);
+    assert.equal(store.has("haushaltsbuch.connection"), false);
+    clearStoredChat();
+    assert.equal(store.has(CHAT_STORAGE_KEY), false);
+    assert.equal(readStoredChat(), null);
+    writeStoredChat(stored);
+    events.length = 0;
+    requestNewChat();
+    assert.equal(store.has(CHAT_STORAGE_KEY), false);
+    assert.equal(events.includes(CHAT_RESET_EVENT), true);
+    assert.equal(fetches, 0);
+  } finally {
+    Object.assign(globalThis, {
+      localStorage: previousStorage,
+      window: previousWindow,
+      fetch: previousFetch,
+    });
+  }
+});
+
+test("stored chat keeps the latest 60 items and replaces an oversized copy", () => {
+  const many = Array.from({ length: 65 }, (_, index) => ({
+    id: index + 1,
+    kind: "user" as const,
+    text: `message ${index + 1}`,
+  }));
+  const built = buildStoredChat({ promptsUsed: true, items: many, attachment: null });
+  assert.equal(built.items.length, 60);
+  const oldest = built.items[0];
+  const newest = built.items.at(-1);
+  if (oldest?.kind !== "user" || newest?.kind !== "user") throw new Error("expected user rows");
+  assert.equal(oldest.text, "message 6");
+  assert.equal(newest.text, "message 65");
+  const parsed = parseStoredChat(JSON.stringify({ v: 1, promptsUsed: true, items: many, attachment: null }));
+  const parsedNewest = parsed?.items.at(-1);
+  assert.equal(parsed?.items.length, 60);
+  if (parsedNewest?.kind !== "user") throw new Error("expected the latest user row");
+  assert.equal(parsedNewest.text, "message 65");
+  const savedAtEnd = buildStoredChat({
+    promptsUsed: true,
+    items: [
+      ...many.slice(0, 64),
+      {
+        id: 70,
+        kind: "proposal" as const,
+        phase: "saved" as const,
+        error: "",
+        savedIds: [3],
+        batchId: "batch-9",
+        proposal: {
+          sourceName: null,
+          currency: "EUR",
+          categories: ["grocery"],
+          banks: [{ name: "ING", initials: "IN" }],
+          rows: [
+            {
+              date: "2026-09-12",
+              dateInput: "2026-09-12",
+              description: "Groceries",
+              category: "grocery",
+              bank: "ING",
+              bankInitials: "IN",
+              amount: -12.5,
+              amountInput: "-12.5",
+              flags: [],
+              duplicateOf: null,
+              duplicateKey: null,
+            },
+          ],
+        },
+      },
+    ],
+    attachment: null,
+  });
+  const kept = savedAtEnd.items.at(-1);
+  assert.equal(kept?.kind, "proposal");
+  if (kept?.kind === "proposal") assert.equal(kept.phase, "saved");
+
+  const heavy = buildStoredChat({
+    promptsUsed: true,
+    items: Array.from({ length: 60 }, (_, index) => ({
+      id: index + 1,
+      kind: "user" as const,
+      text: `${index + 1} ${"x".repeat(8000)}`,
+    })),
+    attachment: null,
+  });
+  assert.ok(JSON.stringify(heavy).length > 400_000);
+  const store = new Map<string, string>();
+  const previousStorage = globalThis.localStorage;
+  const previousWindow = globalThis.window;
+  Object.assign(globalThis, {
+    localStorage: {
+      setItem: (key: string, value: string) => store.set(key, value),
+      getItem: (key: string) => store.get(key) ?? null,
+      removeItem: (key: string) => store.delete(key),
+    },
+    window: { dispatchEvent: () => true },
+  });
+  try {
+    store.set(CHAT_STORAGE_KEY, "STALE");
+    writeStoredChat(heavy);
+    const raw = store.get(CHAT_STORAGE_KEY) ?? "";
+    assert.notEqual(raw, "STALE");
+    assert.ok(raw.length <= 400_000);
+    const back = parseStoredChat(raw);
+    assert.ok(back);
+    assert.ok(back.items.length > 0);
+    assert.ok(back.items.length < 60);
+    const last = back.items.at(-1);
+    const first = back.items[0];
+    if (last?.kind !== "user" || first?.kind !== "user") throw new Error("expected user rows");
+    assert.equal(Number(last.text.slice(0, last.text.indexOf(" "))), 60);
+    assert.ok(Number(first.text.slice(0, first.text.indexOf(" "))) > 1);
+  } finally {
+    Object.assign(globalThis, { localStorage: previousStorage, window: previousWindow });
+  }
+
+  const turns = recentModelTurns(Array.from({ length: 25 }, (_, index) => index));
+  assert.equal(turns.length, MODEL_TURN_LIMIT);
+  assert.deepEqual(turns, Array.from({ length: 20 }, (_, index) => index + 5));
+  const header = readFileSync("components/tracker/header.tsx", "utf8");
+  assert.match(header, /needsNewChatConfirm/);
+  assert.match(header, /window\.confirm\(NEW_CHAT_CONFIRM\)/);
+  const chatRoute = readFileSync("app/api/chat/route.ts", "utf8");
+  assert.match(chatRoute, /MODEL_TURN_LIMIT/);
 });
 
 test("copy matches the tracker and example tags are absent", () => {

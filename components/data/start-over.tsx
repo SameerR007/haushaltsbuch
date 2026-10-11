@@ -158,7 +158,7 @@ export function StartOver() {
         <>
           {downloaded.length > 0 ? (
             <>
-              <p className="data-lead">Backup saved.</p>
+              <p className="data-lead is-strong">Backup saved.</p>
               <ul className="data-files">
                 {downloaded.map((name) => (
                   <li key={name}>✓ {name}</li>

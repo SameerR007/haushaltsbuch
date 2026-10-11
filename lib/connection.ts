@@ -9,6 +9,8 @@
  * The OpenAI key stays in this browser. The database path is not stored.
  * A non-JSON marker such as `"1"` still counts as returning on the landing page.
  */
+import { clearStoredChat } from "./chat/persist";
+
 export const CONNECTION_STORAGE_KEY = "haushaltsbuch.connection";
 
 /**
@@ -125,13 +127,14 @@ export function rememberActiveBanks(input: {
   return true;
 }
 
-/** Drop the browser connection only after the server has confirmed a full reset. */
+/** Drop the browser connection and chat only after the server has confirmed a full reset. */
 export function clearConnection(): void {
   const storage = globalThis.localStorage;
   if (storage) {
     storage.removeItem(CONNECTION_STORAGE_KEY);
     storage.removeItem(PDF_DISCLOSURE_KEY);
   }
+  clearStoredChat();
   const root = globalThis.document?.documentElement;
   if (root?.dataset) delete root.dataset.visit;
 }

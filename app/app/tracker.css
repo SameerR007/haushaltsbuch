@@ -31,6 +31,34 @@
   text-decoration: none;
 }
 
+.tracker-header-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 18px;
+  min-width: 0;
+}
+
+.tracker-new-chat {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tracker-new-chat:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
 .tracker-nav {
   display: flex;
   align-items: center;
@@ -161,6 +189,13 @@
   padding: 12px 16px;
   font-size: 14.5px;
   line-height: 1.4;
+}
+
+.tracker-statement {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.85;
 }
 
 .tracker-assistant,
@@ -444,6 +479,11 @@
   font-size: 13px;
 }
 
+.tracker-chip-note {
+  color: #8a5a12;
+  font-size: 12px;
+}
+
 .tracker-chip-remove {
   border: none;
   background: transparent;
@@ -594,6 +634,51 @@
   margin: 0;
   color: #9f2d22;
   font-size: 13px;
+}
+
+.expenses-empty {
+  min-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 16px 48px;
+}
+
+.expenses-empty-lead,
+.expenses-empty-note {
+  margin: 0;
+  max-width: 48ch;
+  line-height: 1.5;
+}
+
+.expenses-empty-lead {
+  color: var(--ink);
+  font-size: 16.5px;
+}
+
+.expenses-empty-note {
+  margin-top: 10px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.expenses-go-chat {
+  display: inline-flex;
+  align-items: center;
+  background: var(--teal);
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.expenses-go-chat:hover {
+  background: var(--teal-deep);
 }
 
 .amount-edit {

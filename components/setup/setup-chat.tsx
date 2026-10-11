@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TRACKER_HOME } from "@/components/tracker/nav";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   readConnection,
@@ -663,7 +664,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         <div>
           <p>You’re set. The welcome screen will show Open tracker.</p>
           <div className="setup-chips">
-            <Link className="setup-chip primary" href="/app">
+            <Link className="setup-chip primary" href={TRACKER_HOME}>
               Open tracker
             </Link>
             <Link className="setup-chip" href="/">
@@ -723,7 +724,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
             <li>OpenAI key · saved in this browser</li>
           </ul>
           <div className="setup-chips">
-            <Link className="setup-chip primary" href="/app">
+            <Link className="setup-chip primary" href={TRACKER_HOME}>
               Open tracker
             </Link>
             <button type="button" className="setup-chip" onClick={startChangeKeys}>

@@ -1,6 +1,6 @@
 import { loadHousehold } from "@/lib/chat/household";
 import { OpenAiError, runChatTurn } from "@/lib/chat/openai";
-import { householdInstructions, todayIso } from "@/lib/chat/prompts";
+import { householdInstructions, MODEL_TURN_LIMIT, todayIso } from "@/lib/chat/prompts";
 import { executeReadOnlyQuery } from "@/lib/chat/sql-guard";
 import type { ChatTurn, Proposal } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
@@ -18,9 +18,9 @@ function invalid(error: string): Response {
 }
 
 function parseMessages(value: unknown): ChatTurn[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 40) return null;
+  if (!Array.isArray(value) || value.length === 0) return null;
   const messages: ChatTurn[] = [];
-  for (const item of value) {
+  for (const item of value.slice(-MODEL_TURN_LIMIT)) {
     if (typeof item !== "object" || item === null) return null;
     const record = item as { role?: unknown; content?: unknown };
     if (record.role !== "user" && record.role !== "assistant") return null;
