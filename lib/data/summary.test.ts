@@ -7,6 +7,20 @@ import { GET } from "../../app/api/summary/route";
 import { closeDb, ensureMigrated, saveHousehold } from "../db";
 import { SUMMARY_EMPTY, summaryAmountsNote, summaryEmptyRange, summaryOpensOn } from "./copy";
 import {
+  applySingleDate,
+  clearSummaryView,
+  clickRangeDay,
+  compareSearch,
+  initialCompare,
+  moveCalendarDay,
+  openRangeDraft,
+  periodSearch,
+  previewRange,
+  readSummaryView,
+  SUMMARY_STORAGE_KEY,
+  writeSummaryView,
+} from "./summary-state";
+import {
   categoryComparison,
   changePercent,
   isWholeMonth,
@@ -95,7 +109,10 @@ test("summary ranges use exact months and the same length otherwise", () => {
     summaryEmptyRange(plainRangeLabel("2025-03-01", "2025-03-31")),
     "No expenses in 1 March 2025 – 31 March 2025 yet",
   );
-  assert.match(summaryOpensOn("1st September 2026 – 30th September 2026"), /^Opens on the latest month that has data: /);
+  assert.equal(
+    summaryOpensOn("1 September 2026 – 30 September 2026"),
+    "Opens on the latest month that has data. Showing 1 September 2026 – 30 September 2026",
+  );
   assert.match(summaryAmountsNote("euro (€)"), /^Amounts in /);
 });
 
@@ -105,18 +122,18 @@ test("summary totals keep the sign, include a removed bank, and default to the l
     const loaded = await getSummary();
     assert.equal(loaded.status, 200);
     assert.equal(loaded.body.ok, true);
+    assert.equal(loaded.body.scope, "period");
     assert.equal(loaded.body.from, "2026-09-01");
     assert.equal(loaded.body.to, "2026-09-30");
-    assert.equal(loaded.body.compareFrom, "2026-08-01");
-    assert.equal(loaded.body.compareTo, "2026-08-31");
+    assert.equal("compareFrom" in loaded.body, false);
+    assert.equal("compareIncome" in loaded.body, false);
     assert.equal(loaded.body.latestFrom, "2026-09-01");
     assert.equal(loaded.body.latestTo, "2026-09-30");
     assert.equal(loaded.body.income, 2910);
     assert.equal(loaded.body.expenses, -1412.6);
     assert.equal(loaded.body.net, 1497.4);
-    assert.equal(loaded.body.compareIncome, 2850);
-    assert.equal(loaded.body.compareExpenses, -1298.3);
-    assert.equal(loaded.body.compareNet, 1551.7);
+    assert.equal(loaded.body.incomeCount, 2);
+    assert.equal(loaded.body.expenseCount, 7);
     const categories = loaded.body.categories as { category: string; amount: number }[];
     assert.deepEqual(
       categories.map((row) => row.category),
@@ -137,7 +154,16 @@ test("summary totals keep the sign, include a removed bank, and default to the l
       [-850, -162, -118.5, -85, -74.2],
     );
     assert.equal(largest[0]?.notes, "City Landlord");
-    const compared = categoryComparison(categories, loaded.body.compareCategories as { category: string; amount: number }[]);
+    const comparedResponse = await getSummary(
+      "?scope=compare&from=2026-09-01&to=2026-09-30&compareFrom=2026-08-01&compareTo=2026-08-31",
+    );
+    assert.equal(comparedResponse.body.compareIncome, 2850);
+    assert.equal(comparedResponse.body.compareExpenses, -1298.3);
+    assert.equal(comparedResponse.body.compareNet, 1551.7);
+    const compared = categoryComparison(
+      categories,
+      comparedResponse.body.compareCategories as { category: string; amount: number }[],
+    );
     const grocery = compared.find((row) => row.category === "grocery");
     assert.equal(grocery?.periodA, -236.2);
     assert.equal(grocery?.periodB, -205.1);
@@ -148,6 +174,9 @@ test("summary totals keep the sign, include a removed bank, and default to the l
     assert.equal(july.body.income, 0);
     assert.equal(july.body.expenses, 0);
     assert.equal(july.body.net, 0);
+    assert.equal(july.body.incomeCount, 0);
+    assert.equal(july.body.expenseCount, 0);
+    assert.equal("compareIncome" in july.body, false);
     assert.deepEqual(july.body.incomeRows, []);
     assert.deepEqual(july.body.largest, []);
     assert.deepEqual(july.body.categories, []);
@@ -182,6 +211,8 @@ test("summary rejects a reversed range and classifies by the amount sign", async
     assert.equal(incomeRows[0]?.notes, "Refund");
     assert.equal(expenseCategories.find((row) => row.category === "grocery")?.amount, -40);
     assert.equal(expenseCategories.find((row) => row.category === "salary")?.amount, -10);
+    assert.equal(june.body.incomeCount, 1);
+    assert.equal(june.body.expenseCount, 2);
   });
 });
 
@@ -219,6 +250,98 @@ test("an empty household has no default month", async () => {
   });
 });
 
+test("one period and compare stay on separate requests", async () => {
+  const september = { from: "2026-09-01", to: "2026-09-30" };
+  const august = { from: "2026-08-01", to: "2026-08-31" };
+  const july = { from: "2026-07-01", to: "2026-07-31" };
+  const period = periodSearch(september);
+  assert.equal(period.includes("compareFrom"), false);
+  assert.equal(periodSearch(september), period);
+  const compare = compareSearch({ a: september, b: august });
+  const shifted = compareSearch({ a: september, b: july });
+  assert.notEqual(compare, shifted);
+  assert.equal(periodSearch(september), period);
+  assert.equal(initialCompare(september)?.b.from, "2026-08-01");
+
+  const saved = september;
+  const opened = openRangeDraft(saved.from);
+  const first = clickRangeDay(opened, "2026-09-14");
+  assert.equal(first.kind, "draft");
+  if (first.kind !== "draft") return;
+  assert.equal(first.draft.step, "end");
+  assert.equal(first.draft.start, "2026-09-14");
+  const clickedEnd = clickRangeDay(first.draft, "2026-09-30");
+  assert.deepEqual(clickedEnd, { kind: "commit", range: { from: "2026-09-14", to: "2026-09-30" } });
+  const alreadySelected = clickRangeDay(openRangeDraft(saved.to), saved.to);
+  assert.equal(alreadySelected.kind, "draft");
+  if (alreadySelected.kind !== "draft") return;
+  const reclick = clickRangeDay(alreadySelected.draft, saved.to);
+  assert.equal(reclick.kind, "commit");
+  const swapped = clickRangeDay(first.draft, "2026-09-01");
+  assert.deepEqual(swapped, { kind: "commit", range: { from: "2026-09-01", to: "2026-09-14" } });
+  assert.deepEqual(previewRange(saved, first.draft, "2026-09-23"), { from: "2026-09-14", to: "2026-09-23" });
+  assert.deepEqual(applySingleDate(saved, "to", "2026-09-30"), saved);
+  assert.deepEqual(applySingleDate(saved, "from", "2026-10-02"), { from: "2026-09-30", to: "2026-10-02" });
+  assert.equal(moveCalendarDay("2026-09-14", "ArrowRight"), "2026-09-15");
+  assert.equal(moveCalendarDay("2026-09-14", "ArrowDown"), "2026-09-21");
+
+  await withTempDb(async () => {
+    seed();
+    const alone = await getSummary(`?${period}`);
+    assert.equal(alone.body.income, 2910);
+    assert.equal("compareIncome" in alone.body, false);
+    const other = await getSummary(`?${shifted}`);
+    assert.equal(other.status, 200);
+    assert.equal(other.body.scope, "compare");
+    assert.equal(other.body.compareIncome, 0);
+    assert.equal("incomeRows" in other.body, false);
+    assert.equal("largest" in other.body, false);
+    const again = await getSummary(`?${period}`);
+    assert.equal(again.body.income, 2910);
+    assert.equal(again.body.from, "2026-09-01");
+    const paired = await getSummary(`?${compare}`);
+    assert.equal(paired.body.compareIncome, 2850);
+    assert.equal(paired.body.income, 2910);
+    const ignored = await getSummary(`?${period}&compareFrom=2026-01-01&compareTo=2026-01-31`);
+    assert.equal(ignored.body.income, 2910);
+    assert.equal("compareFrom" in ignored.body, false);
+  });
+});
+
+test("summary dates persist in this browser and clear on a full reset", () => {
+  const store = new Map<string, string>();
+  const previousStorage = globalThis.localStorage;
+  Object.assign(globalThis, {
+    localStorage: {
+      setItem: (key: string, value: string) => store.set(key, value),
+      getItem: (key: string) => store.get(key) ?? null,
+      removeItem: (key: string) => store.delete(key),
+    },
+  });
+  try {
+    writeSummaryView({
+      v: 1,
+      mode: "compare",
+      one: { from: "2026-09-01", to: "2026-09-30" },
+      compare: {
+        a: { from: "2026-09-01", to: "2026-09-30" },
+        b: { from: "2026-07-01", to: "2026-07-31" },
+      },
+    });
+    const stored = readSummaryView();
+    assert.equal(stored.mode, "compare");
+    assert.equal(stored.one?.from, "2026-09-01");
+    assert.equal(stored.compare?.b.from, "2026-07-01");
+    assert.equal(periodSearch(stored.one), periodSearch({ from: "2026-09-01", to: "2026-09-30" }));
+    clearSummaryView();
+    assert.equal(store.has(SUMMARY_STORAGE_KEY), false);
+    assert.equal(readSummaryView().mode, "one");
+    assert.equal(readSummaryView().compare, null);
+  } finally {
+    Object.assign(globalThis, { localStorage: previousStorage });
+  }
+});
+
 test("summary route stays read-only and has no bank breakdown", () => {
   const route = readFileSync("app/api/summary/route.ts", "utf8");
   const query = readFileSync("lib/data/summary.ts", "utf8");
@@ -231,18 +354,24 @@ test("summary route stays read-only and has no bank breakdown", () => {
   assert.equal(query.includes("UPDATE "), false);
   assert.equal(query.includes("DELETE "), false);
   assert.equal(page.includes("Spending by bank"), false);
+  assert.equal(page.includes("vs Period B ("), false);
+  assert.equal(page.includes("compareFrom"), false);
+  assert.equal(page.includes("onDoubleClick"), false);
+  assert.match(page, /periodSearch\(/);
+  assert.match(page, /compareSearch\(/);
+  assert.match(page, /clickRangeDay\(/);
+  assert.match(page, /applySingleDate\(/);
   assert.equal(/this month|today/i.test(page), false);
   assert.equal(page.includes("€"), false);
-  assert.equal(page.includes('picker?.kind === "main"'), false);
   assert.equal(page.includes("summary-date-wrap"), true);
-  assert.equal(page.includes('openPicker("a-start")'), true);
-  assert.equal(page.includes('openPicker("toolbar-start")'), true);
   assert.equal(page.includes("formatRowDate(summary."), false);
-  assert.equal(page.includes("plainRangeLabel(summary.latestFrom"), true);
+  assert.match(page, /plainRangeLabel\(summary\.latestFrom/);
   assert.equal(page.includes("summaryEmptyRange(plainRangeLabel("), true);
   assert.equal(page.includes("summaryEmptyRange(rangeLabel("), false);
   assert.equal(page.includes("formatRowDate(row.date)"), true);
   assert.equal(page.includes("formatSummaryMoney"), true);
+  assert.match(page, /hidden=\{mode !== "one"\}/);
+  assert.match(page, /hidden=\{mode !== "compare"\}/);
   assert.match(css, /\.summary-date-wrap \{[^}]*position:\s*relative/);
   assert.match(css, /\.summary-date-wrap \.summary-calendar \{[^}]*position:\s*absolute/);
   assert.match(css, /\.summary-lines li > div,\s*\.summary-lines a \{[^}]*min-width:\s*0/);

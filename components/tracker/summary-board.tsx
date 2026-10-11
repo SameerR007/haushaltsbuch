@@ -1,18 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney, formatPlainDate, formatRowDate, formatSummaryMoney } from "@/lib/chat/money";
 import {
+  SUMMARY_COMPARE,
+  SUMMARY_COMPARE_LEAD,
+  SUMMARY_COMPARE_LEGEND,
   SUMMARY_EMPTY,
   SUMMARY_GO_CHAT,
+  SUMMARY_NET_NOTE,
+  SUMMARY_ONE,
+  SUMMARY_UPDATING,
+  incomeCountLabel,
   summaryAmountsNote,
   summaryEmptyRange,
   summaryOpensOn,
+  transactionCountLabel,
 } from "@/lib/data/copy";
-import { parseSummary, readSummaryError } from "@/lib/data/summary-parse";
-import type { SummaryPayload, SummaryRow } from "@/lib/data/summary-types";
+import { parseCompareSummary, parsePeriodSummary, readSummaryError } from "@/lib/data/summary-parse";
+import {
+  applySingleDate,
+  clickRangeDay,
+  compareSearch,
+  initialCompare,
+  moveCalendarDay,
+  openRangeDraft,
+  periodSearch,
+  previewRange,
+  readSummaryView,
+  writeSummaryView,
+  type CompareRanges,
+  type DateRange,
+  type RangeDraft,
+  type SummaryMode,
+} from "@/lib/data/summary-state";
+import type { CompareSummary, PeriodSummary, SummaryRow } from "@/lib/data/summary-types";
 import {
   addDays,
   calendarCells,
@@ -22,7 +45,6 @@ import {
   magnitudeChange,
   monthRangeContaining,
   monthYearLabel,
-  previousPeriod,
   plainRangeLabel,
   recentMonthRanges,
   sharePercent,
@@ -31,21 +53,14 @@ import {
 } from "@/lib/data/summary-range";
 
 const CATEGORY_COLORS = ["#1c6b62", "#3c9a86", "#8fbf7a", "#c4a574", "#e07a4c", "#b7b1a8", "#5b8fa8", "#7a6a9a"];
-
-type PickerAnchor = "toolbar-start" | "toolbar-end" | "a-start" | "a-end" | "b-start" | "b-end";
-
-type Picker = {
-  anchor: PickerAnchor;
-  step: "start" | "end";
-  month: string;
-  start: string | null;
-};
-
 const MINUS = "\u2212";
 
-function editsCompare(anchor: PickerAnchor): boolean {
-  return anchor.startsWith("b-");
-}
+type SingleField = "a-from" | "a-to" | "b-from" | "b-to";
+
+type SinglePicker = {
+  field: SingleField;
+  month: string;
+};
 
 function colorFor(index: number): string {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length] ?? "#1c6b62";
@@ -78,37 +93,108 @@ function bankLine(row: SummaryRow): string {
   return row.bankInitials ? `${row.bank} (${row.bankInitials})` : row.bank;
 }
 
+function expenseDetail(row: SummaryRow): string {
+  const note = row.notes?.trim() || "—";
+  const bank = row.bankInitials || row.bank;
+  return `${note} — ${row.category} · ${bank}`;
+}
+
 export function SummaryBoard() {
-  const router = useRouter();
-  const search = useSearchParams();
-  const fromQ = search.get("from");
-  const toQ = search.get("to");
-  const compareFromQ = search.get("compareFrom");
-  const compareToQ = search.get("compareTo");
-  const [summary, setSummary] = useState<SummaryPayload | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [picker, setPicker] = useState<Picker | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [mode, setMode] = useState<SummaryMode>("one");
+  const [one, setOne] = useState<DateRange | null>(null);
+  const [compare, setCompare] = useState<CompareRanges | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (fromQ && toQ) {
-      params.set("from", fromQ);
-      params.set("to", toQ);
-    }
-    if (compareFromQ && compareToQ) {
-      params.set("compareFrom", compareFromQ);
-      params.set("compareTo", compareToQ);
-    }
-    const query = params.toString();
+    const stored = readSummaryView();
+    setMode(stored.mode);
+    setOne(stored.one);
+    setCompare(stored.compare);
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    writeSummaryView({ v: 1, mode, one, compare });
+  }, [hydrated, mode, one, compare]);
+
+  useEffect(() => {
+    if (!hydrated || mode !== "compare" || compare || !one) return;
+    const seeded = initialCompare(one);
+    if (seeded) setCompare(seeded);
+  }, [hydrated, mode, compare, one]);
+
+  function selectMode(next: SummaryMode) {
+    setMode(next);
+    if (next !== "compare" || compare || !one) return;
+    const seeded = initialCompare(one);
+    if (seeded) setCompare(seeded);
+  }
+
+  return (
+    <main className="summary">
+      <div className="summary-modes">
+        <div className="summary-switch" role="radiogroup" aria-label="Summary view">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={mode === "one"}
+          className={mode === "one" ? "summary-mode is-selected" : "summary-mode"}
+          onClick={() => selectMode("one")}
+        >
+          {SUMMARY_ONE}
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={mode === "compare"}
+          className={mode === "compare" ? "summary-mode is-selected" : "summary-mode"}
+          onClick={() => selectMode("compare")}
+        >
+          {SUMMARY_COMPARE}
+        </button>
+        </div>
+      </div>
+      {hydrated ? (
+        <>
+          <div className="summary-view" hidden={mode !== "one"}>
+            <OnePeriod range={one} onRange={setOne} />
+          </div>
+          <div className="summary-view" hidden={mode !== "compare"}>
+            <ComparePeriods compare={compare} onCompare={setCompare} />
+          </div>
+        </>
+      ) : (
+        <p className="summary-status">Loading summary…</p>
+      )}
+    </main>
+  );
+}
+
+function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (range: DateRange) => void }) {
+  const applied = useRef<string | null>(null);
+  const onRangeRef = useRef(onRange);
+  onRangeRef.current = onRange;
+  const [summary, setSummary] = useState<PeriodSummary | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [picker, setPicker] = useState<RangeDraft | null>(null);
+  const [anchor, setAnchor] = useState<"from" | "to" | null>(null);
+
+  const from = range?.from ?? "";
+  const to = range?.to ?? "";
+
+  useEffect(() => {
+    const key = from && to ? `${from}:${to}` : "default";
+    if (applied.current === key) return;
     let ignore = false;
     setLoading(true);
     void (async () => {
       try {
-        const response = await fetch(`/api/summary${query ? `?${query}` : ""}`);
+        const response = await fetch(`/api/summary?${periodSearch(from && to ? { from, to } : null)}`);
         const body: unknown = await response.json();
         if (ignore) return;
-        const parsed = parseSummary(body);
+        const parsed = parsePeriodSummary(body);
         if (!response.ok || !parsed) {
           setSummary(null);
           setError(readSummaryError(body));
@@ -116,6 +202,12 @@ export function SummaryBoard() {
         }
         setSummary(parsed);
         setError("");
+        if (!from && !to && parsed.from && parsed.to) {
+          applied.current = `${parsed.from}:${parsed.to}`;
+          onRangeRef.current({ from: parsed.from, to: parsed.to });
+        } else {
+          applied.current = key;
+        }
       } catch {
         if (!ignore) {
           setSummary(null);
@@ -128,116 +220,69 @@ export function SummaryBoard() {
     return () => {
       ignore = true;
     };
-  }, [fromQ, toQ, compareFromQ, compareToQ]);
+  }, [from, to]);
 
-  useEffect(() => {
-    if (!picker) return;
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setPicker(null);
-    }
-    function onPointer(event: MouseEvent) {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest(".summary-calendar") || target.closest(".summary-date")) return;
-      setPicker(null);
-    }
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onPointer);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onPointer);
-    };
-  }, [picker]);
+  useDismiss(picker !== null, () => setPicker(null));
 
-  function visit(from: string, to: string, compareFrom: string, compareTo: string) {
-    const params = new URLSearchParams({ from, to, compareFrom, compareTo });
-    router.replace(`/app/summary?${params.toString()}`);
+  function commit(next: DateRange) {
     setPicker(null);
-  }
-
-  function visitMain(from: string, to: string) {
-    const previous = previousPeriod(from, to);
-    if (!previous) return;
-    visit(from, to, previous.from, previous.to);
-  }
-
-  function visitCompare(compareFrom: string, compareTo: string) {
-    if (!summary?.from || !summary.to) return;
-    visit(summary.from, summary.to, compareFrom, compareTo);
-  }
-
-  function openPicker(anchor: PickerAnchor) {
-    const compare = editsCompare(anchor);
-    const step = anchor.endsWith("end") ? "end" : "start";
-    const month = (step === "end"
-      ? compare
-        ? summary?.compareTo
-        : summary?.to
-      : compare
-        ? summary?.compareFrom
-        : summary?.from) ?? summary?.from;
-    if (!month) return;
-    const start = step === "end" ? (compare ? summary?.compareFrom ?? null : summary?.from ?? null) : null;
-    setPicker({ anchor, step, month, start });
+    setAnchor(null);
+    if (range && range.from === next.from && range.to === next.to) return;
+    onRange(next);
   }
 
   function chooseDay(iso: string) {
     if (!picker) return;
-    if (picker.step === "start") {
-      setPicker({ ...picker, step: "end", start: iso, month: iso });
+    const result = clickRangeDay(picker, iso);
+    if (result.kind === "draft") {
+      setPicker(result.draft);
       return;
     }
-    const start = picker.start ?? iso;
-    const from = start <= iso ? start : iso;
-    const to = start <= iso ? iso : start;
-    if (editsCompare(picker.anchor)) visitCompare(from, to);
-    else visitMain(from, to);
+    commit(result.range);
   }
 
-  function shiftPicker(delta: number) {
-    if (!picker) return;
-    const range = monthRangeContaining(picker.month);
-    if (!range) return;
-    const next = addDays(delta > 0 ? range.to : range.from, delta);
-    if (next) setPicker({ ...picker, month: next });
+  function openRange(edge: "from" | "to", month: string) {
+    if (picker && anchor === edge) {
+      setPicker(null);
+      setAnchor(null);
+      return;
+    }
+    setAnchor(edge);
+    setPicker((current) => current ?? openRangeDraft(month));
   }
 
   const currency = summary?.currency ?? "";
   const hasRange = Boolean(summary?.from && summary?.to);
-  const hasRows = Boolean(summary && (summary.incomeRows.length > 0 || summary.categories.length > 0));
+  const active = Boolean(summary && (summary.incomeCount > 0 || summary.expenseCount > 0));
   const months = summary?.latestFrom ? recentMonthRanges(summary.latestFrom) : [];
-  const year = summary?.from ? yearRange(summary.from) : summary?.latestFrom ? yearRange(summary.latestFrom) : null;
-  const expenseDelta = summary ? magnitudeChange(summary.expenses, summary.compareExpenses) : 0;
-  const expensePercent = summary
-    ? changePercent(expenseDelta, Math.abs(summary.compareExpenses))
-    : null;
-  const incomeDelta = summary ? summary.income - summary.compareIncome : 0;
-  const netDelta = summary ? summary.net - summary.compareNet : 0;
-  const compared = summary ? categoryComparison(summary.categories, summary.compareCategories) : [];
-
-  function calendarFor(anchor: PickerAnchor): ReactNode {
-    if (!picker || picker.anchor !== anchor || !summary) return null;
-    const compare = editsCompare(picker.anchor);
-    return (
-      <Calendar
-        month={picker.month}
-        start={picker.step === "end" ? picker.start : compare ? summary.compareFrom : summary.from}
-        end={picker.step === "end" ? picker.start : compare ? summary.compareTo : summary.to}
-        onShift={shiftPicker}
-        onPick={chooseDay}
-      />
-    );
-  }
+  const yearSource = summary?.from ?? summary?.latestFrom ?? null;
+  const year = yearSource ? yearRange(yearSource) : null;
+  const showing = summary?.from && summary?.to ? plainRangeLabel(summary.from, summary.to) : "";
+  const preview = picker ? previewRange(picker.step === "end" ? null : range, picker, null) : null;
 
   return (
-    <main className="summary">
+    <div aria-busy={loading}>
       <div className="summary-toolbar">
         <div className="summary-controls">
           <DateField
             kicker="From"
             value={summary?.from ? formatPlainDate(summary.from) : "—"}
-            onClick={() => openPicker("toolbar-start")}
-            calendar={calendarFor("toolbar-start")}
+            open={anchor === "from"}
+            onClick={() => openRange("from", summary?.from ?? summary?.latestFrom ?? "")}
+            calendar={
+              picker && anchor === "from" ? (
+                <RangeCalendar
+                  picker={picker}
+                  preview={preview}
+                  onPicker={setPicker}
+                  onPick={chooseDay}
+                  onClose={() => {
+                    setPicker(null);
+                    setAnchor(null);
+                  }}
+                />
+              ) : null
+            }
           />
           <span className="summary-arrow" aria-hidden="true">
             →
@@ -245,8 +290,22 @@ export function SummaryBoard() {
           <DateField
             kicker="To"
             value={summary?.to ? formatPlainDate(summary.to) : "—"}
-            onClick={() => openPicker("toolbar-end")}
-            calendar={calendarFor("toolbar-end")}
+            open={anchor === "to"}
+            onClick={() => openRange("to", summary?.to ?? summary?.from ?? "")}
+            calendar={
+              picker && anchor === "to" ? (
+                <RangeCalendar
+                  picker={picker}
+                  preview={preview}
+                  onPicker={setPicker}
+                  onPick={chooseDay}
+                  onClose={() => {
+                    setPicker(null);
+                    setAnchor(null);
+                  }}
+                />
+              ) : null
+            }
           />
           <div className="summary-chips">
             {months.map((month) => {
@@ -256,7 +315,7 @@ export function SummaryBoard() {
                   key={month.from}
                   type="button"
                   className={selected ? "summary-chip is-selected" : "summary-chip"}
-                  onClick={() => visitMain(month.from, month.to)}
+                  onClick={() => commit(month)}
                 >
                   {monthYearLabel(month.from)}
                 </button>
@@ -265,8 +324,10 @@ export function SummaryBoard() {
             {year ? (
               <button
                 type="button"
-                className={summary?.from === year.from && summary?.to === year.to ? "summary-chip is-selected" : "summary-chip"}
-                onClick={() => visitMain(year.from, year.to)}
+                className={
+                  summary?.from === year.from && summary?.to === year.to ? "summary-chip is-selected" : "summary-chip"
+                }
+                onClick={() => commit(year)}
               >
                 {wholeYearLabel(Number(year.from.slice(0, 4)))}
               </button>
@@ -276,12 +337,11 @@ export function SummaryBoard() {
       </div>
 
       <div className="summary-meta">
-        {summary?.latestFrom && summary.latestTo ? (
-          <p>{summaryOpensOn(plainRangeLabel(summary.latestFrom, summary.latestTo))}</p>
-        ) : (
-          <p />
-        )}
-        {summary?.currencyLabel ? <p>{summaryAmountsNote(summary.currencyLabel)}</p> : null}
+        {summary?.latestFrom && summary.latestTo ? <p>{summaryOpensOn(showing || plainRangeLabel(summary.latestFrom, summary.latestTo))}</p> : <p />}
+        <p>
+          {loading && summary ? <span className="summary-updating">{SUMMARY_UPDATING}</span> : null}
+          {summary?.currencyLabel ? summaryAmountsNote(summary.currencyLabel) : null}
+        </p>
       </div>
 
       {error ? (
@@ -291,7 +351,7 @@ export function SummaryBoard() {
       ) : null}
       {loading && !summary ? <p className="summary-status">Loading summary…</p> : null}
 
-      {summary && hasRange && !hasRows ? (
+      {summary && hasRange && !active ? (
         <div className="summary-empty">
           <p>{summary.from && summary.to ? summaryEmptyRange(plainRangeLabel(summary.from, summary.to)) : SUMMARY_EMPTY}</p>
           <Link className="expenses-go-chat" href="/app">
@@ -309,36 +369,24 @@ export function SummaryBoard() {
         </div>
       ) : null}
 
-      {summary && hasRows && currency ? (
+      {summary && active && currency ? (
         <>
           <section className="summary-cards">
-            <TotalCard
-              label="Income"
-              amount={signedMoney(summary.income, currency).replace(/^\+/, "")}
-              delta={signedMoney(incomeDelta, currency)}
-              extra=""
-              versus={money(summary.compareIncome, currency)}
-              className={tone(incomeDelta, "income")}
-              amountClass="is-income"
-            />
-            <TotalCard
-              label="Expenses"
-              amount={money(Math.abs(summary.expenses), currency)}
-              delta={signedMoney(expenseDelta, currency)}
-              extra={expensePercent === null ? "" : ` ${percentLabel(expensePercent)}`}
-              versus={money(Math.abs(summary.compareExpenses), currency)}
-              className={tone(expenseDelta, "expense")}
-              amountClass="is-expense"
-            />
-            <TotalCard
-              label="Net"
-              amount={signedMoney(summary.net, currency)}
-              delta={signedMoney(netDelta, currency)}
-              extra=""
-              versus={signedMoney(summary.compareNet, currency)}
-              className={tone(netDelta, "net")}
-              amountClass="is-net"
-            />
+            <article className="summary-card">
+              <p className="summary-card-label">Income</p>
+              <p className="summary-card-amount is-income">{money(summary.income, currency)}</p>
+              <p className="summary-card-delta">{incomeCountLabel(summary.incomeCount)}</p>
+            </article>
+            <article className="summary-card">
+              <p className="summary-card-label">Expenses</p>
+              <p className="summary-card-amount is-expense">{money(Math.abs(summary.expenses), currency)}</p>
+              <p className="summary-card-delta">{transactionCountLabel(summary.expenseCount)}</p>
+            </article>
+            <article className="summary-card">
+              <p className="summary-card-label">Net</p>
+              <p className="summary-card-amount is-net">{signedMoney(summary.net, currency)}</p>
+              <p className="summary-card-delta">{SUMMARY_NET_NOTE}</p>
+            </article>
           </section>
 
           <section className="summary-split">
@@ -393,159 +441,407 @@ export function SummaryBoard() {
                 <li key={row.id}>
                   <Link href={`/app/expenses?focus=${row.id}`}>
                     <p className="summary-line-title">{formatRowDate(row.date)}</p>
-                    <p className="summary-line-sub">
-                      {row.notes?.trim() || "—"} · {row.category} · {row.bankInitials || row.bank}
-                    </p>
+                    <p className="summary-line-sub">{expenseDetail(row)}</p>
                   </Link>
                   <span className="summary-line-amount">{money(row.amount, currency)}</span>
                 </li>
               ))}
             </ul>
           </section>
-
-          <section className="summary-panel">
-            <h2>Compare two periods</h2>
-            <div className="summary-periods">
-              <div>
-                <p className="summary-period-label">Period A</p>
-                <DateField
-                  kicker="From"
-                  value={summary.from ? formatPlainDate(summary.from) : "—"}
-                  onClick={() => openPicker("a-start")}
-                  calendar={calendarFor("a-start")}
-                />
-                <span className="summary-to">to</span>
-                <DateField
-                  kicker="To"
-                  value={summary.to ? formatPlainDate(summary.to) : "—"}
-                  onClick={() => openPicker("a-end")}
-                  calendar={calendarFor("a-end")}
-                />
-              </div>
-              <div className="summary-period-end">
-                <p className="summary-period-label">Period B</p>
-                <DateField
-                  kicker="From"
-                  value={summary.compareFrom ? formatPlainDate(summary.compareFrom) : "—"}
-                  onClick={() => openPicker("b-start")}
-                  calendar={calendarFor("b-start")}
-                  align="end"
-                />
-                <span className="summary-to">to</span>
-                <DateField
-                  kicker="To"
-                  value={summary.compareTo ? formatPlainDate(summary.compareTo) : "—"}
-                  onClick={() => openPicker("b-end")}
-                  calendar={calendarFor("b-end")}
-                  align="end"
-                />
-              </div>
-            </div>
-            <div className="summary-table-wrap">
-              <table className="summary-table">
-                <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th className="is-num">Period A</th>
-                    <th className="is-num">Period B</th>
-                    <th className="is-num">Change</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="summary-group">
-                    <th colSpan={4}>Expenses</th>
-                  </tr>
-                  {compared.map((row) => {
-                    const delta = magnitudeChange(row.periodA, row.periodB);
-                    return (
-                      <tr key={row.category}>
-                        <td>{row.category}</td>
-                        <td className="is-num">{money(Math.abs(row.periodA), currency)}</td>
-                        <td className="is-num">{money(Math.abs(row.periodB), currency)}</td>
-                        <td className={`is-num ${tone(delta, "expense")}`}>{signedMoney(delta, currency)}</td>
-                      </tr>
-                    );
-                  })}
-                  <tr className="summary-total">
-                    <td>Total expenses</td>
-                    <td className="is-num">{money(Math.abs(summary.expenses), currency)}</td>
-                    <td className="is-num">{money(Math.abs(summary.compareExpenses), currency)}</td>
-                    <td className={`is-num ${tone(expenseDelta, "expense")}`}>{signedMoney(expenseDelta, currency)}</td>
-                  </tr>
-                  <tr>
-                    <td>Income</td>
-                    <td className="is-num">{money(summary.income, currency)}</td>
-                    <td className="is-num">{money(summary.compareIncome, currency)}</td>
-                    <td className={`is-num ${tone(incomeDelta, "income")}`}>{signedMoney(incomeDelta, currency)}</td>
-                  </tr>
-                  <tr className="summary-total">
-                    <td>Net</td>
-                    <td className="is-num">{signedMoney(summary.net, currency)}</td>
-                    <td className="is-num">{signedMoney(summary.compareNet, currency)}</td>
-                    <td className={`is-num ${tone(netDelta, "net")}`}>{signedMoney(netDelta, currency)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
         </>
       ) : null}
-    </main>
+    </div>
   );
+}
+
+function ComparePeriods({
+  compare,
+  onCompare,
+}: {
+  compare: CompareRanges | null;
+  onCompare: (compare: CompareRanges) => void;
+}) {
+  const [summary, setSummary] = useState<CompareSummary | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(Boolean(compare));
+  const [picker, setPicker] = useState<SinglePicker | null>(null);
+  const aFrom = compare?.a.from ?? "";
+  const aTo = compare?.a.to ?? "";
+  const bFrom = compare?.b.from ?? "";
+  const bTo = compare?.b.to ?? "";
+
+  useEffect(() => {
+    if (!aFrom || !aTo || !bFrom || !bTo) return;
+    let ignore = false;
+    setLoading(true);
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/summary?${compareSearch({ a: { from: aFrom, to: aTo }, b: { from: bFrom, to: bTo } })}`,
+        );
+        const body: unknown = await response.json();
+        if (ignore) return;
+        const parsed = parseCompareSummary(body);
+        if (!response.ok || !parsed) {
+          setSummary(null);
+          setError(readSummaryError(body));
+          return;
+        }
+        setSummary(parsed);
+        setError("");
+      } catch {
+        if (!ignore) {
+          setSummary(null);
+          setError("Could not load the summary.");
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [aFrom, aTo, bFrom, bTo]);
+
+  useDismiss(picker !== null, () => setPicker(null));
+
+  function chooseDay(iso: string) {
+    if (!picker || !compare) return;
+    const which = picker.field.startsWith("a-") ? "a" : "b";
+    const field = picker.field.endsWith("from") ? "from" : "to";
+    const next = applySingleDate(compare[which], field, iso);
+    setPicker(null);
+    if (!next) return;
+    if (next.from === compare[which].from && next.to === compare[which].to) return;
+    onCompare({ ...compare, [which]: next });
+  }
+
+  function openField(field: SingleField, month: string) {
+    setPicker((current) => (current?.field === field ? null : { field, month }));
+  }
+
+  const currency = summary?.currency ?? "";
+  const compared = summary ? categoryComparison(summary.categories, summary.compareCategories) : [];
+  const expenseDelta = summary ? magnitudeChange(summary.expenses, summary.compareExpenses) : 0;
+  const expensePercent = summary ? changePercent(expenseDelta, Math.abs(summary.compareExpenses)) : null;
+  const incomeDelta = summary ? summary.income - summary.compareIncome : 0;
+  const netDelta = summary ? summary.net - summary.compareNet : 0;
+
+  function field(which: "a" | "b", edge: "from" | "to", align: "start" | "end") {
+    const id = `${which}-${edge}` as SingleField;
+    const value = compare ? compare[which][edge] : "";
+    return (
+      <DateField
+        kicker={edge === "from" ? "From" : "To"}
+        value={value ? formatPlainDate(value) : "—"}
+        open={picker?.field === id}
+        align={align}
+        onClick={() => openField(id, value || compare?.a.from || "")}
+            calendar={
+              picker?.field === id ? (
+                <Calendar
+                  month={picker.month}
+                  low={value || null}
+                  high={value || null}
+                  hoverRange={false}
+                  onMonth={(iso) => setPicker({ field: id, month: iso })}
+                  onPick={chooseDay}
+                  onClose={() => setPicker(null)}
+                />
+              ) : null
+            }
+      />
+    );
+  }
+
+  return (
+    <div aria-busy={loading}>
+      <div className="summary-meta">
+        <p>{SUMMARY_COMPARE_LEAD}</p>
+        <p>{loading && summary ? <span className="summary-updating">{SUMMARY_UPDATING}</span> : null}</p>
+      </div>
+      {error ? (
+        <p className="summary-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {!compare || (loading && !summary) ? <p className="summary-status">Loading summary…</p> : null}
+      {summary && compare && currency ? (
+        <section className="summary-panel">
+          <div className="summary-periods">
+            <article className="summary-period">
+              <p className="summary-period-label">Period A</p>
+              <div className="summary-period-dates">
+                {field("a", "from", "start")}
+                <span className="summary-arrow" aria-hidden="true">
+                  →
+                </span>
+                {field("a", "to", "start")}
+              </div>
+              <PeriodStats
+                currency={currency}
+                income={summary.income}
+                expenses={summary.expenses}
+                net={summary.net}
+              />
+            </article>
+            <article className="summary-period">
+              <p className="summary-period-label">Period B</p>
+              <div className="summary-period-dates">
+                {field("b", "from", "start")}
+                <span className="summary-arrow" aria-hidden="true">
+                  →
+                </span>
+                {field("b", "to", "end")}
+              </div>
+              <PeriodStats
+                currency={currency}
+                income={summary.compareIncome}
+                expenses={summary.compareExpenses}
+                net={summary.compareNet}
+              />
+            </article>
+          </div>
+          <h2>Period A vs Period B</h2>
+          <div className="summary-table-wrap">
+            <table className="summary-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th className="is-num">Period A</th>
+                  <th className="is-num">Period B</th>
+                  <th className="is-num">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="summary-group">
+                  <th colSpan={4}>Expenses</th>
+                </tr>
+                {compared.map((row) => {
+                  const delta = magnitudeChange(row.periodA, row.periodB);
+                  return (
+                    <tr key={row.category}>
+                      <td>{row.category}</td>
+                      <td className="is-num">{money(Math.abs(row.periodA), currency)}</td>
+                      <td className="is-num">{money(Math.abs(row.periodB), currency)}</td>
+                      <td className={`is-num ${tone(delta, "expense")}`}>{signedMoney(delta, currency)}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="summary-total">
+                  <td>Total expenses</td>
+                  <td className="is-num">{money(Math.abs(summary.expenses), currency)}</td>
+                  <td className="is-num">{money(Math.abs(summary.compareExpenses), currency)}</td>
+                  <td className={`is-num ${tone(expenseDelta, "expense")}`}>
+                    {signedMoney(expenseDelta, currency)}
+                    {expensePercent === null ? "" : ` ${percentLabel(expensePercent)}`}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Income</td>
+                  <td className="is-num">{money(summary.income, currency)}</td>
+                  <td className="is-num">{money(summary.compareIncome, currency)}</td>
+                  <td className={`is-num ${tone(incomeDelta, "income")}`}>{signedMoney(incomeDelta, currency)}</td>
+                </tr>
+                <tr className="summary-total">
+                  <td>Net</td>
+                  <td className="is-num">{signedMoney(summary.net, currency)}</td>
+                  <td className="is-num">{signedMoney(summary.compareNet, currency)}</td>
+                  <td className={`is-num ${tone(netDelta, "net")}`}>{signedMoney(netDelta, currency)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="summary-footnote">
+            {SUMMARY_COMPARE_LEGEND}
+            {summary.currencyLabel ? ` ${summaryAmountsNote(summary.currencyLabel)}` : ""}
+          </p>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function PeriodStats({
+  currency,
+  income,
+  expenses,
+  net,
+}: {
+  currency: string;
+  income: number;
+  expenses: number;
+  net: number;
+}) {
+  return (
+    <div className="summary-period-stats">
+      <article className="summary-card">
+        <p className="summary-card-label">Income</p>
+        <p className="summary-card-amount is-income">{money(income, currency)}</p>
+      </article>
+      <article className="summary-card">
+        <p className="summary-card-label">Expenses</p>
+        <p className="summary-card-amount is-expense">{money(Math.abs(expenses), currency)}</p>
+      </article>
+      <article className="summary-card">
+        <p className="summary-card-label">Net</p>
+        <p className={`summary-card-amount ${net < 0 ? "is-down" : "is-net"}`}>{signedMoney(net, currency)}</p>
+      </article>
+    </div>
+  );
+}
+
+function useDismiss(open: boolean, close: () => void) {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") closeRef.current();
+    }
+    function onPointer(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".summary-calendar") || target.closest(".summary-date")) return;
+      closeRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointer);
+    };
+  }, [open]);
 }
 
 function DateField({
   kicker,
   value,
+  open,
   onClick,
   calendar,
   align = "start",
 }: {
   kicker: string;
   value: string;
+  open: boolean;
   onClick: () => void;
   calendar: ReactNode;
   align?: "start" | "end";
 }) {
   return (
     <span className={align === "end" ? "summary-date-wrap is-align-end" : "summary-date-wrap"}>
-      <button type="button" className="summary-date" onClick={onClick} aria-expanded={calendar !== null}>
+      <button type="button" className="summary-date" onClick={onClick} aria-expanded={open} aria-haspopup="dialog">
         <span>{kicker}</span>
         {value}
+        <span className="summary-caret" aria-hidden="true">
+          ▾
+        </span>
       </button>
       {calendar}
     </span>
   );
 }
 
+function RangeCalendar({
+  picker,
+  preview,
+  onPicker,
+  onPick,
+  onClose,
+}: {
+  picker: RangeDraft;
+  preview: DateRange | null;
+  onPicker: (draft: RangeDraft) => void;
+  onPick: (iso: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Calendar
+      month={picker.month}
+      low={preview?.from ?? null}
+      high={preview?.to ?? null}
+      hoverRange={picker.step === "end"}
+      onMonth={(iso) => onPicker({ ...picker, month: iso })}
+      onPick={onPick}
+      onClose={onClose}
+    />
+  );
+}
+
 function Calendar({
   month,
-  start,
-  end,
-  onShift,
+  low,
+  high,
+  hoverRange,
+  onMonth,
   onPick,
+  onClose,
 }: {
   month: string;
-  start: string | null;
-  end: string | null;
-  onShift: (delta: number) => void;
+  low: string | null;
+  high: string | null;
+  hoverRange: boolean;
+  onMonth: (iso: string) => void;
   onPick: (iso: string) => void;
+  onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<string | null>(null);
+  const [cursor, setCursor] = useState(low ?? month);
   const range = monthRangeContaining(month);
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
+
   if (!range) return null;
   const [year, monthNumber] = range.from.split("-").map(Number);
   const earlier = addDays(range.from, -1);
   const later = addDays(range.to, 1);
-  const low = start && end ? (start < end ? start : end) : start;
-  const high = start && end ? (start < end ? end : start) : start;
+  const start = low && high ? (low < high ? low : high) : low;
+  const end = low && high ? (low < high ? high : low) : low;
+  const rangeEnd = hoverRange && hover ? hover : end;
+  const previewLow = start && rangeEnd ? (start < rangeEnd ? start : rangeEnd) : start;
+  const previewHigh = start && rangeEnd ? (start < rangeEnd ? rangeEnd : start) : start;
+
+  function move(key: string) {
+    const next = moveCalendarDay(cursor, key);
+    if (!next) return;
+    setCursor(next);
+    const nextMonth = monthRangeContaining(next);
+    if (nextMonth && nextMonth.from !== range?.from) onMonth(next);
+  }
+
   return (
-    <div className="summary-calendar" role="dialog" aria-label={monthYearLabel(range.from)}>
+    <div
+      ref={dialogRef}
+      className="summary-calendar"
+      role="dialog"
+      tabIndex={-1}
+      aria-label={monthYearLabel(range.from)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          onPick(cursor);
+          return;
+        }
+        if (event.key.startsWith("Arrow")) {
+          event.preventDefault();
+          move(event.key);
+        }
+      }}
+    >
       <div className="summary-calendar-head">
-        <button type="button" onClick={() => onShift(-1)} aria-label={earlier ? monthYearLabel(earlier) : "Earlier"}>
+        <button type="button" onClick={() => earlier && onMonth(earlier)} aria-label={earlier ? monthYearLabel(earlier) : "Earlier"}>
           ‹
         </button>
         <strong>{monthYearLabel(range.from)}</strong>
-        <button type="button" onClick={() => onShift(1)} aria-label={later ? monthYearLabel(later) : "Later"}>
+        <button type="button" onClick={() => later && onMonth(later)} aria-label={later ? monthYearLabel(later) : "Later"}>
           ›
         </button>
       </div>
@@ -554,15 +850,27 @@ function Calendar({
           <span key={day}>{day}</span>
         ))}
       </div>
-      <div className="summary-calendar-grid">
+      <div className="summary-calendar-grid" onMouseLeave={() => setHover(null)}>
         {calendarCells(year, monthNumber).map((day, index) => {
           if (!day) return <span key={`empty-${index}`} />;
           const iso = isoDate(year, monthNumber, day);
-          const selected = iso === start || iso === end;
-          const inside = Boolean(low && high && iso >= low && iso <= high);
-          const className = selected ? "is-selected" : inside ? "is-inside" : undefined;
+          const selected = iso === start || iso === rangeEnd;
+          const inside = Boolean(previewLow && previewHigh && iso > previewLow && iso < previewHigh);
+          const className = [
+            selected ? "is-selected" : "",
+            inside ? "is-inside" : "",
+            iso === cursor ? "is-focused" : "",
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined;
           return (
-            <button key={iso} type="button" className={className} onClick={() => onPick(iso)}>
+            <button
+              key={iso}
+              type="button"
+              className={className}
+              onClick={() => onPick(iso)}
+              onMouseEnter={() => setHover(iso)}
+            >
               {day}
             </button>
           );
@@ -605,34 +913,5 @@ function Donut({ parts, total }: { parts: { color: string; fraction: number }[];
         <span>Expenses</span>
       </p>
     </div>
-  );
-}
-
-function TotalCard({
-  label,
-  amount,
-  delta,
-  extra,
-  versus,
-  className,
-  amountClass,
-}: {
-  label: string;
-  amount: string;
-  delta: string;
-  extra: string;
-  versus: string;
-  className: string;
-  amountClass: string;
-}) {
-  return (
-    <article className="summary-card">
-      <p className="summary-card-label">{label}</p>
-      <p className={`summary-card-amount ${amountClass}`}>{amount}</p>
-      <p className={`summary-card-delta ${className}`}>
-        {delta}
-        {extra} vs Period B ({versus})
-      </p>
-    </article>
   );
 }

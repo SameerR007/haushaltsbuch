@@ -13,8 +13,28 @@ export type SummaryCategory = {
   amount: number;
 };
 
-export type SummaryPayload = {
+export type PeriodSummary = {
   ok: true;
+  scope: "period";
+  currency: string | null;
+  currencyLabel: string | null;
+  from: string | null;
+  to: string | null;
+  latestFrom: string | null;
+  latestTo: string | null;
+  income: number;
+  expenses: number;
+  net: number;
+  incomeCount: number;
+  expenseCount: number;
+  categories: SummaryCategory[];
+  incomeRows: SummaryRow[];
+  largest: SummaryRow[];
+};
+
+export type CompareSummary = {
+  ok: true;
+  scope: "compare";
   currency: string | null;
   currencyLabel: string | null;
   from: string | null;
@@ -31,6 +51,4 @@ export type SummaryPayload = {
   compareNet: number;
   categories: SummaryCategory[];
   compareCategories: SummaryCategory[];
-  incomeRows: SummaryRow[];
-  largest: SummaryRow[];
 };

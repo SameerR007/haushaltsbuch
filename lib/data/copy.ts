@@ -15,7 +15,21 @@ export function summaryEmptyRange(range: string): string {
 }
 
 export function summaryOpensOn(range: string): string {
-  return `Opens on the latest month that has data: ${range}`;
+  return `Opens on the latest month that has data. Showing ${range}`;
+}
+
+export const SUMMARY_ONE = "One period";
+export const SUMMARY_COMPARE = "Compare two periods";
+export const SUMMARY_NET_NOTE = "Income minus expenses";
+export const SUMMARY_UPDATING = "Updating…";
+export const SUMMARY_COMPARE_LEAD =
+  "Compare any two date ranges. These dates are separate from the One period view and are kept even when you switch back and forth.";
+export const SUMMARY_COMPARE_LEGEND =
+  "Green means better (more income, less spending), red means worse.";
+
+export function incomeCountLabel(count: number): string {
+  if (count === 1) return "1 income entry";
+  return `${count} income entries`;
 }
 
 export function summaryAmountsNote(currencyLabel: string): string {

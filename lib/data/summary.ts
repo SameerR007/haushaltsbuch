@@ -3,43 +3,41 @@ import { ensureMigrated, resolveDbPath } from "../db";
 import { currencySummaryLabel } from "../setup/chat-logic";
 import { parseIsoDate } from "../chat/validate-rows";
 import type { SetupResult } from "../setup/types";
-import {
-  monthRangeContaining,
-  previousPeriod,
-  roundCents,
-} from "./summary-range";
-import type { SummaryCategory, SummaryPayload, SummaryRow } from "./summary-types";
+import { monthRangeContaining, roundCents } from "./summary-range";
+import type { CompareSummary, PeriodSummary, SummaryCategory, SummaryRow } from "./summary-types";
 
-export type { SummaryCategory, SummaryPayload, SummaryRow };
+export type { CompareSummary, PeriodSummary, SummaryCategory, SummaryRow };
 
-export type SummaryQuery = {
-  from: string | null;
-  to: string | null;
-  compareFrom: string | null;
-  compareTo: string | null;
+type Totals = {
+  income: number;
+  expenses: number;
+  net: number;
+  incomeCount: number;
+  expenseCount: number;
 };
 
-type Totals = { income: number; expenses: number; net: number };
-
-function emptyPayload(currency: string | null): SummaryPayload {
+function currencyFields(currency: string | null): { currency: string | null; currencyLabel: string | null } {
   return {
-    ok: true,
     currency,
     currencyLabel: currency ? currencySummaryLabel(currency) : null,
+  };
+}
+
+function emptyPeriod(currency: string | null, latest: { from: string; to: string } | null): PeriodSummary {
+  return {
+    ok: true,
+    scope: "period",
+    ...currencyFields(currency),
     from: null,
     to: null,
-    compareFrom: null,
-    compareTo: null,
-    latestFrom: null,
-    latestTo: null,
+    latestFrom: latest?.from ?? null,
+    latestTo: latest?.to ?? null,
     income: 0,
     expenses: 0,
     net: 0,
-    compareIncome: 0,
-    compareExpenses: 0,
-    compareNet: 0,
+    incomeCount: 0,
+    expenseCount: 0,
     categories: [],
-    compareCategories: [],
     incomeRows: [],
     largest: [],
   };
@@ -69,15 +67,19 @@ function totals(from: string, to: string): Totals {
       `SELECT
          COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS income,
          COALESCE(SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END), 0) AS expenses,
-         COALESCE(SUM(amount), 0) AS net
+         COALESCE(SUM(amount), 0) AS net,
+         COALESCE(SUM(CASE WHEN amount > 0 THEN 1 ELSE 0 END), 0) AS incomeCount,
+         COALESCE(SUM(CASE WHEN amount < 0 THEN 1 ELSE 0 END), 0) AS expenseCount
        FROM transactions
        WHERE date >= ? AND date <= ?`,
     )
-    .get(from, to) as { income: number; expenses: number; net: number };
+    .get(from, to) as Totals;
   return {
     income: roundCents(row.income),
     expenses: roundCents(row.expenses),
     net: roundCents(row.net),
+    incomeCount: row.incomeCount,
+    expenseCount: row.expenseCount,
   };
 }
 
@@ -147,16 +149,19 @@ function largestExpenses(from: string, to: string): SummaryRow[] {
   return found.map(mapRow);
 }
 
-/**
- * Read-only totals for two inclusive date ranges.
- * A positive amount is income, including a refund stored in a spending category.
- * That refund is not subtracted from the category total. Categories sum only negative amounts.
- * Salary and other income are income when they are stored as positive amounts.
- * Removed banks stay in the joins. Nothing is written.
- */
-export function loadSummary(query: SummaryQuery): SetupResult<SummaryPayload> {
-  if (!existsSync(resolveDbPath())) return emptyPayload(null);
+function invalidRange(from: string | null, to: string | null): boolean {
+  if (!from || !to) return true;
+  return !parseIsoDate(from) || !parseIsoDate(to) || from > to;
+}
 
+/**
+ * One inclusive range. Income rows, the category donut, and the largest expenses
+ * come from this range only. Comparison dates are ignored by the caller.
+ * A positive amount is income, including a refund stored in a spending category.
+ * Categories sum only negative amounts. Removed banks stay in the joins.
+ */
+export function loadPeriodSummary(query: { from: string | null; to: string | null }): SetupResult<PeriodSummary> {
+  if (!existsSync(resolveDbPath())) return emptyPeriod(null, null);
   const latest = latestMonth();
   const currency = readCurrency();
   let from = query.from;
@@ -165,38 +170,73 @@ export function loadSummary(query: SummaryQuery): SetupResult<SummaryPayload> {
     from = latest?.from ?? null;
     to = latest?.to ?? null;
   }
-  if (!from || !to) {
-    return {
-      ...emptyPayload(currency),
-      latestFrom: latest?.from ?? null,
-      latestTo: latest?.to ?? null,
-    };
-  }
-  if (!parseIsoDate(from) || !parseIsoDate(to) || from > to) {
+  if (!from || !to) return emptyPeriod(currency, latest);
+  if (invalidRange(from, to)) {
     return { ok: false, code: "invalid", error: "Choose a start date on or before the end date." };
   }
-
-  let compareFrom = query.compareFrom;
-  let compareTo = query.compareTo;
-  if (!compareFrom && !compareTo) {
-    const previous = previousPeriod(from, to);
-    compareFrom = previous?.from ?? null;
-    compareTo = previous?.to ?? null;
-  }
-  if (!compareFrom || !compareTo || !parseIsoDate(compareFrom) || !parseIsoDate(compareTo) || compareFrom > compareTo) {
-    return { ok: false, code: "invalid", error: "Choose a start date on or before the end date." };
-  }
-
   const main = totals(from, to);
-  const compare = totals(compareFrom, compareTo);
   return {
     ok: true,
-    currency,
-    currencyLabel: currency ? currencySummaryLabel(currency) : null,
+    scope: "period",
+    ...currencyFields(currency),
     from,
     to,
-    compareFrom,
-    compareTo,
+    latestFrom: latest?.from ?? null,
+    latestTo: latest?.to ?? null,
+    income: main.income,
+    expenses: main.expenses,
+    net: main.net,
+    incomeCount: main.incomeCount,
+    expenseCount: main.expenseCount,
+    categories: categories(from, to),
+    incomeRows: incomeRows(from, to),
+    largest: largestExpenses(from, to),
+  };
+}
+
+/** Two inclusive ranges for the comparison table. Income rows and largest expenses are not loaded. */
+export function loadCompareSummary(query: {
+  from: string;
+  to: string;
+  compareFrom: string;
+  compareTo: string;
+}): SetupResult<CompareSummary> {
+  if (invalidRange(query.from, query.to) || invalidRange(query.compareFrom, query.compareTo)) {
+    return { ok: false, code: "invalid", error: "Choose a start date on or before the end date." };
+  }
+  if (!existsSync(resolveDbPath())) {
+    return {
+      ok: true,
+      scope: "compare",
+      ...currencyFields(null),
+      from: query.from,
+      to: query.to,
+      compareFrom: query.compareFrom,
+      compareTo: query.compareTo,
+      latestFrom: null,
+      latestTo: null,
+      income: 0,
+      expenses: 0,
+      net: 0,
+      compareIncome: 0,
+      compareExpenses: 0,
+      compareNet: 0,
+      categories: [],
+      compareCategories: [],
+    };
+  }
+  const latest = latestMonth();
+  const currency = readCurrency();
+  const main = totals(query.from, query.to);
+  const compare = totals(query.compareFrom, query.compareTo);
+  return {
+    ok: true,
+    scope: "compare",
+    ...currencyFields(currency),
+    from: query.from,
+    to: query.to,
+    compareFrom: query.compareFrom,
+    compareTo: query.compareTo,
     latestFrom: latest?.from ?? null,
     latestTo: latest?.to ?? null,
     income: main.income,
@@ -205,9 +245,7 @@ export function loadSummary(query: SummaryQuery): SetupResult<SummaryPayload> {
     compareIncome: compare.income,
     compareExpenses: compare.expenses,
     compareNet: compare.net,
-    categories: categories(from, to),
-    compareCategories: categories(compareFrom, compareTo),
-    incomeRows: incomeRows(from, to),
-    largest: largestExpenses(from, to),
+    categories: categories(query.from, query.to),
+    compareCategories: categories(query.compareFrom, query.compareTo),
   };
 }
