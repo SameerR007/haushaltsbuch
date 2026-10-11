@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TRACKER_HOME } from "@/components/tracker/nav";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   readConnection,
@@ -10,7 +11,9 @@ import {
   type SavedConnection,
 } from "@/lib/connection";
 import { parseHousehold } from "@/lib/data/parse";
+import { currencyConfirmLabel, describeCurrency, UNKNOWN_CURRENCY_ERROR } from "@/lib/currency";
 import {
+  CURRENCY_CHOICES,
   currencyChoiceLabel,
   currencySummaryLabel,
   normalizeBank,
@@ -131,6 +134,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   const [initialsTouched, setInitialsTouched] = useState(false);
   const [showOther, setShowOther] = useState(false);
   const [customCurrency, setCustomCurrency] = useState("");
+  const [otherPreview, setOtherPreview] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -183,6 +187,9 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   function showCurrencyStep() {
     setFormError("");
     setShowOther(false);
+    setCustomCurrency("");
+    setOtherPreview(null);
+    setCurrency("EUR");
     setPhase("currency");
     setMessages([
       { id: nid(), from: "bot", rich: "tables" },
@@ -279,6 +286,8 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
     if (pending || phase !== "currency") return;
     setCurrency(code);
     setShowOther(false);
+    setCustomCurrency("");
+    setOtherPreview(null);
     setFormError("");
     resetBankDraft();
     setPhase("bank");
@@ -294,11 +303,19 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   function onOther(event: FormEvent) {
     event.preventDefault();
     const code = parseCurrencyText(customCurrency);
-    if (!code) {
-      setFormError("Enter a 3-letter currency code.");
+    const known = code ? describeCurrency(code) : null;
+    if (!known) {
+      setOtherPreview(null);
+      setFormError(UNKNOWN_CURRENCY_ERROR);
       return;
     }
-    chooseCurrency(code);
+    const label = currencyConfirmLabel(known);
+    if (otherPreview !== label) {
+      setFormError("");
+      setOtherPreview(label);
+      return;
+    }
+    chooseCurrency(known.code);
   }
 
   function onSaveBank(event: FormEvent) {
@@ -431,7 +448,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
       );
     }
     if (rich === "next") {
-      return <>Next: pick currency (default €) → banks → confirm.</>;
+      return <>Next: pick currency → banks → confirm.</>;
     }
     if (rich === "tables") {
       return (
@@ -441,11 +458,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         </>
       );
     }
-    return (
-      <>
-        What currency should we use? Default is <strong>euro (€)</strong>.
-      </>
-    );
+    return <>What currency should we use?</>;
   }
 
   function renderWidget(message: Msg) {
@@ -484,28 +497,27 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         <div>
           {renderRich("currency")}
           <div className="setup-chips">
-            {(
-              [
-                ["EUR", "Keep euro (€)"],
-                ["USD", "USD ($)"],
-                ["GBP", "GBP (£)"],
-              ] as const
-            ).map(([code, label]) => (
+            {CURRENCY_CHOICES.map((choice) => (
               <button
-                key={code}
+                key={choice.code}
                 type="button"
-                className={currency === code ? "setup-chip primary" : "setup-chip"}
+                className={currency === choice.code ? "setup-chip primary" : "setup-chip"}
+                aria-pressed={currency === choice.code}
                 disabled={busy}
-                onClick={() => chooseCurrency(code)}
+                onClick={() => chooseCurrency(choice.code)}
               >
-                {label}
+                {choice.label}
               </button>
             ))}
             <button
               type="button"
               className="setup-chip"
+              aria-expanded={showOther}
               disabled={busy}
-              onClick={() => setShowOther(true)}
+              onClick={() => {
+                setShowOther(true);
+                setFormError("");
+              }}
             >
               Other…
             </button>
@@ -519,14 +531,27 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
                   value={customCurrency}
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="Currency code"
+                  placeholder="CHF"
+                  maxLength={3}
                   disabled={pending}
-                  onChange={(event) => setCustomCurrency(event.target.value)}
+                  onChange={(event) => {
+                    setCustomCurrency(event.target.value);
+                    setOtherPreview(null);
+                  }}
                 />
               </div>
+              {otherPreview ? (
+                <p className="setup-currency-confirm" data-testid="currency-confirm">
+                  {otherPreview}
+                </p>
+              ) : null}
               <div className="setup-chips">
-                <button className="setup-chip primary" type="submit" disabled={pending}>
-                  Use this currency
+                <button
+                  className={otherPreview ? "setup-chip primary" : "setup-chip"}
+                  type="submit"
+                  disabled={pending}
+                >
+                  {otherPreview ? "Use this currency" : "Check code"}
                 </button>
               </div>
             </form>
@@ -639,7 +664,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         <div>
           <p>You’re set. The welcome screen will show Open tracker.</p>
           <div className="setup-chips">
-            <Link className="setup-chip primary" href="/app">
+            <Link className="setup-chip primary" href={TRACKER_HOME}>
               Open tracker
             </Link>
             <Link className="setup-chip" href="/">
@@ -699,7 +724,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
             <li>OpenAI key · saved in this browser</li>
           </ul>
           <div className="setup-chips">
-            <Link className="setup-chip primary" href="/app">
+            <Link className="setup-chip primary" href={TRACKER_HOME}>
               Open tracker
             </Link>
             <button type="button" className="setup-chip" onClick={startChangeKeys}>

@@ -15,16 +15,23 @@ import { POST as postReset } from "../../app/api/setup/reset/route";
 import { PATCH as patchTransaction } from "../../app/api/transactions/[id]/route";
 import { GET as getTransactions } from "../../app/api/transactions/route";
 import { amountKeepingSign } from "../chat/money";
+import { parseAmount } from "../chat/validate-rows";
 import { confirmTransactions } from "../chat/transactions";
 import { loadHousehold } from "../chat/household";
+import { CHAT_STORAGE_KEY } from "../chat/persist";
 import { PDF_DISCLOSURE_KEY, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
 import { closeDb, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "../setup/categories";
+import { isTrackerNavActive, TRACKER_HOME, TRACKER_NAV } from "../../components/tracker/nav";
 import {
   excelBackupLabel,
+  EXPENSES_EMPTY_ACTION,
+  EXPENSES_EMPTY_LEAD,
+  EXPENSES_EMPTY_NOTE,
   keptCountLabel,
   removeWarning,
   savedBankLine,
+  showExpensesDownload,
   sqliteSavedLine,
   transactionCountLabel,
   xlsxSavedLine,
@@ -96,6 +103,54 @@ test("date and bank copy", () => {
   assert.equal(amountKeepingSign("+12.50", -12.5), "+12.50");
   assert.equal(amountKeepingSign("-3", 20), "-3");
   assert.equal(amountKeepingSign("8", 20), "8");
+});
+
+test("comma decimals keep the row sign", () => {
+  assert.equal(amountKeepingSign("14,25", -12.5), "-14.25");
+  assert.equal(parseAmount(amountKeepingSign("14,25", -12.5)), -14.25);
+  assert.equal(amountKeepingSign("14,25", 80), "14.25");
+  assert.equal(parseAmount(amountKeepingSign("14,25", 80)), 14.25);
+  assert.equal(amountKeepingSign("12.50", -4), "-12.5");
+  assert.equal(amountKeepingSign("8", 20), "8");
+  assert.equal(amountKeepingSign("+14,25", -12.5), "+14.25");
+  assert.equal(parseAmount(amountKeepingSign("+14,25", -12.5)), 14.25);
+  assert.equal(amountKeepingSign("-3,5", 20), "-3.5");
+  assert.equal(parseAmount(amountKeepingSign("-3,5", 20)), -3.5);
+  assert.equal(amountKeepingSign("1.234,50", -10), "-1234.5");
+  assert.equal(parseAmount(amountKeepingSign("1.234,50", -10)), -1234.5);
+  assert.equal(amountKeepingSign("1,234.50", 10), "1234.5");
+  assert.equal(parseAmount(amountKeepingSign("1 234,50", -1)), -1234.5);
+});
+
+test("tracker nav order, Open tracker, and the empty expenses state", () => {
+  assert.deepEqual(
+    TRACKER_NAV.map((item) => item.label),
+    ["Expenses", "Chat", "Summary", "Insights ↗"],
+  );
+  assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.external, true);
+  assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.href, "/app/insights");
+  assert.equal(TRACKER_HOME, "/app/expenses");
+  assert.equal(TRACKER_NAV[0]?.href, TRACKER_HOME);
+  assert.equal(isTrackerNavActive("/app", TRACKER_NAV[1]!), true);
+  assert.equal(isTrackerNavActive("/app/expenses", TRACKER_NAV[1]!), false);
+  assert.equal(isTrackerNavActive("/app/expenses", TRACKER_NAV[0]!), true);
+  assert.equal(isTrackerNavActive("/app", TRACKER_NAV[0]!), false);
+  assert.equal(
+    EXPENSES_EMPTY_LEAD,
+    "Here you will see all your expenses once you have added some. Go to Chat to add your first expense, or import a bank statement PDF.",
+  );
+  assert.equal(
+    EXPENSES_EMPTY_NOTE,
+    "Your expenses stay saved on this computer between openings of the app, unless you choose to set up completely new.",
+  );
+  assert.equal(EXPENSES_EMPTY_ACTION, "Go to Chat");
+  assert.equal(showExpensesDownload(0), false);
+  assert.equal(showExpensesDownload(1), true);
+  for (const file of ["app/page.tsx", "components/data/your-data.tsx", "components/setup/setup-chat.tsx"]) {
+    const source = readFileSync(file, "utf8");
+    assert.equal(source.includes("TRACKER_HOME"), true, file);
+    assert.equal(source.includes('href="/app"'), false, file);
+  }
 });
 
 test("confirm drops banks that were not submitted", async () => {
@@ -367,6 +422,21 @@ test("exports include removed banks and the sqlite file is a backup", async () =
     assert.equal(values[2], "grocery");
     assert.equal(values[3], "Sparkasse");
     assert.equal(values[4], -12.5);
+    assert.match(sheet.getRow(2).getCell(5).numFmt ?? "", /€/);
+
+    const refused = saveHousehold({
+      currency: "INR",
+      banks: [{ name: "Sparkasse", initials: "SP" }],
+    });
+    assert.equal(refused.ok, false);
+    if (!refused.ok) assert.match(refused.error, /not converted/);
+    const stillEur = new ExcelJS.Workbook();
+    const stillXlsx = await getXlsx();
+    const stillBytes = new Uint8Array(await stillXlsx.arrayBuffer());
+    await stillEur.xlsx.load(stillBytes as unknown as Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0]);
+    const stillSheet = stillEur.worksheets[0];
+    assert.match(stillSheet?.getRow(2).getCell(5).numFmt ?? "", /€/);
+    assert.equal((stillSheet?.getRow(2).values as unknown[]).slice(1)[4], -12.5);
 
     const sqlite = await getSqlite();
     assert.equal(sqlite.status, 200);
@@ -428,9 +498,19 @@ test("browser connection keeps active banks and clears only after reset", () => 
     assert.equal(store.has(PDF_DISCLOSURE_KEY), true);
     const stored = JSON.parse(store.get("haushaltsbuch.connection") ?? "{}") as { banks: { name: string }[] };
     assert.deepEqual(stored.banks, [{ name: "ING", initials: "IN" }]);
+    store.set(
+      CHAT_STORAGE_KEY,
+      JSON.stringify({
+        v: 1,
+        promptsUsed: true,
+        items: [{ id: 1, kind: "proposal", phase: "saved", error: "" }],
+        attachment: null,
+      }),
+    );
     clearConnection();
     assert.equal(store.has("haushaltsbuch.connection"), false);
     assert.equal(store.has(PDF_DISCLOSURE_KEY), false);
+    assert.equal(store.has(CHAT_STORAGE_KEY), false);
     assert.equal(dataset.visit, undefined);
   } finally {
     Object.assign(globalThis, { localStorage: previousStorage, document: previousDocument });

@@ -45,7 +45,8 @@
   color: var(--muted);
   font-size: 13px;
   font-weight: 650;
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .data-header-back:hover {
@@ -111,6 +112,11 @@
   color: var(--muted);
   font-size: 14.5px;
   line-height: 1.5;
+}
+
+.data-lead.is-strong {
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .data-note {

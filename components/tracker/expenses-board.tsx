@@ -1,8 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { amountKeepingSign, formatMoney, formatRowDate } from "@/lib/chat/money";
-import { XLSX_FILENAME } from "@/lib/data/copy";
+import {
+  EXPENSES_EMPTY_ACTION,
+  EXPENSES_EMPTY_LEAD,
+  EXPENSES_EMPTY_NOTE,
+  showExpensesDownload,
+  XLSX_FILENAME,
+} from "@/lib/data/copy";
 import { parseTransactionList } from "@/lib/data/parse";
 import type { BankView, TransactionView } from "@/lib/data/types";
 import { currencySummaryLabel } from "@/lib/setup/chat-logic";
@@ -92,7 +99,7 @@ async function downloadFile(url: string, filename: string): Promise<void> {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function ExpensesBoard() {
+export function ExpensesBoard({ focusId = null }: { focusId?: string | null }) {
   const [currency, setCurrency] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [banks, setBanks] = useState<BankView[]>([]);
@@ -125,6 +132,11 @@ export function ExpensesBoard() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!focusId || loading) return;
+    document.getElementById(`expense-${focusId}`)?.scrollIntoView({ block: "center" });
+  }, [focusId, loading, rows]);
+
   const subtitle = currency
     ? `Newest first · amounts in ${currencySummaryLabel(currency)}`
     : "Newest first";
@@ -149,16 +161,18 @@ export function ExpensesBoard() {
           <h1>Expenses</h1>
           <p>{subtitle}</p>
         </div>
-        <div className="expenses-download-wrap">
-          <button type="button" className="expenses-download" disabled={downloading} onClick={() => void onDownload()}>
-            {downloading ? "Downloading…" : "⬇ Download as Excel"}
-          </button>
-          {downloadError ? (
-            <p className="expenses-download-error" role="alert">
-              {downloadError}
-            </p>
-          ) : null}
-        </div>
+        {showExpensesDownload(rows.length) ? (
+          <div className="expenses-download-wrap">
+            <button type="button" className="expenses-download" disabled={downloading} onClick={() => void onDownload()}>
+              {downloading ? "Downloading…" : "⬇ Download as Excel"}
+            </button>
+            {downloadError ? (
+              <p className="expenses-download-error" role="alert">
+                {downloadError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {error ? (
         <p className="expenses-error" role="alert">
@@ -166,7 +180,16 @@ export function ExpensesBoard() {
         </p>
       ) : null}
       {loading ? <p className="expenses-foot">Loading expenses…</p> : null}
-      {!loading && !error ? (
+      {!loading && !error && rows.length === 0 ? (
+        <div className="expenses-empty">
+          <p className="expenses-empty-lead">{EXPENSES_EMPTY_LEAD}</p>
+          <p className="expenses-empty-note">{EXPENSES_EMPTY_NOTE}</p>
+          <Link className="expenses-go-chat" href="/app">
+            {EXPENSES_EMPTY_ACTION}
+          </Link>
+        </div>
+      ) : null}
+      {!loading && !error && rows.length > 0 ? (
         <>
           <div className="expenses-sheet">
             <table className="expenses-table">
@@ -183,21 +206,16 @@ export function ExpensesBoard() {
                 </tr>
               </thead>
               <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6}>No expenses yet.</td>
-                  </tr>
-                ) : (
-                  rows.map((row) => (
+                {rows.map((row) => (
                     <ExpenseRow
                       key={row.id}
                       transaction={row}
                       banks={banks}
                       categories={categories}
                       currency={currency ?? "EUR"}
+                      focused={focusId === String(row.id)}
                     />
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -213,11 +231,13 @@ function ExpenseRow({
   banks,
   categories,
   currency,
+  focused,
 }: {
   transaction: TransactionView;
   banks: BankView[];
   categories: string[];
   currency: string;
+  focused: boolean;
 }) {
   const [saved, setSaved] = useState(transaction);
   const savedRef = useRef(saved);
@@ -319,10 +339,10 @@ function ExpenseRow({
     setFailed(null);
   }
 
-  const rowClass = status === "saved" ? "is-saved" : undefined;
+  const rowClass = [status === "saved" ? "is-saved" : "", focused ? "is-focus" : ""].filter(Boolean).join(" ");
 
   return (
-    <tr className={rowClass}>
+    <tr id={`expense-${transaction.id}`} className={rowClass || undefined}>
       <Cell
         field="date"
         label="Date"
@@ -434,6 +454,8 @@ function ExpenseRow({
               placeholder="12.50 keeps the sign"
               value={draft.amountInput}
               className={failed === "amount" ? "is-invalid" : undefined}
+              onFocus={(event) => event.currentTarget.select()}
+              onMouseUp={(event) => event.preventDefault()}
               onChange={(event) => updateDraft({ ...draftRef.current, amountInput: event.target.value })}
               onBlur={() => void persist("amount", draftRef.current)}
               onKeyDown={(event) => {

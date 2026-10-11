@@ -5,6 +5,12 @@ export const metadata: Metadata = {
   title: "Expenses · Haushaltsbuch",
 };
 
-export default function ExpensesPage() {
-  return <ExpensesBoard />;
+export default async function ExpensesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ focus?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const focus = Array.isArray(params.focus) ? params.focus[0] : params.focus;
+  return <ExpensesBoard focusId={focus ?? null} />;
 }

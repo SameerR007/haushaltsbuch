@@ -1,6 +1,7 @@
 import { mkdirSync, existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import Database from "better-sqlite3";
+import { describeCurrency, UNKNOWN_CURRENCY_ERROR } from "./currency";
 import { EXPECTED_CATEGORIES } from "./setup/categories";
 import { normalizeBank } from "./setup/chat-logic";
 import type { SetupResult } from "./setup/types";
@@ -195,6 +196,9 @@ export function saveHousehold(input: {
   if (!/^[A-Z]{3}$/.test(currency)) {
     return { ok: false, code: "invalid", error: "Choose a 3-letter currency code." };
   }
+  if (!describeCurrency(currency)) {
+    return { ok: false, code: "invalid", error: UNKNOWN_CURRENCY_ERROR };
+  }
   if (!Array.isArray(input.banks) || input.banks.length === 0) {
     return { ok: false, code: "invalid", error: "Add at least one bank." };
   }
@@ -220,6 +224,17 @@ export function saveHousehold(input: {
   }
 
   const database = ensureMigrated();
+  const preference = database.prepare("SELECT currency FROM preferences WHERE id = 1").get() as
+    | { currency: string }
+    | undefined;
+  const savedCount = database.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number };
+  if (savedCount.n > 0 && preference && preference.currency !== currency) {
+    return {
+      ok: false,
+      code: "invalid",
+      error: "Amounts already saved are not converted. Set up completely new before choosing another currency.",
+    };
+  }
   const existing = database
     .prepare("SELECT name, initials, active FROM banks")
     .all() as StoredBank[];

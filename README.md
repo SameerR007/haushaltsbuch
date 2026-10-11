@@ -39,7 +39,7 @@ The welcome screen picks first visit or returning from `localStorage`. There is 
 | --- | --- |
 | **Key** | `haushaltsbuch.connection` |
 | **Missing or `""`** | First visit. **Get started** links to `/setup`. |
-| **Any non-empty string** | Returning. **Open tracker** links to `/app`. **Review the data** links to `/data`. |
+| **Any non-empty string** | Returning. **Open tracker** links to `/app/expenses`. **Review the data** links to `/data`. |
 
 The key is read in `app/layout.tsx` before first paint (`html[data-visit="returning"]`). The constant lives in `lib/connection.ts`.
 
@@ -60,7 +60,7 @@ localStorage.removeItem("haushaltsbuch.connection")
 `/setup` is a three-step chat:
 
 1. OpenAI API key, checked once. The local database file is created in the background.
-2. Currency (default euro) and one or more banks with initials.
+2. Currency and one or more banks with initials. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR. A later currency choice changes the symbol and the number format only. It does not convert amounts already saved, and confirm refuses a different currency once any transaction exists. Use **Set up completely new** before choosing another currency. Subtitles and cards show euro (€). Other currencies show the code and symbol when they differ, such as INR (₹) or USD ($), and the code alone when they do not, such as CHF.
 3. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
 **Review the data** opens **Your data**: database on this computer, currency, active banks, and whether an OpenAI key is saved in this browser. From there: **Open tracker**, **Change keys**, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**.
@@ -100,11 +100,13 @@ No sample transactions are inserted. Confirm updates the currency and the submit
 
 `/app` is the money chat.
 
-The header is **Haushaltsbuch**, **Chat**, **Expenses**, **Insights ↗** (opens in a new window), and **Summary**. Insights and Summary are placeholders.
+The header is **Haushaltsbuch**, then **Expenses**, **Chat**, **Summary**, and **Insights ↗** (opens in a new window). Insights is a placeholder. **Open tracker** (welcome, setup, and Your data) opens Expenses at `/app/expenses`.
 
-**Expenses** lists every transaction, newest first, with the household currency in the subtitle. **Download as Excel** fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
+**Summary** opens on the latest calendar month that has a transaction. From and To pick an exact range and show a plain date such as 1 September 2026, as does the line that names the month the page opens on. The chips jump to a recent month or a whole year. Income is the sum of positive amounts. Expenses are the negative amounts, including salary stored as a negative correction. A positive refund in a spending category counts as income and is not subtracted from that category. The income list shows at most 200 rows. Cards, the category donut, the income list, the five largest expenses, and the comparison table are calculated on this computer. A largest-expense row opens that row in Expenses. Period B starts as the previous calendar month when Period A is a whole month, the previous calendar year when Period A is a whole year, and otherwise the same number of days immediately before Period A. An empty range says **No expenses in 1 March 2025 – 31 March 2025 yet**, with plain dates, and offers **Go to Chat**.
 
-On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation.
+**Expenses** lists every transaction, newest first, with the household currency in the subtitle. Review cards use that same currency. With no transactions it explains that rows will show up after you add them in Chat or from a statement PDF, notes that they stay on this computer unless you set up completely new, and offers **Go to Chat**. **Download as Excel** stays hidden until there is at least one row, then fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Amount cells in the workbook use the saved currency’s symbol. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign, including a comma decimal such as `14,25`. The amount field selects its current value on focus. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
+
+On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation. Switching tabs or reloading keeps that conversation in this browser (`haushaltsbuch.chat`), the latest 60 items. If the stored transcript would be larger than 400 KB, the oldest items are dropped until it fits. **New chat** appears once there is a message, an attached PDF, or a review card. It clears the stored conversation and brings the prompts back. It asks first only when a review card is still unconfirmed. It does not delete transactions already saved. Each message sends at most the last 20 turns to OpenAI. **Set up completely new** removes that stored conversation as well.
 
 The prompts are built from `haushaltsbuch.connection` (version 2): the first saved bank name, and the saved currency’s minor units for the sample amount `12.50`. The day is the 12th of the previous full month, and the month name comes from that date. If no bank is saved, the bank is left out of the first prompt.
 
@@ -126,7 +128,7 @@ For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. 
 - `/app` — money chat
 - `/app/expenses` — editable expenses
 - `/app/insights` — placeholder, opened in a separate window
-- `/app/summary` — placeholder
+- `/app/summary` — income, expenses, and a comparison of two date ranges
 - `POST /api/setup/init` — create or migrate the local database
 - `POST /api/setup/openai` — check an OpenAI key, do not store it
 - `POST /api/setup/confirm` — save currency and banks; drop or soft-remove banks that are not in the list
@@ -140,6 +142,7 @@ For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. 
 - `GET /api/export/sqlite` — SQLite backup via `better-sqlite3` backup
 - `POST /api/chat` — money chat tool loop; cross-site requests are HTTP 403
 - `POST /api/import/pdf` — send a statement PDF to OpenAI and return a review; cross-site requests are HTTP 403, and the body stays multipart
+- `GET /api/summary` — read-only totals for two date ranges. See [docs/summary-api.md](docs/summary-api.md)
 - `GET /api/transactions` — expenses, newest first
 - `PATCH /api/transactions/[id]` — edit one expense; does not change `batch_id`
 - `POST /api/transactions/confirm` — save a reviewed batch
