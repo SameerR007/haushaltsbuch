@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { formatMoney, formatRowDate } from "@/lib/chat/money";
+import { useEffect, useState, type ReactNode } from "react";
+import { formatMoney, formatPlainDate, formatRowDate, formatSummaryMoney } from "@/lib/chat/money";
 import {
   SUMMARY_EMPTY,
   SUMMARY_GO_CHAT,
@@ -23,6 +23,7 @@ import {
   monthRangeContaining,
   monthYearLabel,
   previousPeriod,
+  plainRangeLabel,
   rangeLabel,
   recentMonthRanges,
   sharePercent,
@@ -32,31 +33,39 @@ import {
 
 const CATEGORY_COLORS = ["#1c6b62", "#3c9a86", "#8fbf7a", "#c4a574", "#e07a4c", "#b7b1a8", "#5b8fa8", "#7a6a9a"];
 
+type PickerAnchor = "toolbar-start" | "toolbar-end" | "a-start" | "a-end" | "b-start" | "b-end";
+
 type Picker = {
-  kind: "main" | "compare";
+  anchor: PickerAnchor;
   step: "start" | "end";
   month: string;
   start: string | null;
 };
+
+const MINUS = "\u2212";
+
+function editsCompare(anchor: PickerAnchor): boolean {
+  return anchor.startsWith("b-");
+}
 
 function colorFor(index: number): string {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length] ?? "#1c6b62";
 }
 
 function money(amount: number, currency: string): string {
-  return formatMoney(amount, currency);
+  return formatSummaryMoney(amount, currency);
 }
 
 function signedMoney(amount: number, currency: string): string {
   if (amount === 0) return `±${formatMoney(0, currency)}`;
   if (amount > 0) return `+${formatMoney(amount, currency)}`;
-  return formatMoney(amount, currency);
+  return formatSummaryMoney(amount, currency);
 }
 
 function percentLabel(percent: number): string {
   const body = Number.isInteger(percent) ? String(Math.abs(percent)) : Math.abs(percent).toFixed(1);
   if (percent > 0) return `(+${body}%)`;
-  if (percent < 0) return `(-${body}%)`;
+  if (percent < 0) return `(${MINUS}${body}%)`;
   return `(±${body}%)`;
 }
 
@@ -158,17 +167,19 @@ export function SummaryBoard() {
     visit(summary.from, summary.to, compareFrom, compareTo);
   }
 
-  function openPicker(kind: "main" | "compare", step: "start" | "end") {
+  function openPicker(anchor: PickerAnchor) {
+    const compare = editsCompare(anchor);
+    const step = anchor.endsWith("end") ? "end" : "start";
     const month = (step === "end"
-      ? kind === "main"
-        ? summary?.to
-        : summary?.compareTo
-      : kind === "main"
-        ? summary?.from
-        : summary?.compareFrom) ?? summary?.from;
+      ? compare
+        ? summary?.compareTo
+        : summary?.to
+      : compare
+        ? summary?.compareFrom
+        : summary?.from) ?? summary?.from;
     if (!month) return;
-    const start = step === "end" ? (kind === "main" ? summary?.from ?? null : summary?.compareFrom ?? null) : null;
-    setPicker({ kind, step, month, start });
+    const start = step === "end" ? (compare ? summary?.compareFrom ?? null : summary?.from ?? null) : null;
+    setPicker({ anchor, step, month, start });
   }
 
   function chooseDay(iso: string) {
@@ -180,8 +191,8 @@ export function SummaryBoard() {
     const start = picker.start ?? iso;
     const from = start <= iso ? start : iso;
     const to = start <= iso ? iso : start;
-    if (picker.kind === "main") visitMain(from, to);
-    else visitCompare(from, to);
+    if (editsCompare(picker.anchor)) visitCompare(from, to);
+    else visitMain(from, to);
   }
 
   function shiftPicker(delta: number) {
@@ -205,22 +216,38 @@ export function SummaryBoard() {
   const netDelta = summary ? summary.net - summary.compareNet : 0;
   const compared = summary ? categoryComparison(summary.categories, summary.compareCategories) : [];
 
+  function calendarFor(anchor: PickerAnchor): ReactNode {
+    if (!picker || picker.anchor !== anchor || !summary) return null;
+    const compare = editsCompare(picker.anchor);
+    return (
+      <Calendar
+        month={picker.month}
+        start={picker.step === "end" ? picker.start : compare ? summary.compareFrom : summary.from}
+        end={picker.step === "end" ? picker.start : compare ? summary.compareTo : summary.to}
+        onShift={shiftPicker}
+        onPick={chooseDay}
+      />
+    );
+  }
+
   return (
     <main className="summary">
       <div className="summary-toolbar">
         <div className="summary-controls">
           <DateField
             kicker="From"
-            value={summary?.from ? formatRowDate(summary.from) : "—"}
-            onClick={() => openPicker("main", "start")}
+            value={summary?.from ? formatPlainDate(summary.from) : "—"}
+            onClick={() => openPicker("toolbar-start")}
+            calendar={calendarFor("toolbar-start")}
           />
           <span className="summary-arrow" aria-hidden="true">
             →
           </span>
           <DateField
             kicker="To"
-            value={summary?.to ? formatRowDate(summary.to) : "—"}
-            onClick={() => openPicker("main", "end")}
+            value={summary?.to ? formatPlainDate(summary.to) : "—"}
+            onClick={() => openPicker("toolbar-end")}
+            calendar={calendarFor("toolbar-end")}
           />
           <div className="summary-chips">
             {months.map((month) => {
@@ -247,20 +274,11 @@ export function SummaryBoard() {
             ) : null}
           </div>
         </div>
-        {picker?.kind === "main" ? (
-          <Calendar
-            month={picker.month}
-            start={picker.step === "end" ? picker.start : summary?.from ?? null}
-            end={picker.step === "end" ? picker.start : summary?.to ?? null}
-            onShift={shiftPicker}
-            onPick={chooseDay}
-          />
-        ) : null}
       </div>
 
       <div className="summary-meta">
         {summary?.latestFrom && summary.latestTo ? (
-          <p>{summaryOpensOn(rangeLabel(summary.latestFrom, summary.latestTo))}</p>
+          <p>{summaryOpensOn(plainRangeLabel(summary.latestFrom, summary.latestTo))}</p>
         ) : (
           <p />
         )}
@@ -358,13 +376,13 @@ export function SummaryBoard() {
                         {formatRowDate(row.date)} · {bankLine(row)}
                       </p>
                     </div>
-                    <span className="is-up">{signedMoney(row.amount, currency)}</span>
+                    <span className="summary-line-amount is-up">{signedMoney(row.amount, currency)}</span>
                   </li>
                 ))}
               </ul>
               <p className="summary-line-total">
                 <span>Total income</span>
-                <span className="is-up">{signedMoney(summary.income, currency)}</span>
+                <span className="summary-line-amount is-up">{signedMoney(summary.income, currency)}</span>
               </p>
             </article>
           </section>
@@ -380,7 +398,7 @@ export function SummaryBoard() {
                       {row.notes?.trim() || "—"} · {row.category} · {row.bankInitials || row.bank}
                     </p>
                   </Link>
-                  <span>{money(row.amount, currency)}</span>
+                  <span className="summary-line-amount">{money(row.amount, currency)}</span>
                 </li>
               ))}
             </ul>
@@ -388,34 +406,39 @@ export function SummaryBoard() {
 
           <section className="summary-panel">
             <h2>Compare two periods</h2>
-            {picker?.kind === "compare" ? (
-              <Calendar
-                month={picker.month}
-                start={picker.step === "end" ? picker.start : summary.compareFrom}
-                end={picker.step === "end" ? picker.start : summary.compareTo}
-                onShift={shiftPicker}
-                onPick={chooseDay}
-              />
-            ) : null}
             <div className="summary-periods">
               <div>
                 <p className="summary-period-label">Period A</p>
-                <DateField kicker="From" value={summary.from ? formatRowDate(summary.from) : "—"} onClick={() => openPicker("main", "start")} />
-                <span className="summary-to">to</span>
-                <DateField kicker="To" value={summary.to ? formatRowDate(summary.to) : "—"} onClick={() => openPicker("main", "end")} />
-              </div>
-              <div>
-                <p className="summary-period-label">Period B</p>
                 <DateField
                   kicker="From"
-                  value={summary.compareFrom ? formatRowDate(summary.compareFrom) : "—"}
-                  onClick={() => openPicker("compare", "start")}
+                  value={summary.from ? formatPlainDate(summary.from) : "—"}
+                  onClick={() => openPicker("a-start")}
+                  calendar={calendarFor("a-start")}
                 />
                 <span className="summary-to">to</span>
                 <DateField
                   kicker="To"
-                  value={summary.compareTo ? formatRowDate(summary.compareTo) : "—"}
-                  onClick={() => openPicker("compare", "end")}
+                  value={summary.to ? formatPlainDate(summary.to) : "—"}
+                  onClick={() => openPicker("a-end")}
+                  calendar={calendarFor("a-end")}
+                />
+              </div>
+              <div className="summary-period-end">
+                <p className="summary-period-label">Period B</p>
+                <DateField
+                  kicker="From"
+                  value={summary.compareFrom ? formatPlainDate(summary.compareFrom) : "—"}
+                  onClick={() => openPicker("b-start")}
+                  calendar={calendarFor("b-start")}
+                  align="end"
+                />
+                <span className="summary-to">to</span>
+                <DateField
+                  kicker="To"
+                  value={summary.compareTo ? formatPlainDate(summary.compareTo) : "—"}
+                  onClick={() => openPicker("b-end")}
+                  calendar={calendarFor("b-end")}
+                  align="end"
                 />
               </div>
             </div>
@@ -472,12 +495,27 @@ export function SummaryBoard() {
   );
 }
 
-function DateField({ kicker, value, onClick }: { kicker: string; value: string; onClick: () => void }) {
+function DateField({
+  kicker,
+  value,
+  onClick,
+  calendar,
+  align = "start",
+}: {
+  kicker: string;
+  value: string;
+  onClick: () => void;
+  calendar: ReactNode;
+  align?: "start" | "end";
+}) {
   return (
-    <button type="button" className="summary-date" onClick={onClick}>
-      <span>{kicker}</span>
-      {value}
-    </button>
+    <span className={align === "end" ? "summary-date-wrap is-align-end" : "summary-date-wrap"}>
+      <button type="button" className="summary-date" onClick={onClick} aria-expanded={calendar !== null}>
+        <span>{kicker}</span>
+        {value}
+      </button>
+      {calendar}
+    </span>
   );
 }
 

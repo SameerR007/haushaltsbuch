@@ -4,7 +4,7 @@
 
 Amounts stay signed. A positive amount is income. A negative amount is an expense. Salary and other income count as income when their amounts are positive. A negative salary is an expense. A positive refund stored in a spending category, such as grocery, also counts as income. It is not subtracted from that category’s spend: category totals add up only the negative amounts. Removed banks stay in the result.
 
-Dates in the query are `YYYY-MM-DD`. The page shows them as an ordinal day, a full month name, and a year, for example `3rd September 2026`.
+Dates in the query are `YYYY-MM-DD`. The From and To fields, and the line that says which month the page opens on, use a plain date such as `1 September 2026`. Lists such as Largest expenses, and the Expenses page, keep the ordinal form `3rd September 2026`. Negative amounts on Summary use the minus sign −.
 
 ## Query
 

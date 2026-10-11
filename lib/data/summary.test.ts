@@ -12,6 +12,7 @@ import {
   isWholeMonth,
   magnitudeChange,
   monthYearLabel,
+  plainRangeLabel,
   previousPeriod,
   rangeLabel,
   sharePercent,
@@ -84,6 +85,7 @@ test("summary ranges use exact months and the same length otherwise", () => {
   assert.equal(monthYearLabel("2026-09-01"), "September 2026");
   assert.equal(wholeYearLabel(2026), "Whole year 2026");
   assert.equal(rangeLabel("2026-09-03", "2026-09-03"), "3rd September 2026 – 3rd September 2026");
+  assert.equal(plainRangeLabel("2026-09-01", "2026-09-30"), "1 September 2026 – 30 September 2026");
   assert.equal(sharePercent(-850, -1412.6), 60);
   assert.equal(magnitudeChange(-1412.6, -1298.3), 114.3);
   assert.equal(changePercent(114.3, 1298.3), 8.8);
@@ -217,6 +219,7 @@ test("summary route stays read-only and has no bank breakdown", () => {
   const route = readFileSync("app/api/summary/route.ts", "utf8");
   const query = readFileSync("lib/data/summary.ts", "utf8");
   const page = readFileSync("components/tracker/summary-board.tsx", "utf8");
+  const css = readFileSync("app/app/tracker.css", "utf8");
   assert.equal(route.includes("guardStateChange"), false);
   assert.equal(route.includes("openai"), false);
   assert.equal(query.includes("openai"), false);
@@ -226,4 +229,19 @@ test("summary route stays read-only and has no bank breakdown", () => {
   assert.equal(page.includes("Spending by bank"), false);
   assert.equal(/this month|today/i.test(page), false);
   assert.equal(page.includes("€"), false);
+  assert.equal(page.includes('picker?.kind === "main"'), false);
+  assert.equal(page.includes("summary-date-wrap"), true);
+  assert.equal(page.includes('openPicker("a-start")'), true);
+  assert.equal(page.includes('openPicker("toolbar-start")'), true);
+  assert.equal(page.includes("formatRowDate(summary."), false);
+  assert.equal(page.includes("plainRangeLabel(summary.latestFrom"), true);
+  assert.equal(page.includes("formatRowDate(row.date)"), true);
+  assert.equal(page.includes("formatSummaryMoney"), true);
+  assert.match(css, /\.summary-date-wrap \{[^}]*position:\s*relative/);
+  assert.match(css, /\.summary-date-wrap \.summary-calendar \{[^}]*position:\s*absolute/);
+  assert.match(css, /\.summary-lines li > div,\s*\.summary-lines a \{[^}]*min-width:\s*0/);
+  assert.match(css, /\.summary-line-amount \{[^}]*white-space:\s*nowrap/);
+  assert.match(css, /\.summary-card-amount\.is-expense \{[^}]*color:\s*var\(--ink\)/);
+  assert.match(css, /\.summary-card-amount\.is-net \{[^}]*color:\s*var\(--teal\)/);
+  assert.equal(/\.summary-card-amount\.is-expense \{[^}]*#9f2d22/.test(css), false);
 });

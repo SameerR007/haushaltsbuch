@@ -874,6 +874,28 @@
   gap: 8px;
 }
 
+.summary-date-wrap {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.summary-date-wrap .summary-calendar {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  margin-top: 0;
+  width: min(320px, calc(100vw - 56px));
+}
+
+.summary-date-wrap.is-align-end .summary-calendar {
+  left: auto;
+  right: 0;
+}
+
 .summary-date {
   appearance: none;
   display: inline-flex;
@@ -887,6 +909,7 @@
   font: inherit;
   font-size: 14px;
   cursor: pointer;
+  max-width: 100%;
 }
 
 .summary-date span {
@@ -1010,7 +1033,7 @@
 
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -1051,11 +1074,11 @@
 }
 
 .summary-card-amount.is-expense {
-  color: #9f2d22;
+  color: var(--ink);
 }
 
 .summary-card-amount.is-net {
-  color: var(--ink);
+  color: var(--teal);
 }
 
 .is-down {
@@ -1068,9 +1091,14 @@
 
 .summary-split {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.summary-panel,
+.summary-card {
+  min-width: 0;
 }
 
 .summary-panel {
@@ -1133,10 +1161,16 @@
 
 .summary-legend li {
   display: grid;
-  grid-template-columns: 12px 1fr auto auto;
+  grid-template-columns: 12px minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
+  min-width: 0;
   font-size: 14px;
+}
+
+.summary-legend-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .summary-swatch {
@@ -1151,7 +1185,7 @@
 
 .summary-legend-amt {
   font-variant-numeric: tabular-nums;
-  min-width: 6.5rem;
+  white-space: nowrap;
   text-align: right;
 }
 
@@ -1166,8 +1200,15 @@
   justify-content: space-between;
   gap: 16px;
   align-items: center;
+  min-width: 0;
   padding: 10px 0;
   border-top: 1px solid #f0ebe4;
+}
+
+.summary-lines li > div,
+.summary-lines a {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .summary-lines a {
@@ -1182,6 +1223,12 @@
 .summary-line-title,
 .summary-line-sub {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.summary-line-amount {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .summary-line-title {
@@ -1196,17 +1243,28 @@
 .summary-line-total {
   display: flex;
   justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
   margin: 8px 0 0;
   padding-top: 10px;
   border-top: 1px solid var(--line);
   font-weight: 700;
 }
 
+.summary-line-total > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .summary-periods {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.summary-periods > div {
+  min-width: 0;
 }
 
 .summary-periods .summary-date {

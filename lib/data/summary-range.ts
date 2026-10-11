@@ -1,4 +1,4 @@
-import { formatRowDate } from "../chat/money";
+import { formatPlainDate, formatRowDate } from "../chat/money";
 import { parseIsoDate } from "../chat/validate-rows";
 
 export function roundCents(value: number): number {
@@ -108,6 +108,11 @@ export function wholeYearLabel(year: number): string {
 
 export function rangeLabel(from: string, to: string): string {
   return `${formatRowDate(from)} – ${formatRowDate(to)}`;
+}
+
+/** Picker fields and the "Opens on…" line. Lists keep rangeLabel. */
+export function plainRangeLabel(from: string, to: string): string {
+  return `${formatPlainDate(from)} – ${formatPlainDate(to)}`;
 }
 
 export function magnitudeChange(currentSigned: number, previousSigned: number): number {

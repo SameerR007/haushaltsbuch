@@ -50,6 +50,13 @@ export function formatMoney(amount: number, currency: string): string {
   }
 }
 
+/** Summary amounts use the minus sign − (U+2212), not a hyphen. */
+export function formatSummaryMoney(amount: number, currency: string): string {
+  const formatted = formatMoney(amount, currency);
+  if (amount < 0) return formatted.replaceAll("-", "\u2212");
+  return formatted;
+}
+
 /** English ordinal for a calendar day: 1st, 2nd, 3rd, 11th, 12th, 23rd. */
 export function ordinalDay(day: number): string {
   const mod100 = day % 100;
@@ -66,23 +73,36 @@ export function ordinalDay(day: number): string {
   }
 }
 
-/**
- * Display an ISO date as "12th September 2026".
- * Format only. This does not parse relative phrases such as "today".
- */
-export function formatRowDate(iso: string): string {
+function calendarDateParts(iso: string): { day: number; monthName: string; year: number } | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!match) return iso;
+  if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
   const date = new Date(Date.UTC(year, month - 1, day));
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
-    return iso;
+    return null;
   }
   const monthName = new Intl.DateTimeFormat("en-US", {
     month: "long",
     timeZone: "UTC",
   }).format(date);
-  return `${ordinalDay(day)} ${monthName} ${year}`;
+  return { day, monthName, year };
+}
+
+/**
+ * Display an ISO date as "12th September 2026".
+ * Format only. This does not parse relative phrases such as "today".
+ */
+export function formatRowDate(iso: string): string {
+  const parts = calendarDateParts(iso);
+  if (!parts) return iso;
+  return `${ordinalDay(parts.day)} ${parts.monthName} ${parts.year}`;
+}
+
+/** Display an ISO date as "1 September 2026", without an ordinal. */
+export function formatPlainDate(iso: string): string {
+  const parts = calendarDateParts(iso);
+  if (!parts) return iso;
+  return `${parts.day} ${parts.monthName} ${parts.year}`;
 }
