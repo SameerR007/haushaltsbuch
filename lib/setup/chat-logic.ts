@@ -1,3 +1,11 @@
+import { currencyConfirmLabel, describeCurrency } from "../currency";
+
+export const CURRENCY_CHOICES = [
+  { code: "EUR", label: "Euro (€)" },
+  { code: "INR", label: "INR (₹)" },
+  { code: "USD", label: "USD ($)" },
+] as const;
+
 export function suggestInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "";
@@ -19,26 +27,28 @@ export function parseCurrencyText(text: string): string | null {
   const folded = text.trim().toLowerCase();
   if (!folded) return null;
   if (folded === "€" || folded === "eur" || folded.includes("euro")) return "EUR";
+  if (folded === "₹" || folded === "inr" || folded.includes("rupee")) return "INR";
   if (folded === "$" || folded === "usd" || folded.includes("dollar")) return "USD";
   if (folded === "£" || folded === "gbp" || folded.includes("pound")) return "GBP";
   const code = text.trim().toUpperCase();
-  if (/^[A-Z]{3}$/.test(code)) return code;
-  return null;
+  if (!/^[A-Z]{3}$/.test(code)) return null;
+  return describeCurrency(code)?.code ?? null;
 }
 
 export function currencyChoiceLabel(code: string): string {
-  if (code === "EUR") return "Keep euro (€)";
-  if (code === "USD") return "USD ($)";
-  if (code === "GBP") return "GBP (£)";
-  return code;
+  const choice = CURRENCY_CHOICES.find((item) => item.code === code);
+  if (choice) return choice.label;
+  const known = describeCurrency(code);
+  return known ? currencyConfirmLabel(known) : code;
 }
 
-/** Summary line on confirm and the saved card. Euro matches the setup mocks. */
+/** Subtitle and card label: "euro (€)", "INR (₹)", "USD ($)", or "CHF". */
 export function currencySummaryLabel(code: string): string {
-  if (code === "EUR") return "euro (€)";
-  if (code === "USD") return "USD ($)";
-  if (code === "GBP") return "GBP (£)";
-  return code;
+  const known = describeCurrency(code);
+  if (!known) return code;
+  if (known.code === "EUR") return "euro (€)";
+  if (known.symbol === known.code) return known.code;
+  return `${known.code} (${known.symbol})`;
 }
 
 export function normalizeBank(name: string, initials: string): {
