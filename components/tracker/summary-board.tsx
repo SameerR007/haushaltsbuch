@@ -40,10 +40,10 @@ import {
   addDays,
   calendarCells,
   categoryComparison,
-  changePercent,
+  formatPeriodChangeText,
   isoDate,
-  magnitudeChange,
   monthRangeContaining,
+  periodChange,
   monthYearLabel,
   plainRangeLabel,
   recentMonthRanges,
@@ -76,17 +76,37 @@ function signedMoney(amount: number, currency: string): string {
   return formatSummaryMoney(amount, currency);
 }
 
-function percentLabel(percent: number): string {
-  const body = Number.isInteger(percent) ? String(Math.abs(percent)) : Math.abs(percent).toFixed(1);
-  if (percent > 0) return `(+${body}%)`;
-  if (percent < 0) return `(${MINUS}${body}%)`;
-  return `(±${body}%)`;
-}
-
 function tone(amount: number, kind: "expense" | "income" | "net"): string {
   if (amount === 0) return "is-flat";
   if (kind === "expense") return amount > 0 ? "is-down" : "is-up";
   return amount > 0 ? "is-up" : "is-down";
+}
+
+function ChangeCells({
+  periodA,
+  periodB,
+  basis,
+  kind,
+  currency,
+  moneyA,
+  moneyB,
+}: {
+  periodA: number;
+  periodB: number;
+  basis: "magnitude" | "signed";
+  kind: "expense" | "income" | "net";
+  currency: string;
+  moneyA: string;
+  moneyB: string;
+}) {
+  const change = periodChange(periodA, periodB, basis);
+  return (
+    <>
+      <td className="is-num">{moneyA}</td>
+      <td className="is-num">{moneyB}</td>
+      <td className={`is-num ${tone(change.amount, kind)}`}>{formatPeriodChangeText(change, currency)}</td>
+    </>
+  );
 }
 
 function bankLine(row: SummaryRow): string {
@@ -522,10 +542,6 @@ function ComparePeriods({
 
   const currency = summary?.currency ?? "";
   const compared = summary ? categoryComparison(summary.categories, summary.compareCategories) : [];
-  const expenseDelta = summary ? magnitudeChange(summary.expenses, summary.compareExpenses) : 0;
-  const expensePercent = summary ? changePercent(expenseDelta, Math.abs(summary.compareExpenses)) : null;
-  const incomeDelta = summary ? summary.income - summary.compareIncome : 0;
-  const netDelta = summary ? summary.net - summary.compareNet : 0;
 
   function field(which: "a" | "b", edge: "from" | "to", align: "start" | "end") {
     const id = `${which}-${edge}` as SingleField;
@@ -610,7 +626,7 @@ function ComparePeriods({
                   <th>Category</th>
                   <th className="is-num">Period A</th>
                   <th className="is-num">Period B</th>
-                  <th className="is-num">Change</th>
+                  <th className="is-num">{`Change (B ${MINUS} A)`}</th>
                 </tr>
               </thead>
               <tbody>
@@ -618,36 +634,53 @@ function ComparePeriods({
                   <th colSpan={4}>Expenses</th>
                 </tr>
                 {compared.map((row) => {
-                  const delta = magnitudeChange(row.periodA, row.periodB);
+                  const change = periodChange(row.periodA, row.periodB, "magnitude");
                   return (
                     <tr key={row.category}>
                       <td>{row.category}</td>
                       <td className="is-num">{money(Math.abs(row.periodA), currency)}</td>
                       <td className="is-num">{money(Math.abs(row.periodB), currency)}</td>
-                      <td className={`is-num ${tone(delta, "expense")}`}>{signedMoney(delta, currency)}</td>
+                      <td className={`is-num ${tone(change.amount, "expense")}`}>
+                        {formatPeriodChangeText(change, currency)}
+                      </td>
                     </tr>
                   );
                 })}
                 <tr className="summary-total">
                   <td>Total expenses</td>
-                  <td className="is-num">{money(Math.abs(summary.expenses), currency)}</td>
-                  <td className="is-num">{money(Math.abs(summary.compareExpenses), currency)}</td>
-                  <td className={`is-num ${tone(expenseDelta, "expense")}`}>
-                    {signedMoney(expenseDelta, currency)}
-                    {expensePercent === null ? "" : ` ${percentLabel(expensePercent)}`}
-                  </td>
+                  <ChangeCells
+                    periodA={summary.expenses}
+                    periodB={summary.compareExpenses}
+                    basis="magnitude"
+                    kind="expense"
+                    currency={currency}
+                    moneyA={money(Math.abs(summary.expenses), currency)}
+                    moneyB={money(Math.abs(summary.compareExpenses), currency)}
+                  />
                 </tr>
                 <tr>
                   <td>Income</td>
-                  <td className="is-num">{money(summary.income, currency)}</td>
-                  <td className="is-num">{money(summary.compareIncome, currency)}</td>
-                  <td className={`is-num ${tone(incomeDelta, "income")}`}>{signedMoney(incomeDelta, currency)}</td>
+                  <ChangeCells
+                    periodA={summary.income}
+                    periodB={summary.compareIncome}
+                    basis="signed"
+                    kind="income"
+                    currency={currency}
+                    moneyA={money(summary.income, currency)}
+                    moneyB={money(summary.compareIncome, currency)}
+                  />
                 </tr>
                 <tr className="summary-total">
                   <td>Net</td>
-                  <td className="is-num">{signedMoney(summary.net, currency)}</td>
-                  <td className="is-num">{signedMoney(summary.compareNet, currency)}</td>
-                  <td className={`is-num ${tone(netDelta, "net")}`}>{signedMoney(netDelta, currency)}</td>
+                  <ChangeCells
+                    periodA={summary.net}
+                    periodB={summary.compareNet}
+                    basis="signed"
+                    kind="net"
+                    currency={currency}
+                    moneyA={signedMoney(summary.net, currency)}
+                    moneyB={signedMoney(summary.compareNet, currency)}
+                  />
                 </tr>
               </tbody>
             </table>

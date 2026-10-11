@@ -155,12 +155,15 @@ export function previewRange(saved: DateRange | null, draft: RangeDraft, hover: 
 
 /**
  * One click sets that field and closes. The same day as the saved value still counts.
- * A from-date after the to-date swaps the two ends so the range stays ordered.
+ * The clicked day stays on the field that was clicked. If that day would put the
+ * start after the end, the other field moves to the same day.
  */
 export function applySingleDate(range: DateRange, field: "from" | "to", iso: string): DateRange | null {
   if (!parseIsoDate(iso)) return null;
-  const next = field === "from" ? { from: iso, to: range.to } : { from: range.from, to: iso };
-  return orderRange(next.from, next.to);
+  if (field === "from") {
+    return iso <= range.to ? { from: iso, to: range.to } : { from: iso, to: iso };
+  }
+  return iso >= range.from ? { from: range.from, to: iso } : { from: iso, to: iso };
 }
 
 export function moveCalendarDay(iso: string, key: string): string | null {

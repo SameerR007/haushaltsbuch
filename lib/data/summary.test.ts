@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { GET } from "../../app/api/summary/route";
 import { closeDb, ensureMigrated, saveHousehold } from "../db";
 import { SUMMARY_EMPTY, summaryAmountsNote, summaryEmptyRange, summaryOpensOn } from "./copy";
@@ -22,9 +24,9 @@ import {
 } from "./summary-state";
 import {
   categoryComparison,
-  changePercent,
+  formatPeriodChangeText,
   isWholeMonth,
-  magnitudeChange,
+  periodChange,
   monthYearLabel,
   plainRangeLabel,
   previousPeriod,
@@ -101,8 +103,9 @@ test("summary ranges use exact months and the same length otherwise", () => {
   assert.equal(rangeLabel("2026-09-03", "2026-09-03"), "3rd September 2026 – 3rd September 2026");
   assert.equal(plainRangeLabel("2026-09-01", "2026-09-30"), "1 September 2026 – 30 September 2026");
   assert.equal(sharePercent(-850, -1412.6), 60);
-  assert.equal(magnitudeChange(-1412.6, -1298.3), 114.3);
-  assert.equal(changePercent(114.3, 1298.3), 8.8);
+  const expenseChange = periodChange(-1412.6, -1298.3, "magnitude");
+  assert.equal(expenseChange.amount, -114.3);
+  assert.deepEqual(expenseChange.marker, { kind: "percent", value: -8.1 });
   assert.equal(SUMMARY_EMPTY.includes("today"), false);
   assert.equal(/this month/i.test(summaryEmptyRange("1st September 2026 – 30th September 2026")), false);
   assert.equal(
@@ -167,7 +170,9 @@ test("summary totals keep the sign, include a removed bank, and default to the l
     const grocery = compared.find((row) => row.category === "grocery");
     assert.equal(grocery?.periodA, -236.2);
     assert.equal(grocery?.periodB, -205.1);
-    assert.equal(magnitudeChange(grocery?.periodA ?? 0, grocery?.periodB ?? 0), 31.1);
+    const groceryChange = periodChange(grocery?.periodA ?? 0, grocery?.periodB ?? 0, "magnitude");
+    assert.equal(groceryChange.amount, -31.1);
+    assert.deepEqual(groceryChange.marker, { kind: "percent", value: -13.2 });
 
     const july = await getSummary("?from=2026-07-01&to=2026-07-31");
     assert.equal(july.status, 200);
@@ -281,7 +286,9 @@ test("one period and compare stay on separate requests", async () => {
   assert.deepEqual(swapped, { kind: "commit", range: { from: "2026-09-01", to: "2026-09-14" } });
   assert.deepEqual(previewRange(saved, first.draft, "2026-09-23"), { from: "2026-09-14", to: "2026-09-23" });
   assert.deepEqual(applySingleDate(saved, "to", "2026-09-30"), saved);
-  assert.deepEqual(applySingleDate(saved, "from", "2026-10-02"), { from: "2026-09-30", to: "2026-10-02" });
+  assert.deepEqual(applySingleDate(saved, "from", "2026-09-01"), { from: "2026-09-01", to: "2026-09-30" });
+  assert.deepEqual(applySingleDate(saved, "from", "2026-10-01"), { from: "2026-10-01", to: "2026-10-01" });
+  assert.deepEqual(applySingleDate(saved, "to", "2026-09-01"), { from: "2026-09-01", to: "2026-09-01" });
   assert.equal(moveCalendarDay("2026-09-14", "ArrowRight"), "2026-09-15");
   assert.equal(moveCalendarDay("2026-09-14", "ArrowDown"), "2026-09-21");
 
@@ -361,6 +368,8 @@ test("summary route stays read-only and has no bank breakdown", () => {
   assert.match(page, /compareSearch\(/);
   assert.match(page, /clickRangeDay\(/);
   assert.match(page, /applySingleDate\(/);
+  assert.match(page, /Change \(B/);
+  assert.match(page, /formatPeriodChangeText\(/);
   assert.equal(/this month|today/i.test(page), false);
   assert.equal(page.includes("€"), false);
   assert.equal(page.includes("summary-date-wrap"), true);
@@ -382,4 +391,36 @@ test("summary route stays read-only and has no bank breakdown", () => {
   assert.match(css, /\.summary-card-amount\.is-expense \{[^}]*color:\s*var\(--ink\)/);
   assert.match(css, /\.summary-card-amount\.is-net \{[^}]*color:\s*var\(--teal\)/);
   assert.equal(/\.summary-card-amount\.is-expense \{[^}]*#9f2d22/.test(css), false);
+});
+
+test("change is period B minus period A, with a percentage on every row", () => {
+  const MINUS = "\u2212";
+  assert.equal(formatPeriodChangeText(periodChange(4400, 4950, "signed"), "EUR"), "+€550.00 (+12.5%)");
+  assert.equal(formatPeriodChangeText(periodChange(100, 100, "signed"), "EUR"), "±€0.00 (±0.0%)");
+  assert.equal(formatPeriodChangeText(periodChange(0, 0, "signed"), "EUR"), "±€0.00");
+  assert.equal(formatPeriodChangeText(periodChange(0, 40, "signed"), "EUR"), "+€40.00 (new)");
+  assert.equal(formatPeriodChangeText(periodChange(0, -25, "signed"), "EUR"), `${MINUS}€25.00 (new)`);
+  assert.equal(formatPeriodChangeText(periodChange(-200, -50, "signed"), "EUR"), "+€150.00 (+75.0%)");
+  assert.equal(formatPeriodChangeText(periodChange(-200, -350, "signed"), "EUR"), `${MINUS}€150.00 (${MINUS}75.0%)`);
+  assert.equal(formatPeriodChangeText(periodChange(3, 4, "signed"), "EUR"), "+€1.00 (+33.3%)");
+  assert.equal(formatPeriodChangeText(periodChange(3, 1, "signed"), "EUR"), `${MINUS}€2.00 (${MINUS}66.7%)`);
+  assert.equal(
+    formatPeriodChangeText(periodChange(-236.2, -205.1, "magnitude"), "EUR"),
+    `${MINUS}€31.10 (${MINUS}13.2%)`,
+  );
+  const moreSpend = periodChange(-100, -180, "magnitude");
+  assert.equal(moreSpend.amount, 80);
+  assert.equal(formatPeriodChangeText(moreSpend, "EUR"), "+€80.00 (+80.0%)");
+});
+
+test("calendar clicks keep the local day in Berlin and Los Angeles", () => {
+  const file = fileURLToPath(new URL("./summary-date-tz.test.ts", import.meta.url));
+  for (const tz of ["Europe/Berlin", "America/Los_Angeles"]) {
+    const result = spawnSync(process.execPath, ["--import", "tsx", "--test", file], {
+      cwd: join(file, "..", "..", ".."),
+      env: { ...process.env, TZ: tz },
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, `${tz}\n${result.stdout}\n${result.stderr}`);
+  }
 });
