@@ -63,7 +63,11 @@ localStorage.removeItem("haushaltsbuch.connection")
 2. Currency and one or more banks with initials. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR. A later currency choice changes the symbol and the number format only. It does not convert amounts already saved, and confirm refuses a different currency once any transaction exists. Use **Set up completely new** before choosing another currency. Subtitles and cards show euro (€). Other currencies show the code and symbol when they differ, such as INR (₹) or USD ($), and the code alone when they do not, such as CHF.
 3. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
-**Review the data** opens **Your data**: database on this computer, currency, active banks, and whether an OpenAI key is saved in this browser. From there: **Open tracker**, **Change keys**, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**.
+**Review the data** opens **Your data**: database on this computer, currency, active banks, and whether an OpenAI key is saved in this browser. From there: **Open tracker**, **Change keys**, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**. **Back to welcome** sits at the bottom of that card. The header **← Back** link stays as a smaller second way to the same place.
+
+**Add / Remove banks** keeps the bank list and the add-bank form in the card. **Done** is a full teal button at the bottom of that card and returns to Your data. If a bank was added, removed, or added back, Your data says the banks were updated. The header **← Back** link is only a secondary way out.
+
+**Set up completely new** keeps **Download backup** in the card, then **Back to your data** at the bottom. The last step keeps **Keep my data** as the teal button at the bottom of the card.
 
 **Change keys** stays available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. Saving setup again clears the one-time PDF disclosure, so the tracker shows it once more. Adding or removing a bank updates the active bank list in this browser and does not clear that disclosure.
 

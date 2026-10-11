@@ -73,6 +73,11 @@ export function YourData({ updated }: { updated: boolean }) {
           Set up completely new
         </Link>
       </div>
+      <div className="data-done">
+        <Link className="data-secondary" href="/">
+          Back to welcome
+        </Link>
+      </div>
     </main>
   );
 }

@@ -148,11 +148,13 @@ export function StartOver() {
             >
               Skip backup
             </button>
-            <Link className="data-secondary" href="/data">
-              Cancel
-            </Link>
           </div>
           <p className="data-note">Backups go to your Downloads folder. Nothing is deleted yet.</p>
+          <div className="data-done">
+            <Link className="data-secondary" href="/data">
+              Back to your data
+            </Link>
+          </div>
         </>
       ) : (
         <>
@@ -175,6 +177,8 @@ export function StartOver() {
             <button type="button" className="data-danger" disabled={busy} onClick={() => void onReset()}>
               {busy ? "Deleting…" : "Yes, delete everything and start over"}
             </button>
+          </div>
+          <div className="data-done">
             <Link className="data-primary" href="/data">
               Keep my data
             </Link>

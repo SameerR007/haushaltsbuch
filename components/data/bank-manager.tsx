@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { rememberActiveBanks } from "@/lib/connection";
@@ -53,6 +54,7 @@ export function BankManager() {
   const [initialsTouched, setInitialsTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedLine, setSavedLine] = useState("");
+  const [changed, setChanged] = useState(false);
 
   async function load() {
     const response = await fetch("/api/household");
@@ -97,6 +99,7 @@ export function BankManager() {
         return;
       }
       setPendingRemove(null);
+      setChanged(true);
       await load();
     } catch {
       setError("Could not remove that bank.");
@@ -113,6 +116,7 @@ export function BankManager() {
         setError(result.error ?? "Could not add that bank back.");
         return;
       }
+      setChanged(true);
       await load();
     } catch {
       setError("Could not add that bank back.");
@@ -137,6 +141,7 @@ export function BankManager() {
       setName("");
       setInitials("");
       setInitialsTouched(false);
+      setChanged(true);
       await load();
     } catch {
       setError("Could not add that bank.");
@@ -247,6 +252,12 @@ export function BankManager() {
           {error}
         </p>
       ) : null}
+
+      <div className="data-done">
+        <Link className="data-primary" href={changed ? "/data?updated=1" : "/data"}>
+          Done
+        </Link>
+      </div>
 
       <dialog className="data-dialog" ref={dialogRef} onClose={() => setPendingRemove(null)}>
         {warning ? (

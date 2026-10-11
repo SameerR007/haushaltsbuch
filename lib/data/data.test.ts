@@ -151,6 +151,23 @@ test("tracker nav order, Open tracker, and the empty expenses state", () => {
     assert.equal(source.includes("TRACKER_HOME"), true, file);
     assert.equal(source.includes('href="/app"'), false, file);
   }
+
+  const banks = readFileSync("components/data/bank-manager.tsx", "utf8");
+  const addAt = banks.indexOf("Add a bank");
+  const doneAt = banks.indexOf('className="data-done"');
+  assert.ok(addAt > 0 && doneAt > addAt);
+  assert.match(banks, /className="data-primary" href=\{changed \? "\/data\?updated=1" : "\/data"\}/);
+  assert.match(banks, /Done/);
+  const chrome = readFileSync("components/data/data-chrome.tsx", "utf8");
+  assert.match(chrome, /← Back/);
+  const yours = readFileSync("components/data/your-data.tsx", "utf8");
+  assert.match(yours, /className="data-primary"/);
+  assert.match(yours, /Back to welcome/);
+  const reset = readFileSync("components/data/start-over.tsx", "utf8");
+  assert.match(reset, /Download backup/);
+  assert.match(reset, /Back to your data/);
+  assert.match(reset, /Keep my data/);
+  assert.equal(reset.includes(">Cancel<"), false);
 });
 
 test("confirm drops banks that were not submitted", async () => {

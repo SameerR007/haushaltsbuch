@@ -233,6 +233,10 @@
   font-size: 13px;
 }
 
+.data-done {
+  margin-top: 22px;
+}
+
 .data-panel {
   margin-top: 16px;
   background: #fff;
