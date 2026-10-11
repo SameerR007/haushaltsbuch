@@ -99,7 +99,7 @@ async function downloadFile(url: string, filename: string): Promise<void> {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function ExpensesBoard() {
+export function ExpensesBoard({ focusId = null }: { focusId?: string | null }) {
   const [currency, setCurrency] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [banks, setBanks] = useState<BankView[]>([]);
@@ -131,6 +131,11 @@ export function ExpensesBoard() {
       ignore = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!focusId || loading) return;
+    document.getElementById(`expense-${focusId}`)?.scrollIntoView({ block: "center" });
+  }, [focusId, loading, rows]);
 
   const subtitle = currency
     ? `Newest first · amounts in ${currencySummaryLabel(currency)}`
@@ -202,13 +207,14 @@ export function ExpensesBoard() {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <ExpenseRow
-                    key={row.id}
-                    transaction={row}
-                    banks={banks}
-                    categories={categories}
-                    currency={currency ?? "EUR"}
-                  />
+                    <ExpenseRow
+                      key={row.id}
+                      transaction={row}
+                      banks={banks}
+                      categories={categories}
+                      currency={currency ?? "EUR"}
+                      focused={focusId === String(row.id)}
+                    />
                 ))}
               </tbody>
             </table>
@@ -225,11 +231,13 @@ function ExpenseRow({
   banks,
   categories,
   currency,
+  focused,
 }: {
   transaction: TransactionView;
   banks: BankView[];
   categories: string[];
   currency: string;
+  focused: boolean;
 }) {
   const [saved, setSaved] = useState(transaction);
   const savedRef = useRef(saved);
@@ -331,10 +339,10 @@ function ExpenseRow({
     setFailed(null);
   }
 
-  const rowClass = status === "saved" ? "is-saved" : undefined;
+  const rowClass = [status === "saved" ? "is-saved" : "", focused ? "is-focus" : ""].filter(Boolean).join(" ");
 
   return (
-    <tr className={rowClass}>
+    <tr id={`expense-${transaction.id}`} className={rowClass || undefined}>
       <Cell
         field="date"
         label="Date"

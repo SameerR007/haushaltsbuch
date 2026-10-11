@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { SummaryBoard } from "@/components/tracker/summary-board";
 
 export const metadata: Metadata = {
   title: "Summary · Haushaltsbuch",
@@ -6,9 +8,8 @@ export const metadata: Metadata = {
 
 export default function SummaryPage() {
   return (
-    <main className="tracker-placeholder">
-      <h1>Summary</h1>
-      <p>This page isn’t built yet.</p>
-    </main>
+    <Suspense fallback={<main className="summary"><p className="summary-status">Loading summary…</p></main>}>
+      <SummaryBoard />
+    </Suspense>
   );
 }
