@@ -10,6 +10,7 @@
  * A non-JSON marker such as `"1"` still counts as returning on the landing page.
  */
 import { clearStoredChat } from "./chat/persist";
+import { clearSummaryView } from "./data/summary-state";
 
 export const CONNECTION_STORAGE_KEY = "haushaltsbuch.connection";
 
@@ -140,6 +141,7 @@ export function clearConnection(): void {
   if (storage) storage.removeItem(CONNECTION_STORAGE_KEY);
   clearPdfDisclosureAck();
   clearStoredChat();
+  clearSummaryView();
   const root = globalThis.document?.documentElement;
   if (root?.dataset) delete root.dataset.visit;
 }

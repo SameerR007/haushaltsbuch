@@ -1,4 +1,4 @@
-import type { SummaryCategory, SummaryPayload, SummaryRow } from "./summary-types";
+import type { CompareSummary, PeriodSummary, SummaryCategory, SummaryRow } from "./summary-types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42,8 +42,69 @@ function parseCategories(value: unknown): SummaryCategory[] | null {
   return rows;
 }
 
-export function parseSummary(value: unknown): SummaryPayload | null {
-  if (!isRecord(value) || value.ok !== true) return null;
+function parseRows(value: unknown): SummaryRow[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows: SummaryRow[] = [];
+  for (const entry of value) {
+    const parsed = parseRow(entry);
+    if (!parsed) return null;
+    rows.push(parsed);
+  }
+  return rows;
+}
+
+export function parsePeriodSummary(value: unknown): PeriodSummary | null {
+  if (!isRecord(value) || value.ok !== true || value.scope !== "period") return null;
+  const from = dateOrNull(value.from);
+  const to = dateOrNull(value.to);
+  const latestFrom = dateOrNull(value.latestFrom);
+  const latestTo = dateOrNull(value.latestTo);
+  const income = num(value.income);
+  const expenses = num(value.expenses);
+  const net = num(value.net);
+  const incomeCount = num(value.incomeCount);
+  const expenseCount = num(value.expenseCount);
+  const categories = parseCategories(value.categories);
+  const incomeRows = parseRows(value.incomeRows);
+  const largest = parseRows(value.largest);
+  if (
+    from === undefined ||
+    to === undefined ||
+    latestFrom === undefined ||
+    latestTo === undefined ||
+    income === null ||
+    expenses === null ||
+    net === null ||
+    incomeCount === null ||
+    expenseCount === null ||
+    !categories ||
+    !incomeRows ||
+    !largest
+  ) {
+    return null;
+  }
+  return {
+    ok: true,
+    scope: "period",
+    currency: typeof value.currency === "string" ? value.currency : null,
+    currencyLabel: typeof value.currencyLabel === "string" ? value.currencyLabel : null,
+    from,
+    to,
+    latestFrom,
+    latestTo,
+    income,
+    expenses,
+    net,
+    incomeCount,
+    expenseCount,
+    categories,
+    incomeRows,
+    largest,
+  };
+}
+
+export function parseCompareSummary(value: unknown): CompareSummary | null {
+  if (!isRecord(value) || value.ok !== true || value.scope !== "compare") return null;
   const from = dateOrNull(value.from);
   const to = dateOrNull(value.to);
   const compareFrom = dateOrNull(value.compareFrom);
@@ -72,26 +133,13 @@ export function parseSummary(value: unknown): SummaryPayload | null {
     compareExpenses === null ||
     compareNet === null ||
     !categories ||
-    !compareCategories ||
-    !Array.isArray(value.incomeRows) ||
-    !Array.isArray(value.largest)
+    !compareCategories
   ) {
     return null;
   }
-  const incomeRows: SummaryRow[] = [];
-  for (const row of value.incomeRows) {
-    const parsed = parseRow(row);
-    if (!parsed) return null;
-    incomeRows.push(parsed);
-  }
-  const largest: SummaryRow[] = [];
-  for (const row of value.largest) {
-    const parsed = parseRow(row);
-    if (!parsed) return null;
-    largest.push(parsed);
-  }
   return {
     ok: true,
+    scope: "compare",
     currency: typeof value.currency === "string" ? value.currency : null,
     currencyLabel: typeof value.currencyLabel === "string" ? value.currencyLabel : null,
     from,
@@ -108,8 +156,6 @@ export function parseSummary(value: unknown): SummaryPayload | null {
     compareNet,
     categories,
     compareCategories,
-    incomeRows,
-    largest,
   };
 }
 

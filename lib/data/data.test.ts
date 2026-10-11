@@ -20,6 +20,7 @@ import { confirmTransactions } from "../chat/transactions";
 import { loadHousehold } from "../chat/household";
 import { CHAT_STORAGE_KEY } from "../chat/persist";
 import { PDF_DISCLOSURE_KEY, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
+import { SUMMARY_STORAGE_KEY } from "../data/summary-state";
 import { closeDb, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "../setup/categories";
 import { isTrackerNavActive, TRACKER_HOME, TRACKER_NAV } from "../../components/tracker/nav";
@@ -529,6 +530,7 @@ test("browser connection keeps active banks and clears only after reset", () => 
     assert.equal(store.has(PDF_DISCLOSURE_KEY), true);
     const stored = JSON.parse(store.get("haushaltsbuch.connection") ?? "{}") as { banks: { name: string }[] };
     assert.deepEqual(stored.banks, [{ name: "ING", initials: "IN" }]);
+    store.set(SUMMARY_STORAGE_KEY, "{\"v\":1,\"mode\":\"compare\"}");
     store.set(
       CHAT_STORAGE_KEY,
       JSON.stringify({
@@ -542,6 +544,7 @@ test("browser connection keeps active banks and clears only after reset", () => 
     assert.equal(store.has("haushaltsbuch.connection"), false);
     assert.equal(store.has(PDF_DISCLOSURE_KEY), false);
     assert.equal(store.has(CHAT_STORAGE_KEY), false);
+    assert.equal(store.has(SUMMARY_STORAGE_KEY), false);
     assert.equal(dataset.visit, undefined);
   } finally {
     Object.assign(globalThis, { localStorage: previousStorage, document: previousDocument });
