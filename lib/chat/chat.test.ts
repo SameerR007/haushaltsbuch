@@ -23,8 +23,7 @@ import {
   showNewChatButton,
   writeStoredChat,
 } from "./persist";
-import { formatMoney, formatRowDate } from "./money";
-import { MODEL_TURN_LIMIT, recentModelTurns } from "./prompts";
+import { formatMoney, formatPlainDate, formatRowDate, formatSummaryMoney } from "./money";
 import {
   CHAT_MODEL,
   CHAT_REASONING_EFFORT,
@@ -34,7 +33,7 @@ import {
   toModelInput,
 } from "./openai";
 import { attachmentLabel, countPdfPages, formatFileSize } from "./pdf-meta";
-import { householdInstructions, previousFullMonth, RUN_SQL_RULE, SIGNED_AMOUNT_RULE, suggestedPrompts, withPdfInstructions } from "./prompts";
+import { householdInstructions, MODEL_TURN_LIMIT, previousFullMonth, recentModelTurns, RUN_SQL_RULE, SIGNED_AMOUNT_RULE, suggestedPrompts, withPdfInstructions } from "./prompts";
 import { executeReadOnlyQuery, guardReadQuery, SQL_ROW_CAP } from "./sql-guard";
 import { confirmTransactions, undoTransactions } from "./transactions";
 import { reviewProposedRows, rowsToSave } from "./validate-rows";
@@ -582,6 +581,13 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.equal(formatRowDate("2026-03-23"), "23rd March 2026");
   assert.equal(formatRowDate("2026-02-31"), "2026-02-31");
   assert.equal(formatRowDate("yesterday"), "yesterday");
+  assert.equal(formatPlainDate("2026-09-01"), "1 September 2026");
+  assert.equal(formatPlainDate("2026-09-03"), "3 September 2026");
+  assert.equal(formatPlainDate("2026-02-31"), "2026-02-31");
+  assert.equal(formatSummaryMoney(-12.5, "EUR").includes("\u2212"), true);
+  assert.equal(formatSummaryMoney(-12.5, "EUR").includes("-"), false);
+  assert.equal(formatSummaryMoney(12.5, "EUR").includes("\u2212"), false);
+  assert.equal(formatSummaryMoney(12.5, "EUR").includes("-"), false);
   assert.equal(formatMoney(-12.5, "EUR").includes("12.50"), true);
   assert.match(formatMoney(-12.5, "EUR"), /€/);
   assert.match(formatMoney(-12.5, "INR"), /₹12\.50/);

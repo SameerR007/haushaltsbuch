@@ -7,6 +7,21 @@ export const EXPENSES_EMPTY_NOTE =
   "Your expenses stay saved on this computer between openings of the app, unless you choose to set up completely new.";
 export const EXPENSES_EMPTY_ACTION = "Go to Chat";
 
+export const SUMMARY_EMPTY = "No expenses yet";
+export const SUMMARY_GO_CHAT = "Go to Chat";
+
+export function summaryEmptyRange(range: string): string {
+  return `No expenses in ${range} yet`;
+}
+
+export function summaryOpensOn(range: string): string {
+  return `Opens on the latest month that has data: ${range}`;
+}
+
+export function summaryAmountsNote(currencyLabel: string): string {
+  return `Amounts in ${currencyLabel} · calculated on this computer`;
+}
+
 /** Excel download is for a sheet that already has rows. */
 export function showExpensesDownload(rowCount: number): boolean {
   return rowCount > 0;
