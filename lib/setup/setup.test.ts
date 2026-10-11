@@ -195,7 +195,10 @@ test("a currency change does not convert saved amounts", () => {
       .run();
     const changed = saveHousehold({ currency: "USD", banks: [{ name: "ING", initials: "IN" }] });
     assert.equal(changed.ok, false);
-    if (!changed.ok) assert.match(changed.error, /not converted/);
+    if (!changed.ok) {
+      assert.match(changed.error, /not converted/);
+      assert.match(changed.error, /Set up completely new/);
+    }
     const preference = database.prepare("SELECT currency FROM preferences WHERE id = 1").get() as {
       currency: string;
     };
@@ -307,11 +310,11 @@ test("chat helpers", () => {
   assert.equal(currencyChoiceLabel("INR"), "INR (₹)");
   assert.equal(currencyChoiceLabel("USD"), "USD ($)");
   assert.equal(currencyChoiceLabel("CHF"), "CHF — Swiss franc");
-  assert.equal(currencySummaryLabel("EUR"), "EUR (€)");
+  assert.equal(currencySummaryLabel("EUR"), "euro (€)");
   assert.equal(currencySummaryLabel("INR"), "INR (₹)");
   assert.equal(currencySummaryLabel("USD"), "USD ($)");
   assert.equal(currencySummaryLabel("GBP"), "GBP (£)");
-  assert.equal(currencySummaryLabel("CHF"), "CHF (CHF)");
+  assert.equal(currencySummaryLabel("CHF"), "CHF");
   assert.match(excelAmountNumFmt("EUR"), /€/);
   assert.match(excelAmountNumFmt("INR"), /₹/);
   assert.equal(excelAmountNumFmt("JPY").includes("."), false);

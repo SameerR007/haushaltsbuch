@@ -42,10 +42,12 @@ export function currencyChoiceLabel(code: string): string {
   return known ? currencyConfirmLabel(known) : code;
 }
 
-/** Short label for subtitles and cards: "INR (₹)", "EUR (€)". */
+/** Subtitle and card label: "euro (€)", "INR (₹)", "USD ($)", or "CHF". */
 export function currencySummaryLabel(code: string): string {
   const known = describeCurrency(code);
   if (!known) return code;
+  if (known.code === "EUR") return "euro (€)";
+  if (known.symbol === known.code) return known.code;
   return `${known.code} (${known.symbol})`;
 }
 
