@@ -60,7 +60,7 @@ localStorage.removeItem("haushaltsbuch.connection")
 `/setup` is a three-step chat:
 
 1. OpenAI API key, checked once. The local database file is created in the background.
-2. Currency (default euro) and one or more banks with initials.
+2. Currency and one or more banks with initials. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR.
 3. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
 **Review the data** opens **Your data**: database on this computer, currency, active banks, and whether an OpenAI key is saved in this browser. From there: **Open tracker**, **Change keys**, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**.
@@ -102,7 +102,7 @@ No sample transactions are inserted. Confirm updates the currency and the submit
 
 The header is **Haushaltsbuch**, **Chat**, **Expenses**, **Insights ↗** (opens in a new window), and **Summary**. Insights and Summary are placeholders.
 
-**Expenses** lists every transaction, newest first, with the household currency in the subtitle. **Download as Excel** fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
+**Expenses** lists every transaction, newest first, with the household currency in the subtitle. Review cards use that same currency. **Download as Excel** fetches `GET /api/export/xlsx` and shows an error on the page if that fails. Amount cells in the workbook use the saved currency’s symbol. Each cell saves on its own through `PATCH /api/transactions/[id]`. Typing an amount without `+` or `-` keeps that row’s sign. The bank menu lists active banks, plus that row’s bank if it was removed. There is no delete.
 
 On an empty conversation the page shows **What did you spend?**, a short subtitle, and three suggested prompts. A prompt fills the message bar and does not send. After the first message is sent, the prompts stay hidden for that conversation.
 

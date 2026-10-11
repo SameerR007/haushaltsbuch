@@ -1,3 +1,5 @@
+import { describeCurrency } from "../currency";
+
 /**
  * An unsigned edit keeps the row's sign. A leading + or - is used as typed.
  * "12.50" on an expense stays negative. "+12.50" becomes income.
@@ -15,11 +17,13 @@ export function amountKeepingSign(input: string, previous: number): string {
 /** Format a signed amount with the household currency. The symbol comes from Intl. */
 export function formatMoney(amount: number, currency: string): string {
   if (!Number.isFinite(amount)) return "";
-  if (!/^[A-Z]{3}$/.test(currency)) return amount.toFixed(2);
+  const known = describeCurrency(currency);
+  if (!known) return amount.toFixed(2);
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency,
+      currency: known.code,
+      currencyDisplay: "narrowSymbol",
     }).format(amount);
   } catch {
     return amount.toFixed(2);

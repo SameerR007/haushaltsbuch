@@ -367,6 +367,22 @@ test("exports include removed banks and the sqlite file is a backup", async () =
     assert.equal(values[2], "grocery");
     assert.equal(values[3], "Sparkasse");
     assert.equal(values[4], -12.5);
+    assert.match(sheet.getRow(2).getCell(5).numFmt ?? "", /€/);
+
+    assert.equal(
+      saveHousehold({
+        currency: "INR",
+        banks: [{ name: "Sparkasse", initials: "SP" }],
+      }).ok,
+      true,
+    );
+    const inrBook = new ExcelJS.Workbook();
+    const inrXlsx = await getXlsx();
+    const inrBytes = new Uint8Array(await inrXlsx.arrayBuffer());
+    await inrBook.xlsx.load(inrBytes as unknown as Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0]);
+    const inrSheet = inrBook.worksheets[0];
+    assert.match(inrSheet?.getRow(2).getCell(5).numFmt ?? "", /₹/);
+    assert.equal((inrSheet?.getRow(2).values as unknown[]).slice(1)[4], -12.5);
 
     const sqlite = await getSqlite();
     assert.equal(sqlite.status, 200);

@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join, isAbsolute } from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
+import { currencyConfirmLabel, describeCurrency, excelAmountNumFmt } from "../currency";
 import { hasSavedConnection, parseConnection } from "../connection";
 import { closeDb, initDatabase, publicDbName, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "./categories";
 import {
+  CURRENCY_CHOICES,
   currencyChoiceLabel,
   currencySummaryLabel,
   looksLikeSecret,
@@ -133,6 +135,13 @@ test("confirm upserts currency and banks and a later init keeps them", () => {
     });
     assert.equal(bad.ok, false);
 
+    const unknown = saveHousehold({
+      currency: "XYZ",
+      banks: [{ name: "ING", initials: "IN" }],
+    });
+    assert.equal(unknown.ok, false);
+    if (!unknown.ok) assert.match(unknown.error, /isn’t recognized/);
+
     const saved = saveHousehold({
       currency: "eur",
       banks: [
@@ -251,12 +260,42 @@ test("chat helpers", () => {
   assert.equal(suggestInitials("N26"), "N26");
   assert.equal(suggestInitials("Commerzbank"), "COM");
   assert.equal(suggestInitials("a b c d"), "ABC");
+  assert.deepEqual(
+    CURRENCY_CHOICES.map((choice) => choice.label),
+    ["Euro (€)", "INR (₹)", "USD ($)"],
+  );
   assert.equal(parseCurrencyText("keep euro"), "EUR");
   assert.equal(parseCurrencyText("CHF"), "CHF");
+  assert.equal(parseCurrencyText("jpy"), "JPY");
+  assert.equal(parseCurrencyText("inr"), "INR");
+  assert.equal(parseCurrencyText("XYZ"), null);
+  assert.equal(parseCurrencyText("ABC"), null);
+  assert.equal(describeCurrency("XYZ"), null);
+  const chf = describeCurrency("CHF");
+  assert.ok(chf);
+  assert.equal(chf.symbol, "CHF");
+  assert.equal(currencyConfirmLabel(chf), "CHF — Swiss franc");
+  assert.equal(currencyChoiceLabel("EUR"), "Euro (€)");
+  assert.equal(currencyChoiceLabel("INR"), "INR (₹)");
   assert.equal(currencyChoiceLabel("USD"), "USD ($)");
+  assert.equal(currencyChoiceLabel("CHF"), "CHF — Swiss franc");
   assert.equal(currencySummaryLabel("EUR"), "euro (€)");
-  assert.equal(currencySummaryLabel("GBP"), "GBP (£)");
-  assert.equal(currencySummaryLabel("CHF"), "CHF");
+  assert.equal(currencySummaryLabel("INR"), "Indian rupee (₹)");
+  assert.equal(currencySummaryLabel("USD"), "US dollar ($)");
+  assert.equal(currencySummaryLabel("GBP"), "British pound (£)");
+  assert.equal(currencySummaryLabel("CHF"), "Swiss franc (CHF)");
+  assert.match(excelAmountNumFmt("EUR"), /€/);
+  assert.match(excelAmountNumFmt("INR"), /₹/);
+  assert.equal(excelAmountNumFmt("JPY").includes("."), false);
+  assert.equal(excelAmountNumFmt("XYZ"), "0.00");
+  const setupChat = readFileSync("components/setup/setup-chat.tsx", "utf8");
+  assert.equal(setupChat.includes("What currency should we use?"), true);
+  assert.equal(setupChat.includes("Default is"), false);
+  assert.equal(setupChat.includes("Keep euro"), false);
+  assert.equal(setupChat.includes("GBP (£)"), false);
+  assert.match(setupChat, /CURRENCY_CHOICES\.map/);
+  const otherAt = setupChat.indexOf("Other…");
+  assert.ok(otherAt > setupChat.indexOf("CURRENCY_CHOICES.map"));
   assert.equal(looksLikeSecret("my key sk-abc"), true);
   assert.equal(looksLikeSecret("one bank"), false);
   assert.deepEqual(normalizeBank("  ING  ", "in"), { name: "ING", initials: "IN" });

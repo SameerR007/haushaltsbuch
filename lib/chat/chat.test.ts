@@ -570,6 +570,12 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.equal(formatRowDate("2026-02-31"), "2026-02-31");
   assert.equal(formatRowDate("yesterday"), "yesterday");
   assert.equal(formatMoney(-12.5, "EUR").includes("12.50"), true);
+  assert.match(formatMoney(-12.5, "EUR"), /€/);
+  assert.match(formatMoney(-12.5, "INR"), /₹12\.50/);
+  assert.match(formatMoney(-12.5, "CHF"), /CHF/);
+  assert.match(formatMoney(1000, "JPY"), /¥1,000/);
+  assert.equal(formatMoney(-12.5, "XYZ"), "-12.50");
+  assert.equal(formatMoney(-12.5, "XYZ").includes("XYZ"), false);
   assert.notEqual(formatMoney(-12.5, "EUR"), formatMoney(-12.5, "USD"));
 });
 

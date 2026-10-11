@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExcelJS from "exceljs";
+import { excelAmountNumFmt } from "../currency";
 import { XLSX_FILENAME, SQLITE_FILENAME } from "./copy";
 import { ensureMigrated, resolveDbPath } from "../db";
 
@@ -27,11 +28,21 @@ function transactionRows(): ExportRow[] {
     .all() as ExportRow[];
 }
 
+function savedCurrency(): string {
+  if (!existsSync(resolveDbPath())) return "EUR";
+  const database = ensureMigrated();
+  const row = database.prepare("SELECT currency FROM preferences WHERE id = 1").get() as
+    | { currency: string }
+    | undefined;
+  return row?.currency ?? "EUR";
+}
+
 /** Every transaction, including ones whose bank was later removed. Dates stay YYYY-MM-DD. */
 export async function buildExpensesWorkbook(): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Haushaltsbuch";
   const sheet = workbook.addWorksheet("Expenses");
+  const amountFormat = excelAmountNumFmt(savedCurrency());
   sheet.columns = [
     { header: "Date", key: "date", width: 16 },
     { header: "Description", key: "description", width: 42 },
@@ -47,7 +58,7 @@ export async function buildExpensesWorkbook(): Promise<Buffer> {
       bank: row.bank,
       amount: row.amount,
     });
-    added.getCell("amount").numFmt = "0.00";
+    added.getCell("amount").numFmt = amountFormat;
   }
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

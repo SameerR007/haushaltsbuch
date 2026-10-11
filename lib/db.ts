@@ -1,6 +1,7 @@
 import { mkdirSync, existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import Database from "better-sqlite3";
+import { describeCurrency, UNKNOWN_CURRENCY_ERROR } from "./currency";
 import { EXPECTED_CATEGORIES } from "./setup/categories";
 import { normalizeBank } from "./setup/chat-logic";
 import type { SetupResult } from "./setup/types";
@@ -194,6 +195,9 @@ export function saveHousehold(input: {
   const currency = input.currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) {
     return { ok: false, code: "invalid", error: "Choose a 3-letter currency code." };
+  }
+  if (!describeCurrency(currency)) {
+    return { ok: false, code: "invalid", error: UNKNOWN_CURRENCY_ERROR };
   }
   if (!Array.isArray(input.banks) || input.banks.length === 0) {
     return { ok: false, code: "invalid", error: "Add at least one bank." };
