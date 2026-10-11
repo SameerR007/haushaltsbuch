@@ -685,6 +685,11 @@ test("chat confirm and undo routes, and a stubbed PDF flags a duplicate", async 
     const chat = await postChat(
       new Request("http://local/api/chat", {
         method: "POST",
+        headers: {
+          host: "local",
+          origin: "http://local",
+          "sec-fetch-site": "same-origin",
+        },
         body: JSON.stringify({
           apiKey: OPENAI_KEY,
           messages: [{ role: "user", content: "Add 12.50 groceries from Sparkasse on 12 September" }],
@@ -716,7 +721,17 @@ test("chat confirm and undo routes, and a stubbed PDF flags a duplicate", async 
     form.set("apiKey", OPENAI_KEY);
     form.set("instruction", "Add the expenses for September from this bank statement");
     form.set("file", new File([tinyPdf], "statement-november.pdf", { type: "application/pdf" }));
-    const pdf = await postPdf(new Request("http://local/api/import/pdf", { method: "POST", body: form }));
+    const pdf = await postPdf(
+      new Request("http://local/api/import/pdf", {
+        method: "POST",
+        headers: {
+          host: "local",
+          origin: "http://local",
+          "sec-fetch-site": "same-origin",
+        },
+        body: form,
+      }),
+    );
     const pdfBody = (await pdf.json()) as {
       ok: boolean;
       proposal: { sourceName: string; rows: { flags: string[]; description: string }[] };
@@ -755,6 +770,63 @@ test("chat confirm and undo routes, and a stubbed PDF flags a duplicate", async 
   else process.env.HAUSHALTSBUCH_STUB_OPENAI = prevStub;
   if (prevDelay === undefined) delete process.env.HAUSHALTSBUCH_STUB_DELAY_MS;
   else process.env.HAUSHALTSBUCH_STUB_DELAY_MS = prevDelay;
+});
+
+test("chat and PDF import reject a cross-site call without requiring JSON", async () => {
+  const crossSite = await postChat(
+    new Request("http://localhost:3000/api/chat", {
+      method: "POST",
+      headers: { "content-type": "text/plain", "sec-fetch-site": "cross-site" },
+      body: "not json",
+    }),
+  );
+  assert.equal(crossSite.status, 403);
+  const crossBody = (await crossSite.json()) as { ok: boolean; code: string };
+  assert.equal(crossBody.ok, false);
+  assert.equal(crossBody.code, "rejected");
+
+  const otherOrigin = await postChat(
+    new Request("http://localhost:3000/api/chat", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        host: "localhost:3000",
+        origin: "https://evil.example",
+        "sec-fetch-site": "same-origin",
+      },
+      body: JSON.stringify({ apiKey: OPENAI_KEY, messages: [{ role: "user", content: "hi" }] }),
+    }),
+  );
+  assert.equal(otherOrigin.status, 403);
+
+  const form = new FormData();
+  form.set("apiKey", OPENAI_KEY);
+  form.set("file", new File([tinyPdf], "statement.pdf", { type: "application/pdf" }));
+  const pdf = await postPdf(
+    new Request("http://localhost:3000/api/import/pdf", {
+      method: "POST",
+      headers: { "sec-fetch-site": "same-site" },
+      body: form,
+    }),
+  );
+  assert.equal(pdf.status, 403);
+  const pdfBody = (await pdf.json()) as { code: string };
+  assert.equal(pdfBody.code, "rejected");
+
+  const passed = new FormData();
+  passed.set("apiKey", "not-a-key");
+  const multipart = await postPdf(
+    new Request("http://localhost:3000/api/import/pdf", {
+      method: "POST",
+      headers: {
+        host: "localhost:3000",
+        origin: "http://localhost:3000",
+        "sec-fetch-site": "same-origin",
+      },
+      body: passed,
+    }),
+  );
+  assert.equal(multipart.status, 400);
 });
 
 test("saving setup clears the PDF disclosure", () => {

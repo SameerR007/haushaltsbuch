@@ -31,6 +31,8 @@ The server runs a tool loop and waits for each tool result before the next reque
 
 The model page used for the id is [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
 
+`POST /api/chat` and `POST /api/import/pdf` reject a cross-site browser call before they read the body. When `Sec-Fetch-Site` is present it must be `same-origin`. When `Origin` is present its host must match `Host`. Anything else is HTTP 403. Missing `Sec-Fetch-Site` and `Origin` are allowed. Neither route requires `Content-Type: application/json`; the PDF route stays `multipart/form-data`.
+
 ## `POST /api/chat`
 
 ```json

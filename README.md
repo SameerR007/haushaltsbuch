@@ -138,8 +138,8 @@ For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. 
 - `POST /api/banks/restore` — make a removed bank active again
 - `GET /api/export/xlsx` — Excel file of every transaction
 - `GET /api/export/sqlite` — SQLite backup via `better-sqlite3` backup
-- `POST /api/chat` — money chat tool loop
-- `POST /api/import/pdf` — send a statement PDF to OpenAI and return a review
+- `POST /api/chat` — money chat tool loop; cross-site requests are HTTP 403
+- `POST /api/import/pdf` — send a statement PDF to OpenAI and return a review; cross-site requests are HTTP 403, and the body stays multipart
 - `GET /api/transactions` — expenses, newest first
 - `PATCH /api/transactions/[id]` — edit one expense; does not change `batch_id`
 - `POST /api/transactions/confirm` — save a reviewed batch

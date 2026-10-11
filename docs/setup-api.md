@@ -31,7 +31,7 @@ Missing `Sec-Fetch-Site` and `Origin` are allowed. The app’s own `fetch` calls
 
 The guard covers `POST /api/setup/init`, `POST /api/setup/openai`, `POST /api/setup/confirm`, `POST /api/setup/reset`, `POST /api/banks`, `POST /api/banks/remove`, `POST /api/banks/restore`, `PATCH /api/transactions/[id]`, `POST /api/transactions/confirm`, and `POST /api/transactions/undo`.
 
-Chat does not write the database. PDF import stays `multipart/form-data` and does not use this guard.
+Chat does not write the database. `POST /api/chat` and `POST /api/import/pdf` use the same `Sec-Fetch-Site` and `Origin` checks and reject a cross-site call with HTTP 403. They do not require `Content-Type: application/json`. PDF import stays `multipart/form-data`.
 
 ## `POST /api/setup/init`
 
