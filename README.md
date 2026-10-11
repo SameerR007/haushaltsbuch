@@ -104,7 +104,7 @@ No sample transactions are inserted. Confirm updates the currency and the submit
 
 `/app` is the money chat.
 
-The header is **Haushaltsbuch**, then **Expenses**, **Chat**, **Summary**, and **Insights ↗** (opens in a new window). Insights is a placeholder. **Open tracker** (welcome, setup, and Your data) opens Expenses at `/app/expenses`.
+The header is **Haushaltsbuch**, then **Home**, **Expenses**, **Chat**, **Summary**, and **Insights ↗** (opens in a new window). **Home** and the **Haushaltsbuch** title both open the welcome screen. Home is not the active tab on Expenses, Chat, Summary, or Insights. Insights is a placeholder. **Open tracker** (welcome, setup, and Your data) opens Expenses at `/app/expenses`.
 
 **Summary** opens on the latest calendar month that has a transaction. From and To pick an exact range and show a plain date such as 1 September 2026, as does the line that names the month the page opens on. The chips jump to a recent month or a whole year. Income is the sum of positive amounts. Expenses are the negative amounts, including salary stored as a negative correction. A positive refund in a spending category counts as income and is not subtracted from that category. The income list shows at most 200 rows. Cards, the category donut, the income list, the five largest expenses, and the comparison table are calculated on this computer. A largest-expense row opens that row in Expenses. Period B starts as the previous calendar month when Period A is a whole month, the previous calendar year when Period A is a whole year, and otherwise the same number of days immediately before Period A. An empty range says **No expenses in 1 March 2025 – 31 March 2025 yet**, with plain dates, and offers **Go to Chat**.
 

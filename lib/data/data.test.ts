@@ -127,16 +127,25 @@ test("comma decimals keep the row sign", () => {
 test("tracker nav order, Open tracker, and the empty expenses state", () => {
   assert.deepEqual(
     TRACKER_NAV.map((item) => item.label),
-    ["Expenses", "Chat", "Summary", "Insights ↗"],
+    ["Home", "Expenses", "Chat", "Summary", "Insights ↗"],
   );
+  assert.equal(TRACKER_NAV[0]?.href, "/");
   assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.external, true);
   assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.href, "/app/insights");
   assert.equal(TRACKER_HOME, "/app/expenses");
-  assert.equal(TRACKER_NAV[0]?.href, TRACKER_HOME);
-  assert.equal(isTrackerNavActive("/app", TRACKER_NAV[1]!), true);
-  assert.equal(isTrackerNavActive("/app/expenses", TRACKER_NAV[1]!), false);
-  assert.equal(isTrackerNavActive("/app/expenses", TRACKER_NAV[0]!), true);
-  assert.equal(isTrackerNavActive("/app", TRACKER_NAV[0]!), false);
+  assert.equal(TRACKER_NAV[1]?.href, TRACKER_HOME);
+  const home = TRACKER_NAV[0]!;
+  const expenses = TRACKER_NAV[1]!;
+  const chat = TRACKER_NAV[2]!;
+  assert.equal(isTrackerNavActive("/", home), true);
+  assert.equal(isTrackerNavActive("/app", home), false);
+  assert.equal(isTrackerNavActive("/app/expenses", home), false);
+  assert.equal(isTrackerNavActive("/app/summary", home), false);
+  assert.equal(isTrackerNavActive("/app/insights", home), false);
+  assert.equal(isTrackerNavActive("/app", chat), true);
+  assert.equal(isTrackerNavActive("/app/expenses", chat), false);
+  assert.equal(isTrackerNavActive("/app/expenses", expenses), true);
+  assert.equal(isTrackerNavActive("/app", expenses), false);
   assert.equal(
     EXPENSES_EMPTY_LEAD,
     "Here you will see all your expenses once you have added some. Go to Chat to add your first expense, or import a bank statement PDF.",
