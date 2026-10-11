@@ -21,19 +21,10 @@ export type JsonBody =
   | { ok: false; response: Response };
 
 /**
- * Shared check for every route that writes the database.
- * A cross-site form can POST `text/plain` without a preflight, and `request.json()`
- * would still parse it. Reject that, and reject a browser that says the call
- * came from another site.
+ * Reject a browser that says the call came from another site.
+ * Missing `Sec-Fetch-Site` and `Origin` are allowed. This does not check Content-Type.
  */
-export function guardStateChange(request: Request): Response | null {
-  const media = (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
-  if (media !== "application/json") {
-    return jsonResult(
-      { ok: false, code: "invalid", error: "Send JSON (Content-Type: application/json)." },
-      415,
-    );
-  }
+export function guardSameOrigin(request: Request): Response | null {
   const site = request.headers.get("sec-fetch-site");
   if (site !== null && site.trim().toLowerCase() !== "same-origin") {
     return jsonResult(
@@ -58,6 +49,23 @@ export function guardStateChange(request: Request): Response | null {
     }
   }
   return null;
+}
+
+/**
+ * Shared check for every route that writes the database.
+ * A cross-site form can POST `text/plain` without a preflight, and `request.json()`
+ * would still parse it. Reject that, and reject a browser that says the call
+ * came from another site.
+ */
+export function guardStateChange(request: Request): Response | null {
+  const media = (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (media !== "application/json") {
+    return jsonResult(
+      { ok: false, code: "invalid", error: "Send JSON (Content-Type: application/json)." },
+      415,
+    );
+  }
+  return guardSameOrigin(request);
 }
 
 export async function readJsonBody(request: Request): Promise<JsonBody> {

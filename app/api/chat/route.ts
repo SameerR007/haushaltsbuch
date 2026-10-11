@@ -5,7 +5,7 @@ import { executeReadOnlyQuery } from "@/lib/chat/sql-guard";
 import type { ChatTurn, Proposal } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
 import { looksLikeOpenAiKey } from "@/lib/setup/guards";
-import { jsonResult } from "@/lib/setup/http";
+import { guardSameOrigin, jsonResult } from "@/lib/setup/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +32,8 @@ function parseMessages(value: unknown): ChatTurn[] | null {
 }
 
 export async function POST(request: Request) {
+  const blocked = guardSameOrigin(request);
+  if (blocked) return blocked;
   try {
     const text = await request.text();
     if (text.length > 1_000_000) return invalid("That request is too large.");
