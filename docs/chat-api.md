@@ -27,9 +27,11 @@ Success is HTTP 200 and `"ok": true`.
 
 ## Model
 
-Chat and statement import both call the OpenAI Responses API. The model id is the single constant `CHAT_MODEL` in `lib/chat/openai.ts` (`gpt-5.6-luna`, GPT-5.6 Luna, which supports high reasoning). Set `HAUSHALTSBUCH_CHAT_MODEL` to use a different id. Every request sets `reasoning.effort` to `high`, `store` to `false`, and `include` to `["reasoning.encrypted_content"]`, so OpenAI is asked not to store the household data and echoed reasoning items still carry encrypted content.
+Chat and statement import share one model layer under `lib/llm`. `runChatTurn` (`lib/llm/run-turn.ts`) is a single Vercel AI SDK `generateText` loop. It does not choose a provider. `lib/llm/models.ts` is the only place that does: today it returns the OpenAI Responses model, `store: false`, encrypted reasoning, high reasoning effort, and `nativePdf: true`. `lib/chat/openai.ts` re-exports the turn, so `POST /api/chat` and `POST /api/import/pdf` are unchanged. There is no local model in this version.
 
-The server runs a tool loop and waits for each tool result before the next request. Each round sends the full input again: the conversation, the model’s function calls, and the tool outputs. It does not send `previous_response_id`, because that only works for stored responses. Responses are plain JSON. There is no streaming.
+The model id is the single constant `CHAT_MODEL` in `lib/chat/openai.ts` (`gpt-5.6-luna`, GPT-5.6 Luna, which supports high reasoning). Set `HAUSHALTSBUCH_CHAT_MODEL` to use a different id. Every request sets `reasoning.effort` to `high`, `store` to `false`, and `include` to `["reasoning.encrypted_content"]`, so OpenAI is asked not to store the household data. Encrypted reasoning from one tool round is sent back on the next. Household instructions travel as a developer message in `input`, not as a top-level `instructions` field.
+
+The server runs at most 4 tool rounds and waits for each tool result before the next request. Each round sends the full input again: the conversation, the model’s function calls, and the tool outputs. It does not send `previous_response_id`, because that only works for stored responses. Responses are plain JSON. There is no streaming. Retries are off (`maxRetries: 0`). Each round times out after 120 seconds.
 
 The model page used for the id is [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
 
@@ -97,7 +99,7 @@ Multipart form fields:
 | `file` | The PDF. About 25 MB maximum. |
 | `messages` | Optional JSON array of earlier chat turns. |
 
-The server sends the PDF bytes to the Responses API as an `input_file` with base64 `file_data` and `detail` `"auto"`. It does not extract the statement text locally. The model may answer only through `propose_transactions`. A statement is a ledger: every row is proposed, expenses as negative amounts and income (salary, refunds, and other incoming money) as positive amounts, even when the user says “add the expenses”. The app does not drop positive amounts. Salary uses the `salary` category. The review card shows a plus sign on income rows.
+The server sends the PDF bytes to the Responses API as an `input_file` with base64 `file_data`. It does not extract the statement text locally. The first PDF step forces `propose_transactions`, and the turn stops once that proposal comes back. The model may answer only through `propose_transactions`. A statement is a ledger: every row is proposed, expenses as negative amounts and income (salary, refunds, and other incoming money) as positive amounts, even when the user says “add the expenses”. The app does not drop positive amounts. Salary uses the `salary` category. The review card shows a plus sign on income rows.
 
 A file over 25 MB is rejected with: `That PDF is larger than 25 MB. Attach a smaller statement.`
 
@@ -251,7 +253,7 @@ Deletes exactly the ids that belong to that `batchId`. Ids from another batch ar
 
 ## Local verification stub
 
-`HAUSHALTSBUCH_STUB_OPENAI=1` skips the network call to OpenAI. Confirm, undo, the SQL guard, and row validation still run. The stub is off unless that variable is set.
+`HAUSHALTSBUCH_STUB_OPENAI=1` does not call OpenAI. The same turn runs against a fake `fetch` that returns the Responses JSON described below, passed into `createOpenAI({ fetch })`. Confirm, undo, the SQL guard, and row validation still run. The stub is off unless that variable is set.
 
 | Input | Stub result |
 | --- | --- |

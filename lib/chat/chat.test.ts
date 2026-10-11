@@ -556,12 +556,12 @@ test("run_sql result is sent back on the next request, and the stub uses that pa
     const second = JSON.parse(calls[1] ?? "{}") as {
       store: boolean;
       previous_response_id?: string;
-      input: { type?: string; output?: string; content?: string; role?: string }[];
+      input: { type?: string; output?: string; content?: unknown; role?: string }[];
     };
     assert.equal(second.store, false);
     assert.equal(second.previous_response_id, undefined);
     assert.equal(
-      second.input.some((item) => item.role === "user" && item.content === "How much is saved?"),
+      second.input.some((item) => item.role === "user" && userTurnText(item.content) === "How much is saved?"),
       true,
     );
     const toolOutput = second.input.find((item) => item.type === "function_call_output");
@@ -681,7 +681,7 @@ test("pdf chip uses the page tree and a size label", () => {
   assert.equal(attachmentLabel("statement-november.pdf", 2, 84 * 1024), "statement-november.pdf · 2 pages · 84 KB");
 });
 
-test("OpenAI request uses the model constant, high reasoning, and detail auto", async () => {
+test("OpenAI request uses the model constant and high reasoning", async () => {
   const calls: { url: string; auth: string; body: string }[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -762,7 +762,7 @@ test("OpenAI request uses the model constant, high reasoning, and detail auto", 
     assert.equal(pdfBody.tools.some((tool) => tool.name === "run_sql"), false);
     const file = pdfBody.input.at(-1)?.content[0];
     assert.equal(file?.type, "input_file");
-    assert.equal(file?.detail, "auto");
+    assert.equal(file?.detail, undefined);
     assert.equal(file?.file_data?.startsWith("data:application/pdf;base64,"), true);
     const pdfStore = JSON.parse(calls[0]?.body ?? "{}") as { store: boolean };
     assert.equal(pdfStore.store, false);
@@ -770,6 +770,233 @@ test("OpenAI request uses the model constant, high reasoning, and detail auto", 
       [{ role: "user", content: "Add the expenses" }],
       { filename: "a.pdf", data: Buffer.from("%PDF") },
     )).includes(OPENAI_KEY), false);
+  } finally {
+    if (prev === undefined) delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
+    else process.env.HAUSHALTSBUCH_STUB_OPENAI = prev;
+  }
+});
+
+test("encrypted reasoning is sent back on the second tool round with store false", async () => {
+  const calls: string[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const body = String(init?.body ?? "");
+    calls.push(body);
+    if (!body.includes("function_call_output")) {
+      return Response.json({
+        id: "resp_reason",
+        output: [
+          {
+            type: "reasoning",
+            id: "rs_test",
+            encrypted_content: "enc-secret-blob",
+            summary: [{ type: "summary_text", text: "" }],
+          },
+          {
+            type: "function_call",
+            id: "fc_sql",
+            call_id: "call_sql",
+            name: "run_sql",
+            arguments: JSON.stringify({ query: "SELECT 1 AS n" }),
+          },
+        ],
+      });
+    }
+    return Response.json({
+      id: "resp_reason_done",
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          id: "msg_done",
+          content: [{ type: "output_text", text: "Done.", annotations: [] }],
+        },
+      ],
+    });
+  };
+
+  const prev = process.env.HAUSHALTSBUCH_STUB_OPENAI;
+  delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
+  try {
+    const result = await runChatTurn({
+      apiKey: OPENAI_KEY,
+      instructions: "test",
+      messages: [{ role: "user", content: "How much is saved?" }],
+      mode: "chat",
+      fetchImpl,
+      executeTool: () => ({ ok: true, rows: [] }),
+    });
+    assert.equal(result.reply, "Done.");
+    assert.equal(calls.length, 2);
+    for (const raw of calls) {
+      const body = JSON.parse(raw) as { store: boolean; include: string[]; reasoning: { effort: string; summary?: string } };
+      assert.equal(body.store, false);
+      assert.deepEqual(body.include, ["reasoning.encrypted_content"]);
+      assert.deepEqual(body.reasoning, { effort: CHAT_REASONING_EFFORT });
+    }
+    const second = JSON.parse(calls[1] ?? "{}") as {
+      input: { type?: string; encrypted_content?: string }[];
+    };
+    const reasoning = second.input.find((item) => item.type === "reasoning");
+    assert.equal(reasoning?.encrypted_content, "enc-secret-blob");
+  } finally {
+    if (prev === undefined) delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
+    else process.env.HAUSHALTSBUCH_STUB_OPENAI = prev;
+  }
+});
+
+test("a PDF forces propose_transactions on the first step and stops after it", async () => {
+  const calls: string[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    calls.push(String(init?.body ?? ""));
+    return Response.json({
+      id: "resp_pdf",
+      output: [
+        {
+          type: "function_call",
+          id: "fc_propose",
+          call_id: "call_propose",
+          name: "propose_transactions",
+          arguments: JSON.stringify({ rows: [stubGroceryRow(new Date(2026, 9, 10))] }),
+        },
+      ],
+    });
+  };
+
+  const prev = process.env.HAUSHALTSBUCH_STUB_OPENAI;
+  delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
+  try {
+    const result = await runChatTurn({
+      apiKey: OPENAI_KEY,
+      instructions: "test",
+      messages: [{ role: "user", content: "Add the expenses" }],
+      mode: "pdf",
+      pdf: { filename: "statement.pdf", data: Buffer.from(tinyPdf) },
+      fetchImpl,
+      executeTool: () => ({ ok: true, saved: false }),
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(result.proposalArgs !== null, true);
+    const body = JSON.parse(calls[0] ?? "{}") as {
+      store: boolean;
+      include: string[];
+      tools: { name: string; strict?: boolean }[];
+      tool_choice: { name: string };
+    };
+    assert.equal(body.store, false);
+    assert.deepEqual(body.include, ["reasoning.encrypted_content"]);
+    assert.equal(body.tool_choice.name, "propose_transactions");
+    assert.equal(body.tools.some((tool) => tool.name === "run_sql"), false);
+    assert.equal(body.tools.every((tool) => tool.strict === true), true);
+  } finally {
+    if (prev === undefined) delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
+    else process.env.HAUSHALTSBUCH_STUB_OPENAI = prev;
+  }
+});
+
+test("bad tool arguments and tool failures come back as ok false", async () => {
+  const calls: string[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const body = String(init?.body ?? "");
+    calls.push(body);
+    if (calls.length === 1) {
+      return Response.json({
+        id: "resp_bad",
+        output: [
+          {
+            type: "function_call",
+            id: "fc_bad",
+            call_id: "call_bad",
+            name: "run_sql",
+            arguments: "not-json",
+          },
+        ],
+      });
+    }
+    if (calls.length === 2) {
+      return Response.json({
+        id: "resp_throw",
+        output: [
+          {
+            type: "function_call",
+            id: "fc_throw",
+            call_id: "call_throw",
+            name: "run_sql",
+            arguments: JSON.stringify({ query: "SELECT 1" }),
+          },
+        ],
+      });
+    }
+    return Response.json({
+      id: "resp_ok",
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          id: "msg_ok",
+          content: [{ type: "output_text", text: "Stopped.", annotations: [] }],
+        },
+      ],
+    });
+  };
+
+  const prev = process.env.HAUSHALTSBUCH_STUB_OPENAI;
+  delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
+  try {
+    const result = await runChatTurn({
+      apiKey: OPENAI_KEY,
+      instructions: "test",
+      messages: [{ role: "user", content: "How much is saved?" }],
+      mode: "chat",
+      fetchImpl,
+      executeTool: () => {
+        throw new Error("boom");
+      },
+    });
+    assert.equal(result.reply, "Stopped.");
+    assert.equal(calls.length, 3);
+    const second = JSON.parse(calls[1] ?? "{}") as { input: { type?: string; output?: string }[] };
+    const bad = second.input.find((item) => item.type === "function_call_output");
+    assert.match(bad?.output ?? "", /The arguments were not valid JSON/);
+    assert.match(bad?.output ?? "", /"ok":false/);
+    const third = JSON.parse(calls[2] ?? "{}") as { input: { type?: string; output?: string }[] };
+    const failed = third.input.filter((item) => item.type === "function_call_output");
+    assert.match(failed.map((item) => item.output ?? "").join("\n"), /The tool failed/);
+  } finally {
+    if (prev === undefined) delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
+    else process.env.HAUSHALTSBUCH_STUB_OPENAI = prev;
+  }
+});
+
+test("tool rounds stop after 4", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return Response.json({
+      id: `resp_${calls}`,
+      output: [
+        {
+          type: "function_call",
+          id: `fc_${calls}`,
+          call_id: `call_${calls}`,
+          name: "run_sql",
+          arguments: JSON.stringify({ query: "SELECT 1 AS n" }),
+        },
+      ],
+    });
+  };
+
+  const prev = process.env.HAUSHALTSBUCH_STUB_OPENAI;
+  delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
+  try {
+    await runChatTurn({
+      apiKey: OPENAI_KEY,
+      instructions: "test",
+      messages: [{ role: "user", content: "Keep going" }],
+      mode: "chat",
+      fetchImpl,
+      executeTool: () => ({ ok: true }),
+    });
+    assert.equal(calls, 4);
   } finally {
     if (prev === undefined) delete process.env.HAUSHALTSBUCH_STUB_OPENAI;
     else process.env.HAUSHALTSBUCH_STUB_OPENAI = prev;
@@ -1311,6 +1538,18 @@ test("copy matches the tracker and example tags are absent", () => {
   assert.equal(modelFile.split(CHAT_MODEL).length - 1, 1);
   assert.equal(existsSync("docs/chat-api.md"), true);
 });
+
+function userTurnText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const part = content.find(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      (item as { type?: string }).type === "input_text",
+  ) as { text?: string } | undefined;
+  return part?.text ?? "";
+}
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
