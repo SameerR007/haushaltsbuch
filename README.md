@@ -110,7 +110,7 @@ On an empty conversation the page shows **What did you spend?**, a short subtitl
 
 The prompts are built from `haushaltsbuch.connection` (version 2): the first saved bank name, and the saved currency’s minor units for the sample amount `12.50`. The day is the 12th of the previous full month, and the month name comes from that date. If no bank is saved, the bank is left out of the first prompt.
 
-Every new expense, including a whole statement, is a review card first: date, description, category, bank, amount, and total, then **Confirm — save N**, **Edit**, and **Cancel**. Confirm is the only write. A row flagged as a duplicate is skipped unless **Include anyway** is on, and the button count leaves those rows out. Undo deletes exactly the rows from that confirm.
+Every new transaction, including a whole statement, is a review card first. A statement proposes every row, expenses and income, even when the request says “expenses”. The card shows date, description, category, bank, amount, and total, then **Confirm — save N**, **Edit**, and **Cancel**. Confirm is the only write. A row flagged as a duplicate is skipped unless **Include anyway** is on, and the button count leaves those rows out. Undo deletes exactly the rows from that confirm.
 
 The paperclip attaches a PDF. The chip shows the file name, page count, and size. The first time a statement is attached (and again after setup is saved), the page says: “The whole PDF (text and page images) is sent to OpenAI to read it. Nothing else leaves your computer.” Sending a statement shows **Reading your statement…** while it is in flight.
 

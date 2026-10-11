@@ -1,7 +1,7 @@
 "use client";
 
 import { confirmLabel, reviewIntro, REVIEW_FOOTER, totalLabel } from "@/lib/chat/copy";
-import { formatMoney, formatRowDate } from "@/lib/chat/money";
+import { formatReviewAmount, formatRowDate } from "@/lib/chat/money";
 import type { Proposal, ReviewRow } from "@/lib/chat/types";
 import { flagLabel, revalidateRow, rowBlocksSave, rowsToSave } from "@/lib/chat/validate-rows";
 
@@ -98,7 +98,7 @@ export function ReviewCard({
               <tfoot>
                 <tr>
                   <td colSpan={4}>{totalLabel(proposal.sourceName)}</td>
-                  <td className="is-num">{formatMoney(total, proposal.currency)}</td>
+                  <td className="is-num">{formatReviewAmount(total, proposal.currency)}</td>
                 </tr>
               </tfoot>
             )}
@@ -251,7 +251,7 @@ function Row({
           ) : row.amount === null ? (
             row.amountInput || "—"
           ) : (
-            formatMoney(row.amount, currency)
+            formatReviewAmount(row.amount, currency)
           )}
         </td>
       </tr>

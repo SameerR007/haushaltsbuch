@@ -23,17 +23,18 @@ import {
   showNewChatButton,
   writeStoredChat,
 } from "./persist";
-import { formatMoney, formatPlainDate, formatRowDate, formatSummaryMoney } from "./money";
+import { formatMoney, formatPlainDate, formatReviewAmount, formatRowDate, formatSummaryMoney } from "./money";
 import {
   CHAT_MODEL,
   CHAT_REASONING_EFFORT,
   resolveChatModel,
   runChatTurn,
   stubGroceryRow,
+  stubSalaryRow,
   toModelInput,
 } from "./openai";
 import { attachmentLabel, countPdfPages, formatFileSize } from "./pdf-meta";
-import { householdInstructions, MODEL_TURN_LIMIT, previousFullMonth, recentModelTurns, RUN_SQL_RULE, SIGNED_AMOUNT_RULE, suggestedPrompts, withPdfInstructions } from "./prompts";
+import { householdInstructions, MODEL_TURN_LIMIT, previousFullMonth, recentModelTurns, RUN_SQL_RULE, SIGNED_AMOUNT_RULE, STATEMENT_ROWS_RULE, suggestedPrompts, withPdfInstructions } from "./prompts";
 import { executeReadOnlyQuery, guardReadQuery, SQL_ROW_CAP } from "./sql-guard";
 import { confirmTransactions, undoTransactions } from "./transactions";
 import { reviewProposedRows, rowsToSave } from "./validate-rows";
@@ -369,6 +370,69 @@ test("review flags bad fields, defaults one bank, and marks duplicates", () => {
   assert.equal(manyBanks[0]?.flags.includes("unknown_bank"), true);
 });
 
+test("a statement fixture keeps salary and other incoming rows", () => {
+  const banks = [{ name: "Sparkasse", initials: "SP" }];
+  const categories = ["grocery", "rent", "salary"];
+  const existing = [
+    { id: 7, date: "2026-09-12", amount: -12.5, bank: "Sparkasse", notes: "Groceries" },
+    { id: 8, date: "2026-09-28", amount: -2850, bank: "Sparkasse", notes: "Salary" },
+  ];
+  const reviewed = reviewProposedRows(
+    [
+      stubSalaryRow(new Date(2026, 9, 10)),
+      stubGroceryRow(new Date(2026, 9, 10)),
+      {
+        date: "2026-09-18",
+        description: "Refund",
+        category: "grocery",
+        bank: "Sparkasse",
+        amount: "+15.00",
+        uncertain: false,
+      },
+    ],
+    { categories, banks, existing },
+  );
+  assert.equal(reviewed.length, 3);
+  assert.equal(reviewed[0]?.category, "salary");
+  assert.equal(reviewed[0]?.amount, 2850);
+  assert.equal(reviewed[0]?.flags.includes("duplicate"), false);
+  assert.equal(reviewed[0]?.flags.includes("unknown_category"), false);
+  assert.equal(reviewed[0]?.flags.includes("invalid_amount"), false);
+  assert.equal(reviewed[1]?.amount, -12.5);
+  assert.equal(reviewed[1]?.flags.includes("duplicate"), true);
+  assert.equal(reviewed[2]?.amount, 15);
+  assert.equal(reviewed.filter((row) => (row.amount ?? 0) > 0).length, 2);
+  assert.equal(reviewed.filter((row) => (row.amount ?? 0) < 0).length, 1);
+
+  withTempDb(() => {
+    seedBank();
+    const saved = confirmTransactions(
+      reviewed
+        .filter((row) => !row.flags.includes("duplicate"))
+        .map((row) => ({
+          date: row.date,
+          description: row.description,
+          category: row.category,
+          bank: row.bank,
+          amount: row.amount,
+        })),
+    );
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    assert.equal(saved.ids.length, 2);
+    closeDb();
+    const database = new Database(resolveDbPath(), { readonly: true });
+    const rows = database
+      .prepare("SELECT category, amount FROM transactions ORDER BY amount")
+      .all() as { category: string; amount: number }[];
+    database.close();
+    assert.deepEqual(rows, [
+      { category: "grocery", amount: 15 },
+      { category: "salary", amount: 2850 },
+    ]);
+  });
+});
+
 test("confirm skips duplicates unless the client includes them", () => {
   const banks = [{ name: "Sparkasse", initials: "SP" }];
   const categories = ["grocery", "rent"];
@@ -539,7 +603,7 @@ test("prompts use the previous month, the first bank, and the currency", () => {
   assert.equal(previousFullMonth(june).monthName, "May");
   assert.deepEqual(suggestedPrompts({ bankName: "Sparkasse", currency: "EUR", now: june }), [
     "Add 12.50 groceries from Sparkasse on 12 May",
-    "Add the expenses for May from this bank statement",
+    "Add the transactions from this bank statement",
     "How much did I spend on food in May?",
   ]);
   assert.equal(
@@ -570,6 +634,18 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.equal(text.includes("€"), false);
   const pdf = withPdfInstructions(text);
   assert.match(pdf, /Answer only by calling propose_transactions/);
+  assert.equal(text.includes(STATEMENT_ROWS_RULE), true);
+  assert.equal(pdf.includes(STATEMENT_ROWS_RULE), true);
+  assert.match(text, /never only the negative ones/);
+  assert.match(text, /expenses, spending, transactions, or add this/);
+  assert.match(pdf, /One row per transaction on the statement/);
+  assert.equal(formatReviewAmount(2850, "EUR").startsWith("+"), true);
+  assert.match(formatReviewAmount(2850, "EUR"), /\+.*2,850\.00/);
+  assert.equal(formatReviewAmount(-12.5, "EUR").startsWith("+"), false);
+  assert.match(formatReviewAmount(-12.5, "EUR"), /12\.50/);
+  assert.equal(formatReviewAmount(0, "EUR").startsWith("+"), false);
+  const reviewCard = readFileSync("components/tracker/review-card.tsx", "utf8");
+  assert.match(reviewCard, /formatReviewAmount\(row\.amount, currency\)/);
   assert.equal(formatRowDate("2026-09-12"), "12th September 2026");
   assert.equal(formatRowDate("2026-09-01"), "1st September 2026");
   assert.equal(formatRowDate("2026-09-02"), "2nd September 2026");
@@ -759,13 +835,24 @@ test("chat confirm and undo routes, and a stubbed PDF flags a duplicate", async 
     );
     const pdfBody = (await pdf.json()) as {
       ok: boolean;
-      proposal: { sourceName: string; rows: { flags: string[]; description: string }[] };
+      proposal: {
+        sourceName: string;
+        rows: { flags: string[]; description: string; category: string; amount: number }[];
+      };
     };
     assert.equal(pdfBody.ok, true);
     assert.equal(pdfBody.proposal.sourceName, "statement-november.pdf");
     assert.equal(pdfBody.proposal.rows[0]?.flags.includes("duplicate"), true);
     assert.equal(pdfBody.proposal.rows[1]?.description, "City Landlord — rent");
     assert.equal(pdfBody.proposal.rows[1]?.flags.includes("duplicate"), false);
+    const salary = pdfBody.proposal.rows.find((row) => row.category === "salary");
+    assert.equal(salary?.description, "Salary");
+    assert.equal(salary?.amount, 2850);
+    assert.equal(salary?.flags.includes("duplicate"), false);
+    assert.equal(salary?.flags.includes("invalid_amount"), false);
+    assert.equal(salary?.flags.includes("unknown_category"), false);
+    assert.equal(pdfBody.proposal.rows.filter((row) => row.amount < 0).length, 2);
+    assert.equal(pdfBody.proposal.rows.filter((row) => row.amount > 0).length, 1);
     assert.equal(countTransactions(), 1);
 
     const undone = await postUndo(

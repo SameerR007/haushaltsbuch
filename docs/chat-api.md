@@ -97,7 +97,7 @@ Multipart form fields:
 | `file` | The PDF. About 25 MB maximum. |
 | `messages` | Optional JSON array of earlier chat turns. |
 
-The server sends the PDF bytes to the Responses API as an `input_file` with base64 `file_data` and `detail` `"auto"`. It does not extract the statement text locally. The model may answer only through `propose_transactions`.
+The server sends the PDF bytes to the Responses API as an `input_file` with base64 `file_data` and `detail` `"auto"`. It does not extract the statement text locally. The model may answer only through `propose_transactions`. A statement is a ledger: every row is proposed, expenses as negative amounts and income (salary, refunds, and other incoming money) as positive amounts, even when the user says “add the expenses”. The app does not drop positive amounts. Salary uses the `salary` category. The review card shows a plus sign on income rows.
 
 A file over 25 MB is rejected with: `That PDF is larger than 25 MB. Attach a smaller statement.`
 
@@ -257,6 +257,6 @@ Deletes exactly the ids that belong to that `batchId`. Ids from another batch ar
 | --- | --- |
 | A chat message that does not end with `?` | One proposed grocery: day 12 of the previous month, description `Groceries`, category `grocery`, amount `-12.50`, bank left blank so the single saved bank is used |
 | A chat message that ends with `?` | `run_sql` of `SUM(amount)`. The stub waits for that tool result and the reply quotes the rows, the same way a live tool round sends `function_call_output` |
-| A PDF | The same grocery row, plus rent of `-850.00` on day 3 of that month. The PDF response waits about a second so the reading state is visible. Set `HAUSHALTSBUCH_STUB_DELAY_MS=0` to skip the wait |
+| A PDF | The grocery row, rent of `-850.00` on day 3 of that month, and salary of `+2850.00` on day 28. The PDF response waits about a second so the reading state is visible. Set `HAUSHALTSBUCH_STUB_DELAY_MS=0` to skip the wait |
 
 The PDF is still uploaded to this server. The stub does not send it to OpenAI.

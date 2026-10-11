@@ -19,6 +19,13 @@ export function recentModelTurns<T>(turns: readonly T[]): T[] {
 export const PROPOSE_RULE =
   "propose_transactions does not save anything. The user reviews the rows and confirms before they are written.";
 
+/**
+ * A statement is a ledger. "Expenses" still means every row, not only the negatives.
+ * Used for typed adds and for the PDF import instructions.
+ */
+export const STATEMENT_ROWS_RULE =
+  "A bank statement or ledger import always includes every row, never only the negative ones, whatever wording the user uses (expenses, spending, transactions, or add this). Expenses are negative amounts. Income, including salary, refunds, and other incoming money, is positive. Use the salary category for salary.";
+
 export function todayIso(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
@@ -75,7 +82,7 @@ export function suggestedPrompts(input: {
     : `Add ${amount} groceries on ${dayPhrase}`;
   return [
     add,
-    `Add the expenses for ${monthName} from this bank statement`,
+    "Add the transactions from this bank statement",
     `How much did I spend on food in ${monthName}?`,
   ];
 }
@@ -108,7 +115,9 @@ ${SIGNED_AMOUNT_RULE}
 
 ${RUN_SQL_RULE} If you have not called run_sql in this turn, you do not know the figures. If run_sql returns an error, say so and do not invent a number.
 
-To record one expense, several expenses, or a bank statement, call propose_transactions. ${PROPOSE_RULE} Each row needs a date as YYYY-MM-DD, a short description, a category from the list, a bank from the list, a signed amount, and uncertain set to true or false.
+To record one expense, several transactions, or a bank statement, call propose_transactions. ${PROPOSE_RULE} Each row needs a date as YYYY-MM-DD, a short description, a category from the list, a bank from the list, a signed amount, and uncertain set to true or false.
+
+${STATEMENT_ROWS_RULE}
 
 ${AMBIGUITY_RULE}
 
@@ -120,5 +129,5 @@ For a question, reply in plain sentences after run_sql. For new money rows, call
 export function withPdfInstructions(instructions: string): string {
   return `${instructions}
 
-A bank statement PDF is attached. Read the file itself. The app does not extract its text. Answer only by calling propose_transactions. One row per transaction. If a row is unclear, set uncertain to true. Do not guess a category or a bank when several are possible.`;
+A bank statement PDF is attached. Read the file itself. The app does not extract its text. Answer only by calling propose_transactions. One row per transaction on the statement. ${STATEMENT_ROWS_RULE} If a row is unclear, set uncertain to true. Do not guess a category or a bank when several are possible.`;
 }

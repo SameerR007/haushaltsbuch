@@ -54,6 +54,13 @@ export function formatMoney(amount: number, currency: string): string {
   }
 }
 
+/** Review-card amounts. Income keeps a plus sign in front of the currency. */
+export function formatReviewAmount(amount: number, currency: string): string {
+  const formatted = formatMoney(amount, currency);
+  if (amount > 0 && !formatted.startsWith("+")) return `+${formatted}`;
+  return formatted;
+}
+
 /** Summary amounts use the minus sign − (U+2212), not a hyphen. */
 export function formatSummaryMoney(amount: number, currency: string): string {
   const formatted = formatMoney(amount, currency);

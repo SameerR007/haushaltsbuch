@@ -44,7 +44,7 @@ const PROPOSE_TOOL = {
   type: "function",
   name: "propose_transactions",
   description:
-    "Propose transactions for the user to review. This does not save anything. Amounts are signed: expenses negative, income positive. Set uncertain to true when a field is unclear.",
+    "Propose transactions for the user to review. This does not save anything. Amounts are signed: expenses negative, income positive. A bank statement or ledger includes every row, expenses and income, even when the user says expenses or spending. Set uncertain to true when a field is unclear.",
   strict: true,
   parameters: {
     type: "object",
@@ -193,6 +193,17 @@ export function stubRentRow(now = new Date()) {
   };
 }
 
+export function stubSalaryRow(now = new Date()) {
+  return {
+    date: previousMonthIso(28, now),
+    description: "Salary",
+    category: "salary",
+    bank: "",
+    amount: 2850,
+    uncertain: false,
+  };
+}
+
 function stubModel(input: unknown): ModelResponse {
   const items = Array.isArray(input) ? input : [];
   const followup = items.some(
@@ -224,7 +235,9 @@ function stubModel(input: unknown): ModelResponse {
     };
   }
   if (inputHasFile(input)) {
-    return toolResponse("propose_transactions", { rows: [stubGroceryRow(), stubRentRow()] });
+    return toolResponse("propose_transactions", {
+      rows: [stubGroceryRow(), stubRentRow(), stubSalaryRow()],
+    });
   }
   if (lastUserText(input).trim().endsWith("?")) {
     return toolResponse("run_sql", {
