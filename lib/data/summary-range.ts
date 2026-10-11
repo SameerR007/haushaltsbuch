@@ -1,5 +1,7 @@
-import { formatPlainDate, formatRowDate } from "../chat/money";
+import { formatMoney, formatPlainDate, formatRowDate, formatSummaryMoney } from "../chat/money";
 import { parseIsoDate } from "../chat/validate-rows";
+
+const MINUS = "\u2212";
 
 export function roundCents(value: number): number {
   return Math.round(value * 100) / 100;
@@ -115,14 +117,54 @@ export function plainRangeLabel(from: string, to: string): string {
   return `${formatPlainDate(from)} – ${formatPlainDate(to)}`;
 }
 
-export function magnitudeChange(currentSigned: number, previousSigned: number): number {
-  return roundCents(Math.abs(currentSigned) - Math.abs(previousSigned));
+export type ChangeBasis = "magnitude" | "signed";
+
+export type ChangeMarker = { kind: "percent"; value: number } | { kind: "new" } | { kind: "none" };
+
+export type PeriodChange = {
+  amount: number;
+  marker: ChangeMarker;
+};
+
+/**
+ * Change is Period B minus Period A.
+ * Expenses compare spending (absolute values), so a larger spend in B is positive.
+ * Income and net compare the signed totals. The percentage is (B − A) / |A| × 100,
+ * so the sign still follows B − A when A is negative. A of 0 and B of 0 has no
+ * percentage. A of 0 and any other B is "new" rather than a divide-by-zero.
+ */
+export function periodChange(periodA: number, periodB: number, basis: ChangeBasis): PeriodChange {
+  const a = basis === "magnitude" ? Math.abs(periodA) : periodA;
+  const b = basis === "magnitude" ? Math.abs(periodB) : periodB;
+  const amount = roundCents(b - a);
+  if (a === 0 && b === 0) return { amount, marker: { kind: "none" } };
+  if (a === 0) return { amount, marker: { kind: "new" } };
+  const raw = (amount / Math.abs(a)) * 100;
+  const value = Math.round(raw * 10) / 10;
+  return { amount, marker: { kind: "percent", value: value === 0 ? 0 : value } };
 }
 
-/** One decimal. Null when the earlier magnitude is zero. */
-export function changePercent(delta: number, previousMagnitude: number): number | null {
-  if (previousMagnitude === 0) return null;
-  return Math.round((delta / previousMagnitude) * 1000) / 10;
+/** Signed change amount. Zero uses ±. Positive uses +. Negative uses −. */
+export function formatSignedAmount(amount: number, currency: string): string {
+  if (amount === 0) return `±${formatMoney(0, currency)}`;
+  if (amount > 0) return `+${formatMoney(amount, currency)}`;
+  return formatSummaryMoney(amount, currency);
+}
+
+/** One decimal. "new" when Period A is 0. Empty when both amounts are 0. */
+export function formatChangePercent(marker: ChangeMarker): string {
+  if (marker.kind === "none") return "";
+  if (marker.kind === "new") return "(new)";
+  const body = Math.abs(marker.value).toFixed(1);
+  if (marker.value > 0) return `(+${body}%)`;
+  if (marker.value < 0) return `(${MINUS}${body}%)`;
+  return `(±${body}%)`;
+}
+
+export function formatPeriodChangeText(change: PeriodChange, currency: string): string {
+  const money = formatSignedAmount(change.amount, currency);
+  const percent = formatChangePercent(change.marker);
+  return percent ? `${money} ${percent}` : money;
 }
 
 export function calendarCells(year: number, month: number): (number | null)[] {
@@ -134,6 +176,10 @@ export function calendarCells(year: number, month: number): (number | null)[] {
   return cells;
 }
 
+/**
+ * Calendar day as YYYY-MM-DD. Built from the year, month, and day numbers.
+ * Never from Date#toISOString, which shifts the day in timezones other than UTC.
+ */
 export function isoDate(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }

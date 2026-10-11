@@ -56,6 +56,15 @@ There is no spending-by-bank block and no comparison block.
 
 The page chooses Period B itself. The first time Compare opens, Period A matches the One period range and Period B is the previous range: the previous calendar month, the previous calendar year for a whole year (`YYYY-01-01` through `YYYY-12-31`), or the same number of days ending the day before `from`. Later edits stay on this request and do not change the One period request.
 
+Dates are calendar days (`YYYY-MM-DD`), built from the year, month, and day. A click is that calendar day in every timezone. On Compare, the field you click keeps that day. If the day would put the start after the end, the other field moves to the same day so the range stays ordered.
+
+The response does not include a change amount or a percentage. The page computes the Change column as Period B minus Period A. Period A is the left column and the base.
+
+- Expense categories and total expenses use the spending amounts (absolute values). A larger spend in Period B is a positive change and is shown in red. A smaller spend is green.
+- Income and net use the signed totals. A higher income or net in Period B is green. A lower one is red.
+
+The percentage is `(B − A) / |A| × 100`, shown to one decimal place, with the sign of `B − A`. Dividing by the absolute value of A keeps that sign when net in Period A is negative. When A is 0 and B is not, the cell shows the word "new" instead of a percentage. When both are 0, the cell shows the zero amount and no percentage. An example is `+€550.00 (+12.5%)`.
+
 HTTP 200:
 
 ```json
