@@ -6,7 +6,7 @@ import test from "node:test";
 import Database from "better-sqlite3";
 import { currencyConfirmLabel, describeCurrency, excelAmountNumFmt } from "../currency";
 import { hasSavedConnection, parseConnection } from "../connection";
-import { closeDb, initDatabase, publicDbName, readHealth, resolveDbPath, saveHousehold } from "../db";
+import { closeDb, ensureMigrated, initDatabase, publicDbName, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "./categories";
 import {
   CURRENCY_CHOICES,
@@ -181,6 +181,34 @@ test("confirm upserts currency and banks and a later init keeps them", () => {
   });
 });
 
+test("a currency change does not convert saved amounts", () => {
+  withTempDb(() => {
+    assert.equal(
+      saveHousehold({ currency: "EUR", banks: [{ name: "ING", initials: "IN" }] }).ok,
+      true,
+    );
+    const database = ensureMigrated();
+    database
+      .prepare(
+        "INSERT INTO transactions (date, category, amount, bank, notes) VALUES ('2026-09-12', 'grocery', -12.5, 'ING', 'Shop')",
+      )
+      .run();
+    const changed = saveHousehold({ currency: "USD", banks: [{ name: "ING", initials: "IN" }] });
+    assert.equal(changed.ok, false);
+    if (!changed.ok) assert.match(changed.error, /not converted/);
+    const preference = database.prepare("SELECT currency FROM preferences WHERE id = 1").get() as {
+      currency: string;
+    };
+    const amount = database.prepare("SELECT amount FROM transactions").get() as { amount: number };
+    assert.equal(preference.currency, "EUR");
+    assert.equal(amount.amount, -12.5);
+    assert.equal(
+      saveHousehold({ currency: "EUR", banks: [{ name: "N26", initials: "N26" }] }).ok,
+      true,
+    );
+  });
+});
+
 test("connection JSON is version 2 and drops cloud fields", () => {
   assert.equal(hasSavedConnection("1"), true);
   assert.equal(hasSavedConnection(""), false);
@@ -279,11 +307,11 @@ test("chat helpers", () => {
   assert.equal(currencyChoiceLabel("INR"), "INR (₹)");
   assert.equal(currencyChoiceLabel("USD"), "USD ($)");
   assert.equal(currencyChoiceLabel("CHF"), "CHF — Swiss franc");
-  assert.equal(currencySummaryLabel("EUR"), "euro (€)");
-  assert.equal(currencySummaryLabel("INR"), "Indian rupee (₹)");
-  assert.equal(currencySummaryLabel("USD"), "US dollar ($)");
-  assert.equal(currencySummaryLabel("GBP"), "British pound (£)");
-  assert.equal(currencySummaryLabel("CHF"), "Swiss franc (CHF)");
+  assert.equal(currencySummaryLabel("EUR"), "EUR (€)");
+  assert.equal(currencySummaryLabel("INR"), "INR (₹)");
+  assert.equal(currencySummaryLabel("USD"), "USD ($)");
+  assert.equal(currencySummaryLabel("GBP"), "GBP (£)");
+  assert.equal(currencySummaryLabel("CHF"), "CHF (CHF)");
   assert.match(excelAmountNumFmt("EUR"), /€/);
   assert.match(excelAmountNumFmt("INR"), /₹/);
   assert.equal(excelAmountNumFmt("JPY").includes("."), false);

@@ -60,7 +60,7 @@ localStorage.removeItem("haushaltsbuch.connection")
 `/setup` is a three-step chat:
 
 1. OpenAI API key, checked once. The local database file is created in the background.
-2. Currency and one or more banks with initials. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR.
+2. Currency and one or more banks with initials. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR. A later currency choice changes the symbol and the number format only. It does not convert amounts already saved, and confirm refuses a different currency once any transaction exists.
 3. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
 **Review the data** opens **Your data**: database on this computer, currency, active banks, and whether an OpenAI key is saved in this browser. From there: **Open tracker**, **Change keys**, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**.

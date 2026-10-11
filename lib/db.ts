@@ -224,6 +224,17 @@ export function saveHousehold(input: {
   }
 
   const database = ensureMigrated();
+  const preference = database.prepare("SELECT currency FROM preferences WHERE id = 1").get() as
+    | { currency: string }
+    | undefined;
+  const savedCount = database.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number };
+  if (savedCount.n > 0 && preference && preference.currency !== currency) {
+    return {
+      ok: false,
+      code: "invalid",
+      error: "Amounts already saved are not converted. Set up completely new before choosing another currency.",
+    };
+  }
   const existing = database
     .prepare("SELECT name, initials, active FROM banks")
     .all() as StoredBank[];

@@ -195,7 +195,7 @@ Returns every transaction, newest first (`ORDER BY date DESC, id DESC`). Removed
 {
   "ok": true,
   "currency": "EUR",
-  "currencyLabel": "euro (€)",
+  "currencyLabel": "EUR (€)",
   "categories": ["food", "grocery"],
   "banks": [{ "name": "ING", "initials": "IN", "active": true, "removedAt": null, "transactionCount": 1 }],
   "transactions": [

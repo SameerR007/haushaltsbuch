@@ -42,12 +42,11 @@ export function currencyChoiceLabel(code: string): string {
   return known ? currencyConfirmLabel(known) : code;
 }
 
-/** Summary line on confirm, Expenses, and the saved card. Euro matches the setup mocks. */
+/** Short label for subtitles and cards: "INR (₹)", "EUR (€)". */
 export function currencySummaryLabel(code: string): string {
-  if (code === "EUR") return "euro (€)";
   const known = describeCurrency(code);
   if (!known) return code;
-  return `${known.name} (${known.symbol})`;
+  return `${known.code} (${known.symbol})`;
 }
 
 export function normalizeBank(name: string, initials: string): {

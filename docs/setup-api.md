@@ -83,7 +83,7 @@ No transaction rows are written.
 { "ok": true }
 ```
 
-`currency` is a three-letter ISO code that `Intl.supportedValuesOf('currency')` accepts, such as `EUR`, `INR`, `USD`, or `CHF`. The symbol comes from `Intl.NumberFormat` with `currencyDisplay: 'narrowSymbol'`. A code Intl cannot format, such as `XYZ`, is rejected and nothing is saved. The database still starts as `EUR`. Setup offers **Euro (€)**, **INR (₹)**, **USD ($)**, and **Other…** for any other supported code. Each bank needs a name and initials of 1–4 letters or digits. The chat calls this from **Confirm** during first-time setup. **Change keys** does not call this route. It checks the key with `POST /api/setup/openai` and writes the OpenAI key back beside the banks already saved in this browser.
+`currency` is a three-letter ISO code that `Intl.supportedValuesOf('currency')` accepts, such as `EUR`, `INR`, `USD`, or `CHF`. The symbol comes from `Intl.NumberFormat` with `currencyDisplay: 'narrowSymbol'`. A code Intl cannot format, such as `XYZ`, is rejected and nothing is saved. The database still starts as `EUR`. Setup offers **Euro (€)**, **INR (₹)**, **USD ($)**, and **Other…** for any other supported code. Changing the currency changes the symbol and the number format only. Amounts already stored are not converted. Once any transaction exists, confirm refuses a different currency. Choose it during setup, or after **Set up completely new**. Each bank needs a name and initials of 1–4 letters or digits. The chat calls this from **Confirm** during first-time setup. **Change keys** does not call this route. It checks the key with `POST /api/setup/openai` and writes the OpenAI key back beside the banks already saved in this browser.
 
 ## `GET /api/setup/health`
 
@@ -121,7 +121,7 @@ Reads the database. It does not create the file. The response has no absolute pa
   "ok": true,
   "database": "on this computer",
   "currency": "EUR",
-  "currencyLabel": "euro (€)",
+  "currencyLabel": "EUR (€)",
   "transactionCount": 14,
   "banks": [
     {
