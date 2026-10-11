@@ -65,7 +65,7 @@ localStorage.removeItem("haushaltsbuch.connection")
 
 **Review the data** opens **Your data**: database on this computer, currency, active banks, and whether an OpenAI key is saved in this browser. From there: **Open tracker**, **Change keys**, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**. **Back to welcome** sits at the bottom of that card. The header **← Back** link stays as a smaller second way to the same place.
 
-**Add / Remove banks** keeps the bank list and the add-bank form in the card. **Done** is a full teal button at the bottom of that card and returns to Your data. If a bank was added, removed, or added back, Your data says the banks were updated. The header **← Back** link is only a secondary way out.
+**Add / Remove banks** keeps the bank list and the add-bank form in the card. **Done** is a full teal button at the bottom of that card at all times, including right after a removal or an add-back, and returns to Your data. After a removal the card says **Removed Sparkasse (SP). Its transactions stay saved.** and the lists refresh. **Save bank** still asks **Saved X (XX). Add another bank?** with **Add another bank** and **That’s all**. **That’s all** and **Done** both return to Your data. If a bank was added, removed, or added back, Your data says the banks were updated. The header **← Back** link stays visible as a secondary way out.
 
 **Set up completely new** keeps **Download backup** in the card, then **Back to your data** at the bottom. The last step keeps **Keep my data** as the teal button at the bottom of the card.
 

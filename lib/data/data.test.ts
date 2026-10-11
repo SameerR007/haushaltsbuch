@@ -30,6 +30,7 @@ import {
   EXPENSES_EMPTY_NOTE,
   keptCountLabel,
   removeWarning,
+  removedBankLine,
   savedBankLine,
   showExpensesDownload,
   sqliteSavedLine,
@@ -97,6 +98,7 @@ test("date and bank copy", () => {
   assert.match(removeWarning("ING", "IN", 0).body, /no transactions/);
   assert.equal(excelBackupLabel(3), "Excel file with all 3 expenses (.xlsx)");
   assert.equal(savedBankLine("N26", "N26"), "Saved N26 (N26). Add another bank?");
+  assert.equal(removedBankLine("Sparkasse", "SP"), "Removed Sparkasse (SP). Its transactions stay saved.");
   assert.equal(xlsxSavedLine(142), "haushaltsbuch-expenses.xlsx — 142 expenses");
   assert.equal(sqliteSavedLine(), "haushaltsbuch.sqlite — raw database");
   assert.equal(amountKeepingSign("12.50", -12.5), "-12.5");
@@ -158,6 +160,9 @@ test("tracker nav order, Open tracker, and the empty expenses state", () => {
   assert.ok(addAt > 0 && doneAt > addAt);
   assert.match(banks, /className="data-primary" href=\{changed \? "\/data\?updated=1" : "\/data"\}/);
   assert.match(banks, /Done/);
+  assert.match(banks, /removedBankLine/);
+  assert.match(banks, /That’s all/);
+  assert.match(banks, /href="\/data\?updated=1"/);
   const chrome = readFileSync("components/data/data-chrome.tsx", "utf8");
   assert.match(chrome, /← Back/);
   const yours = readFileSync("components/data/your-data.tsx", "utf8");

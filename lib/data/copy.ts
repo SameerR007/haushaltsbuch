@@ -78,3 +78,7 @@ export function excelBackupLabel(count: number): string {
 export function savedBankLine(name: string, initials: string): string {
   return `Saved ${name} (${initials}). Add another bank?`;
 }
+
+export function removedBankLine(name: string, initials: string): string {
+  return `Removed ${name} (${initials}). Its transactions stay saved.`;
+}

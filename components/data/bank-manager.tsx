@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { rememberActiveBanks } from "@/lib/connection";
-import { keptCountLabel, removeWarning, savedBankLine, transactionCountLabel } from "@/lib/data/copy";
+import { keptCountLabel, removeWarning, removedBankLine, savedBankLine, transactionCountLabel } from "@/lib/data/copy";
 import { parseHousehold } from "@/lib/data/parse";
 import type { BankView, HouseholdView } from "@/lib/data/types";
 import { suggestInitials } from "@/lib/setup/chat-logic";
@@ -43,7 +42,6 @@ async function postJson(path: string, body: object): Promise<{ ok: boolean; erro
 }
 
 export function BankManager() {
-  const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [household, setHousehold] = useState<HouseholdView | null>(null);
   const [error, setError] = useState("");
@@ -54,6 +52,7 @@ export function BankManager() {
   const [initialsTouched, setInitialsTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedLine, setSavedLine] = useState("");
+  const [removedLine, setRemovedLine] = useState("");
   const [changed, setChanged] = useState(false);
 
   async function load() {
@@ -98,6 +97,7 @@ export function BankManager() {
         setError(result.error ?? "Could not remove that bank.");
         return;
       }
+      setRemovedLine(removedBankLine(pendingRemove.name, pendingRemove.initials));
       setPendingRemove(null);
       setChanged(true);
       await load();
@@ -179,6 +179,11 @@ export function BankManager() {
           </div>
         ))}
         {lastBank ? <p className="bank-keep">Keep at least one bank.</p> : null}
+        {removedLine ? (
+          <p className="data-notice" role="status">
+            {removedLine}
+          </p>
+        ) : null}
       </section>
 
       {removed.length > 0 ? (
@@ -206,9 +211,9 @@ export function BankManager() {
               <button type="button" className="data-chip primary" onClick={addAnother}>
                 Add another bank
               </button>
-              <button type="button" className="data-chip" onClick={() => router.push("/data?updated=1")}>
+              <Link className="data-chip" href="/data?updated=1">
                 {THATS_ALL}
-              </button>
+              </Link>
             </div>
           </div>
         ) : (

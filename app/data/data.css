@@ -42,11 +42,13 @@
 }
 
 .data-header-back {
-  color: var(--muted);
-  font-size: 13px;
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-size: 14px;
   font-weight: 650;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
+  white-space: nowrap;
 }
 
 .data-header-back:hover {
@@ -372,6 +374,8 @@
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
+  color: var(--ink);
+  text-decoration: none;
 }
 
 .data-chip.primary {
