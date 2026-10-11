@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CHAT_CHANGED_EVENT, readStoredChat, requestNewChat, showNewChatButton } from "@/lib/chat/persist";
+import { NEW_CHAT_CONFIRM } from "@/lib/chat/copy";
+import { CHAT_CHANGED_EVENT, needsNewChatConfirm, readStoredChat, requestNewChat, showNewChatButton } from "@/lib/chat/persist";
 import { isTrackerNavActive, TRACKER_NAV } from "@/components/tracker/nav";
 
 export function TrackerHeader() {
@@ -26,7 +27,15 @@ export function TrackerHeader() {
       </Link>
       <div className="tracker-header-side">
         {chat && showNew ? (
-          <button type="button" className="tracker-new-chat" onClick={() => requestNewChat()}>
+          <button
+            type="button"
+            className="tracker-new-chat"
+            onClick={() => {
+              const stored = readStoredChat();
+              if (needsNewChatConfirm(stored) && !window.confirm(NEW_CHAT_CONFIRM)) return;
+              requestNewChat();
+            }}
+          >
             New chat
           </button>
         ) : null}

@@ -14,6 +14,8 @@ export const READING_STATEMENT = "Reading your statement…";
 
 export const REATTACH_PDF = "Attach the statement again. The file is not kept in this browser.";
 
+export const NEW_CHAT_CONFIRM = "Discard the review card? It is not saved yet.";
+
 export const REVIEW_FOOTER =
   "Bank and currency come from your setup. Categories are suggestions. Uncertain rows are flagged for you to fix.";
 

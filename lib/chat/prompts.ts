@@ -9,6 +9,13 @@ export const SIGNED_AMOUNT_RULE =
 export const AMBIGUITY_RULE =
   "If the bank or the category is ambiguous, ask a short question instead of guessing. When only one bank is saved, that bank is the default.";
 
+/** Turns sent back to the model on each message. Older turns stay in this browser only. */
+export const MODEL_TURN_LIMIT = 20;
+
+export function recentModelTurns<T>(turns: readonly T[]): T[] {
+  return turns.slice(-MODEL_TURN_LIMIT);
+}
+
 export const PROPOSE_RULE =
   "propose_transactions does not save anything. The user reviews the rows and confirms before they are written.";
 
