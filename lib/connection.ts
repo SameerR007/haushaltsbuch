@@ -5,12 +5,25 @@
  * - missing or empty → first visit: “Get started” only
  * - any non-empty string → returning: “Open tracker” and “Review the data”
  *
- * Setup writes version 2 JSON (see `SavedConnection`) when the chat is confirmed.
- * The OpenAI key stays in this browser. The database path is not stored.
+ * Setup writes version 3 JSON (see `SavedConnection`) when the chat is confirmed.
+ * A version 2 object (an OpenAI key and no assistant type) is read as on OpenAI.
+ * A key stays in this browser. The database path is not stored.
  * A non-JSON marker such as `"1"` still counts as returning on the landing page.
  */
+import { endpointHostname } from "./assistant/copy";
+import {
+  chatBaseUrl,
+  endpointAddressError,
+  localAddressError,
+  modelNameOk,
+  type AssistantKind,
+  type AssistantTarget,
+} from "./assistant/target";
 import { clearStoredChat } from "./chat/persist";
 import { clearSummaryView } from "./data/summary-state";
+import { looksLikeOpenAiKey } from "./setup/guards";
+
+export type { AssistantKind, AssistantTarget };
 
 export const CONNECTION_STORAGE_KEY = "haushaltsbuch.connection";
 
@@ -31,16 +44,90 @@ export type SavedBank = {
 };
 
 /**
- * Browser-only OpenAI key and household preferences.
- * Version 2 has no project URL, anon key, or database path.
+ * Where the assistant runs. Saved with the household, not in the database.
+ * `local` keeps an app address and a model. `endpoint` keeps a base URL, a
+ * model, and a key. `openai` keeps the OpenAI key. The key never leaves this
+ * browser except on a request the user just made.
+ */
+export type AssistantSettings =
+  | { type: "openai"; apiKey: string }
+  | { type: "local"; address: string; model: string }
+  | { type: "endpoint"; baseUrl: string; model: string; apiKey: string };
+
+/**
+ * Browser-only assistant settings and household preferences.
+ * Version 3 has no project URL, anon key, or database path.
  * `banks` lists active banks only. It may be empty after every bank is removed.
  */
 export type SavedConnection = {
-  v: 2;
-  openaiApiKey: string;
+  v: 3;
+  assistant: AssistantSettings;
   currency: string;
   banks: SavedBank[];
 };
+
+export function assistantKind(connection: SavedConnection): AssistantKind {
+  return connection.assistant.type;
+}
+
+/** Open tracker is ready when the assistant, currency, and at least one bank are saved. */
+export function isTrackerReady(connection: SavedConnection | null): boolean {
+  if (!connection) return false;
+  if (!/^[A-Z]{3}$/.test(connection.currency)) return false;
+  if (connection.banks.length < 1) return false;
+  return assistantComplete(connection.assistant);
+}
+
+export function assistantComplete(assistant: AssistantSettings): boolean {
+  if (assistant.type === "openai") return looksLikeOpenAiKey(assistant.apiKey);
+  if (!modelNameOk(assistant.model)) return false;
+  if (assistant.type === "local") return chatBaseUrl(assistant.address) !== null;
+  return chatBaseUrl(assistant.baseUrl) !== null && assistant.apiKey.trim().length > 0;
+}
+
+/** Review-the-data value: “on this computer, qwen3.5:9b”, “on OpenAI”, or the endpoint host. */
+export function assistantSummary(assistant: AssistantSettings): string {
+  if (assistant.type === "local") return `on this computer, ${assistant.model}`;
+  if (assistant.type === "openai") return "on OpenAI";
+  const host = endpointHostname(assistant.baseUrl);
+  return host ? `OpenAI-compatible endpoint (${host})` : "OpenAI-compatible endpoint";
+}
+
+/** Landing line under “Assistant:”. The endpoint key is never included. */
+export function assistantHomeLabel(assistant: AssistantSettings): string {
+  if (assistant.type === "local") return `on this computer (${assistant.model})`;
+  if (assistant.type === "openai") return "on OpenAI";
+  return assistantSummary(assistant);
+}
+
+export function assistantUsesKey(assistant: AssistantSettings): boolean {
+  return assistant.type === "openai" || assistant.type === "endpoint";
+}
+
+/** Chat/PDF body. Local and endpoint send `assistant`. OpenAI keeps `apiKey`. */
+export function assistantRequestFields(assistant: AssistantSettings): {
+  apiKey?: string;
+  assistant?: AssistantTarget;
+} {
+  if (assistant.type === "openai") return { apiKey: assistant.apiKey };
+  if (assistant.type === "local") {
+    return {
+      assistant: {
+        type: "local",
+        baseUrl: chatBaseUrl(assistant.address) ?? assistant.address,
+        model: assistant.model,
+      },
+    };
+  }
+  return {
+    assistant: {
+      type: "endpoint",
+      baseUrl: chatBaseUrl(assistant.baseUrl) ?? assistant.baseUrl,
+      model: assistant.model,
+      apiKey: assistant.apiKey,
+    },
+  };
+}
 
 export function parseConnection(raw: string | null | undefined): SavedConnection | null {
   if (!raw) return null;
@@ -52,15 +139,57 @@ export function parseConnection(raw: string | null | undefined): SavedConnection
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
   const row = data as Record<string, unknown>;
-  if (row.v !== 2) return null;
-  if (typeof row.openaiApiKey !== "string" || typeof row.currency !== "string") return null;
-  if (!row.openaiApiKey.startsWith("sk-") || row.openaiApiKey.length < 10) return null;
-  if (row.openaiApiKey.length > 300) return null;
-  if (!/^[A-Z]{3}$/.test(row.currency)) return null;
-  if (!Array.isArray(row.banks)) return null;
+  if (typeof row.currency !== "string" || !/^[A-Z]{3}$/.test(row.currency)) return null;
+  const banks = parseBanks(row.banks);
+  if (!banks) return null;
 
+  // A connection saved before this feature has an OpenAI key and no assistant type.
+  if (row.v === 2) {
+    const assistant = parseOpenAiKey(row.openaiApiKey);
+    if (!assistant) return null;
+    return { v: 3, assistant, currency: row.currency, banks };
+  }
+  if (row.v !== 3) return null;
+  const assistant = parseAssistant(row.assistant);
+  if (!assistant) return null;
+  return { v: 3, assistant, currency: row.currency, banks };
+}
+
+function parseOpenAiKey(value: unknown): AssistantSettings | null {
+  if (typeof value !== "string" || !value.startsWith("sk-") || value.length < 10 || value.length > 300) {
+    return null;
+  }
+  return { type: "openai", apiKey: value };
+}
+
+function parseAssistant(value: unknown): AssistantSettings | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (row.type === "openai") return parseOpenAiKey(row.apiKey);
+  if (row.type === "local") {
+    if (typeof row.address !== "string" || typeof row.model !== "string") return null;
+    const address = row.address.trim();
+    const model = row.model.trim();
+    if (localAddressError(address) || !modelNameOk(model)) return null;
+    return { type: "local", address, model };
+  }
+  if (row.type === "endpoint") {
+    if (typeof row.baseUrl !== "string" || typeof row.model !== "string" || typeof row.apiKey !== "string") {
+      return null;
+    }
+    const baseUrl = row.baseUrl.trim();
+    const model = row.model.trim();
+    const apiKey = row.apiKey.trim();
+    if (endpointAddressError(baseUrl) || !modelNameOk(model) || !apiKey || apiKey.length > 500) return null;
+    return { type: "endpoint", baseUrl, model, apiKey };
+  }
+  return null;
+}
+
+function parseBanks(value: unknown): SavedBank[] | null {
+  if (!Array.isArray(value)) return null;
   const banks: SavedBank[] = [];
-  for (const bank of row.banks) {
+  for (const bank of value) {
     if (typeof bank !== "object" || bank === null) return null;
     const entry = bank as Record<string, unknown>;
     if (typeof entry.name !== "string" || typeof entry.initials !== "string") return null;
@@ -69,13 +198,7 @@ export function parseConnection(raw: string | null | undefined): SavedConnection
     if (!name || initials.length < 1 || initials.length > 4) return null;
     banks.push({ name, initials });
   }
-
-  return {
-    v: 2,
-    openaiApiKey: row.openaiApiKey,
-    currency: row.currency,
-    banks,
-  };
+  return banks;
 }
 
 export function readConnection(): SavedConnection | null {
@@ -93,8 +216,8 @@ export function writeConnection(
   options?: { clearPdfDisclosure?: boolean },
 ): void {
   const stored: SavedConnection = {
-    v: 2,
-    openaiApiKey: value.openaiApiKey,
+    v: 3,
+    assistant: value.assistant,
     currency: value.currency,
     banks: value.banks,
   };

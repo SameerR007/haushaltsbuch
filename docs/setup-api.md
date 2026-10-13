@@ -1,6 +1,6 @@
 # Setup API contracts
 
-The setup chat calls these routes. Money stays in one SQLite file on this machine. The only request that leaves the machine is the OpenAI key check.
+The setup chat calls these routes. Money stays in one SQLite file on this machine. The requests that leave the machine are the OpenAI key check, a Test connection to an address the user entered, and later chat or statement turns to that same assistant.
 
 The server does not store the OpenAI key and never logs it. Responses never include a key or an absolute database path.
 
@@ -29,7 +29,7 @@ Every route that writes the database uses one shared guard before it reads the b
 
 Missing `Sec-Fetch-Site` and `Origin` are allowed. The app’s own `fetch` calls send `application/json` from the same origin, so they pass.
 
-The guard covers `POST /api/setup/init`, `POST /api/setup/openai`, `POST /api/setup/confirm`, `POST /api/setup/reset`, `POST /api/banks`, `POST /api/banks/remove`, `POST /api/banks/restore`, `PATCH /api/transactions/[id]`, `POST /api/transactions/confirm`, and `POST /api/transactions/undo`.
+The guard covers `POST /api/setup/init`, `POST /api/setup/openai`, `POST /api/setup/assistant`, `POST /api/setup/confirm`, `POST /api/setup/reset`, `POST /api/banks`, `POST /api/banks/remove`, `POST /api/banks/restore`, `PATCH /api/transactions/[id]`, `POST /api/transactions/confirm`, and `POST /api/transactions/undo`.
 
 Chat does not write the database. `POST /api/chat` and `POST /api/import/pdf` use the same `Sec-Fetch-Site` and `Origin` checks and reject a cross-site call with HTTP 403. They do not require `Content-Type: application/json`. PDF import stays `multipart/form-data`.
 
@@ -60,6 +60,30 @@ Checks an OpenAI key with OpenAI. The server does not store it. The browser writ
 ```json
 { "ok": true }
 ```
+
+## `POST /api/setup/assistant`
+
+Checks a local app (Ollama or LM Studio) or an OpenAI-compatible endpoint. The server does not store the address, the model, or the key. A local address must be loopback (`localhost`, `127.0.0.1`, or `::1`). A bare `http://localhost:11434` is called as `http://localhost:11434/v1`. An endpoint may be any `http` or `https` URL without a username or password. The key, when there is one, is sent only as `Authorization: Bearer` on this request and is never returned.
+
+The check lists models, sends a tiny chat, then a forced tool call. A chat slower than 15 seconds is still a success (`status: "slow"`). Continue and Save assistant stay off until `ok` is true. Slow counts.
+
+```json
+{ "type": "local", "address": "http://localhost:11434", "model": "qwen3.5:9b" }
+```
+
+```json
+{ "type": "endpoint", "baseUrl": "https://your-server.example/v1", "model": "the-model-id", "apiKey": "…" }
+```
+
+Success is HTTP 200: `{ "ok": true, "status": "connected", "title": "Connected.", "detail": "Qwen3.5 answered in 2.1 s.", "seconds": 2.1 }`. An endpoint says “The model answered in 1.4 s.” A failed check is HTTP 422 with `code: "rejected"`. `error` repeats `title`. The response has no key.
+
+| `status` | Local title |
+| --- | --- |
+| `unreachable` | Ollama isn't running. |
+| `missing` | Connected, but the model isn't downloaded. Also returns `command`, for example `ollama pull qwen3.5:9b`. |
+| `no-tools` | That model can't use tools. |
+
+A missing or wrong-shaped body is HTTP 400. `text/plain` is HTTP 415.
 
 ## `POST /api/setup/confirm`
 
@@ -103,14 +127,18 @@ The browser writes this after confirm. The server does not.
 
 ```json
 {
-  "v": 2,
-  "openaiApiKey": "sk-…",
+  "v": 3,
+  "assistant": { "type": "openai", "apiKey": "sk-…" },
   "currency": "EUR",
   "banks": [{ "name": "ING", "initials": "IN" }]
 }
 ```
 
-There is no project URL, anon key, service role key, or database path. Any non-empty value of that key makes the landing page show **Open tracker** and **Review the data**. Only version 2 objects are read back as a saved setup. `banks` is the active list and may be empty after every bank is removed. Removed banks are not stored in this browser.
+A local assistant stores `{ "type": "local", "address": "http://localhost:11434", "model": "qwen3.5:9b" }`. An endpoint stores `{ "type": "endpoint", "baseUrl", "model", "apiKey" }`. Review the data and the welcome-back line show an endpoint host, never the key.
+
+A connection saved before this feature is version 2 (`openaiApiKey`, no `assistant`). It is read as on OpenAI. The next write stores version 3.
+
+There is no project URL, anon key, service role key, or database path. Any non-empty value of that key makes the landing page show **Open tracker** and **Review the data**. Only version 2 and version 3 objects are read back as a saved setup. `banks` is the active list and may be empty after every bank is removed. Removed banks are not stored in this browser.
 
 ## `GET /api/household`
 

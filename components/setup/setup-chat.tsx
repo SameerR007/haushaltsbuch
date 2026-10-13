@@ -4,9 +4,19 @@ import Link from "next/link";
 import { TRACKER_HOME } from "@/components/tracker/nav";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
+  EndpointConnectionCard,
+  LocalConnectionCard,
+  AssistantChoice,
+  postProbe,
+} from "@/components/assistant/assistant-ui";
+import {
+  assistantSummary,
+  assistantUsesKey,
   readConnection,
   rememberActiveBanks,
   writeConnection,
+  type AssistantKind,
+  type AssistantSettings,
   type SavedBank,
   type SavedConnection,
 } from "@/lib/connection";
@@ -24,7 +34,10 @@ import {
 type Phase =
   | "boot"
   | "saved"
+  | "choose"
   | "openai"
+  | "local"
+  | "endpoint"
   | "currency"
   | "bank"
   | "bank-next"
@@ -33,13 +46,17 @@ type Phase =
   | "keys";
 
 type Widget =
+  | "choose"
   | "openai"
+  | "local"
+  | "endpoint"
   | "currency"
   | "bank"
   | "bank-next"
   | "confirm"
   | "done"
   | "keys"
+  | "endpoint-keys"
   | "saved";
 
 type Rich = "welcome" | "next" | "tables" | "currency";
@@ -68,11 +85,12 @@ function stepLabel(phase: Phase): string {
   if (phase === "saved") return "Setup · saved";
   if (phase === "keys") return "Setup · keys";
   if (phase === "boot") return "Setup";
-  if (phase === "openai") return "Setup · step 1 of 3";
-  if (phase === "currency" || phase === "bank" || phase === "bank-next") {
-    return "Setup · step 2 of 3";
+  if (phase === "choose" || phase === "openai" || phase === "local" || phase === "endpoint") {
+    return "Setup · step 1 of 4";
   }
-  return "Setup · step 3 of 3";
+  if (phase === "currency") return "Setup · step 2 of 4";
+  if (phase === "bank" || phase === "bank-next") return "Setup · step 3 of 4";
+  return "Setup · step 4 of 4";
 }
 
 async function postJson(
@@ -104,12 +122,19 @@ function bankList(banks: SavedBank[]): string {
   return banks.map((bank) => `${bank.name} (${bank.initials})`).join(", ");
 }
 
-function freshThread(nid: () => number): Msg[] {
+function choiceThread(nid: () => number): Msg[] {
   return [
     { id: nid(), from: "bot", rich: "welcome" },
-    { id: nid(), from: "bot", widget: "openai" },
-    { id: nid(), from: "bot", rich: "next", faded: true },
+    { id: nid(), from: "bot", widget: "choose" },
   ];
+}
+
+function keyFact(assistant: AssistantSettings, where: "confirm" | "saved"): string {
+  if (assistant.type === "local") return "OpenAI key · not needed";
+  if (assistant.type === "endpoint") {
+    return where === "confirm" ? "API key · this browser only" : "API key · saved in this browser";
+  }
+  return where === "confirm" ? "OpenAI key · this browser only" : "OpenAI key · saved in this browser";
 }
 
 function collapseBankForms(messages: Msg[]): Msg[] {
@@ -137,6 +162,9 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   const [otherPreview, setOtherPreview] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState("");
+  const [kind, setKind] = useState<AssistantKind | null>(null);
+  const [draft, setDraft] = useState<AssistantSettings | null>(null);
+  const [endpointKey, setEndpointKey] = useState("");
 
   function nid() {
     idRef.current += 1;
@@ -168,10 +196,18 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
     setInitialsTouched(false);
   }
 
+  function showChoice() {
+    setFormError("");
+    setKind(null);
+    setDraft(null);
+    setPhase("choose");
+    setMessages(choiceThread(nid));
+  }
+
   function showOpenAiStep() {
     setFormError("");
     setPhase("openai");
-    setMessages(freshThread(nid));
+    setMessages([{ id: nid(), from: "bot", widget: "openai" }]);
   }
 
   function showSaved(connection: SavedConnection) {
@@ -200,25 +236,33 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   useEffect(() => {
     let ignore = false;
     const existing = readConnection();
-    if (existing && startAtKeys) {
+    if (existing && startAtKeys && existing.assistant.type !== "local") {
       setSaved(existing);
       setCurrency(existing.currency);
       setBanks(existing.banks);
+      setDraft(existing.assistant);
       setOpenai("");
+      setEndpointKey("");
       setPhase("keys");
-      setMessages([{ id: 1, from: "bot", widget: "keys" }]);
+      setMessages([
+        {
+          id: 1,
+          from: "bot",
+          widget: existing.assistant.type === "endpoint" ? "endpoint-keys" : "keys",
+        },
+      ]);
     } else if (existing) {
       setSaved(existing);
       setCurrency(existing.currency);
       setBanks(existing.banks);
+      setDraft(existing.assistant);
       setPhase("saved");
       setMessages([{ id: 1, from: "bot", widget: "saved" }]);
     } else {
-      setPhase("openai");
+      setPhase("choose");
       setMessages([
         { id: 1, from: "bot", rich: "welcome" },
-        { id: 2, from: "bot", widget: "openai" },
-        { id: 3, from: "bot", rich: "next", faded: true },
+        { id: 2, from: "bot", widget: "choose" },
       ]);
     }
     void (async () => {
@@ -255,12 +299,36 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   function startChangeKeys() {
     setFormError("");
     setOpenai("");
-    if (saved) {
-      setPhase("keys");
-      setMessages([{ id: nid(), from: "bot", widget: "keys" }]);
+    setEndpointKey("");
+    const assistant = saved?.assistant ?? draft;
+    if (!assistant || assistant.type === "local") return;
+    if (!saved) {
+      if (assistant.type === "openai") showOpenAiStep();
+      else {
+        setPhase("endpoint");
+        setMessages([{ id: nid(), from: "bot", widget: "endpoint" }]);
+      }
       return;
     }
-    showOpenAiStep();
+    setPhase("keys");
+    setMessages([
+      {
+        id: nid(),
+        from: "bot",
+        widget: assistant.type === "endpoint" ? "endpoint-keys" : "keys",
+      },
+    ]);
+  }
+
+  function chooseAssistant() {
+    if (kind === "openai") showOpenAiStep();
+    else if (kind === "local") {
+      setPhase("local");
+      setMessages([{ id: nid(), from: "bot", widget: "local" }]);
+    } else if (kind === "endpoint") {
+      setPhase("endpoint");
+      setMessages([{ id: nid(), from: "bot", widget: "endpoint" }]);
+    }
   }
 
   async function onOpenAi(event: FormEvent) {
@@ -276,6 +344,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         setFormError(result.error ?? "Could not check that key.");
         return;
       }
+      setDraft({ type: "openai", apiKey: openai.trim() });
       showCurrencyStep();
     } finally {
       setPending(false);
@@ -379,7 +448,12 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
     setFormError("");
     setPending(true);
     const savedBanks = banks;
-    const apiKey = openai.trim();
+    const assistant = draft;
+    if (!assistant) {
+      setFormError("Choose how the assistant should work.");
+      setPending(false);
+      return;
+    }
     try {
       const result = await postJson("/api/setup/confirm", {
         currency,
@@ -390,8 +464,8 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         return;
       }
       const connection: SavedConnection = {
-        v: 2,
-        openaiApiKey: apiKey,
+        v: 3,
+        assistant,
         currency,
         banks: savedBanks,
       };
@@ -415,7 +489,8 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
     event.preventDefault();
     if (!saved || pending) return;
     setFormError("");
-    const nextOpenAi = openai.trim() || saved.openaiApiKey;
+    if (saved.assistant.type !== "openai") return;
+    const nextOpenAi = openai.trim() || saved.assistant.apiKey;
     setPending(true);
     try {
       const result = await postJson("/api/setup/openai", { apiKey: nextOpenAi });
@@ -424,10 +499,39 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         return;
       }
       const connection: SavedConnection = {
-        v: 2,
-        openaiApiKey: nextOpenAi,
+        v: 3,
+        assistant: { type: "openai", apiKey: nextOpenAi },
         currency: saved.currency,
         banks: saved.banks,
+      };
+      if (!persist(connection)) return;
+      showSaved(connection);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onSaveEndpointKeys(event: FormEvent) {
+    event.preventDefault();
+    if (!saved || saved.assistant.type !== "endpoint" || pending) return;
+    const apiKey = endpointKey.trim() || saved.assistant.apiKey;
+    setFormError("");
+    setPending(true);
+    try {
+      const result = await postProbe({
+        type: "endpoint",
+        baseUrl: saved.assistant.baseUrl,
+        model: saved.assistant.model,
+        apiKey,
+      });
+      if (!result.ok) {
+        setFormError(result.title ?? result.error ?? "Could not check that key.");
+        return;
+      }
+      const connection: SavedConnection = {
+        ...saved,
+        v: 3,
+        assistant: { ...saved.assistant, apiKey },
       };
       if (!persist(connection)) return;
       showSaved(connection);
@@ -442,8 +546,8 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
     if (rich === "welcome") {
       return (
         <>
-          Welcome — your money stays in a database on this computer. You’ll need an{" "}
-          <strong>OpenAI API key</strong>. We check it once and keep it in this browser.
+          Welcome — your money stays in a database on this computer. First, choose how the assistant
+          should work.
         </>
       );
     }
@@ -464,6 +568,55 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   function renderWidget(message: Msg) {
     const locked = message.id !== activeWidgetId;
     const busy = pending || locked;
+    if (message.widget === "choose") {
+      return (
+        <AssistantChoice
+          value={kind}
+          onChange={(next) => {
+            setKind(next);
+            setFormError("");
+          }}
+          onContinue={chooseAssistant}
+          disabled={busy}
+        />
+      );
+    }
+    if (message.widget === "local") {
+      return (
+        <div>
+          <LocalConnectionCard
+            continueLabel="Continue"
+            onContinue={(address, model) => {
+              setDraft({ type: "local", address, model });
+              showCurrencyStep();
+            }}
+          />
+          <div className="setup-chips">
+            <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
+              Choose again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (message.widget === "endpoint") {
+      return (
+        <div>
+          <EndpointConnectionCard
+            continueLabel="Continue"
+            onContinue={(baseUrl, model, apiKey) => {
+              setDraft({ type: "endpoint", baseUrl, model, apiKey });
+              showCurrencyStep();
+            }}
+          />
+          <div className="setup-chips">
+            <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
+              Choose again
+            </button>
+          </div>
+        </div>
+      );
+    }
     if (message.widget === "openai") {
       return (
         <form onSubmit={(event) => void onOpenAi(event)} data-testid="openai-form">
@@ -487,6 +640,9 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
           <div className="setup-chips">
             <button className="setup-chip primary" type="submit" disabled={busy}>
               {pending && !locked ? "Checking…" : "Continue"}
+            </button>
+            <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
+              Choose again
             </button>
           </div>
         </form>
@@ -637,11 +793,12 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
           <p>Here’s what we’ll keep.</p>
           <ul className="setup-summary">
             <li>Database · on this computer</li>
+            <li>Assistant · {draft ? assistantSummary(draft) : "not chosen"}</li>
             <li>Currency · {currencySummaryLabel(currency)}</li>
             <li>Banks · {bankList(banks)}</li>
-            <li>OpenAI key · this browser only</li>
+            <li>{draft ? keyFact(draft, "confirm") : "OpenAI key · this browser only"}</li>
           </ul>
-          <p>You can change keys later if they expire.</p>
+          <p>You can change this later under Review the data.</p>
           <div className="setup-chips">
             <button
               type="button"
@@ -652,9 +809,11 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
             >
               {pending && !locked ? "Saving…" : "Confirm"}
             </button>
-            <button type="button" className="setup-chip" disabled={busy} onClick={startChangeKeys}>
-              Change keys
-            </button>
+            {draft && assistantUsesKey(draft) ? (
+              <button type="button" className="setup-chip" disabled={busy} onClick={startChangeKeys}>
+                Change keys
+              </button>
+            ) : null}
           </div>
         </div>
       );
@@ -670,11 +829,41 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
             <Link className="setup-chip" href="/">
               Back to welcome
             </Link>
-            <button type="button" className="setup-chip" onClick={startChangeKeys}>
-              Change keys
-            </button>
+            {saved && assistantUsesKey(saved.assistant) ? (
+              <button type="button" className="setup-chip" onClick={startChangeKeys}>
+                Change keys
+              </button>
+            ) : null}
           </div>
         </div>
+      );
+    }
+    if (message.widget === "endpoint-keys" && saved?.assistant.type === "endpoint") {
+      return (
+        <form onSubmit={(event) => void onSaveEndpointKeys(event)}>
+          <p>Update the key for this endpoint. Leave the field blank to keep the saved key.</p>
+          <div className="setup-field">
+            <label htmlFor="change-endpoint-key">API key</label>
+            <input
+              id="change-endpoint-key"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Leave blank to keep the saved key"
+              value={endpointKey}
+              disabled={pending}
+              onChange={(event) => setEndpointKey(event.target.value)}
+            />
+          </div>
+          <div className="setup-chips">
+            <button className="setup-chip primary" type="submit" disabled={pending}>
+              {pending ? "Saving…" : "Save keys"}
+            </button>
+            <button className="setup-chip" type="button" disabled={pending} onClick={() => showSaved(saved)}>
+              Cancel
+            </button>
+          </div>
+        </form>
       );
     }
     if (message.widget === "keys" && saved) {
@@ -721,15 +910,18 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
             <li>Database · on this computer</li>
             <li>Currency · {currencySummaryLabel(saved.currency)}</li>
             <li>Banks · {bankList(saved.banks)}</li>
-            <li>OpenAI key · saved in this browser</li>
+            <li>Assistant · {assistantSummary(saved.assistant)}</li>
+            <li>{keyFact(saved.assistant, "saved")}</li>
           </ul>
           <div className="setup-chips">
             <Link className="setup-chip primary" href={TRACKER_HOME}>
               Open tracker
             </Link>
-            <button type="button" className="setup-chip" onClick={startChangeKeys}>
-              Change keys
-            </button>
+            {assistantUsesKey(saved.assistant) ? (
+              <button type="button" className="setup-chip" onClick={startChangeKeys}>
+                Change keys
+              </button>
+            ) : null}
           </div>
         </div>
       );
@@ -744,17 +936,10 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
           Haushaltsbuch
         </Link>
         <div className="setup-tools">
-          {phase !== "boot" ? (
-            <>
-              <button
-                type="button"
-                className="setup-text-btn"
-                onClick={startChangeKeys}
-                disabled={pending}
-              >
-                Change keys
-              </button>
-            </>
+          {saved && assistantUsesKey(saved.assistant) ? (
+            <button type="button" className="setup-text-btn" onClick={startChangeKeys} disabled={pending}>
+              Change keys
+            </button>
           ) : null}
           <div className="setup-step" data-testid="setup-step">
             {stepLabel(phase)}

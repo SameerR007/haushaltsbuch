@@ -3,12 +3,21 @@ export const EMPTY_HEADING = "What did you spend?";
 export const EMPTY_SUBTITLE =
   "Type it in plain language, or attach a bank statement PDF with the paperclip.";
 
+export const EMPTY_SUBTITLE_TYPED = "Type it in plain language.";
+
 export const PLACEHOLDER_EMPTY = "Type an expense, or attach a bank statement (PDF)";
+
+export const PLACEHOLDER_TYPED = "Type an expense";
 
 export const PLACEHOLDER_FOLLOWUP = "Ask a follow-up, or attach another statement";
 
 export const PDF_DISCLOSURE =
-  "The whole PDF (text and page images) is sent to OpenAI to read it. Nothing else leaves your computer.";
+  "This PDF goes to OpenAI so it can be read. OpenAI is told not to keep it. Nothing is saved until you confirm.";
+
+export function pdfGoesTo(host: string): string {
+  const where = host.trim() || "the address you entered";
+  return `This PDF goes to ${where} so it can be read. Nothing is saved until you confirm.`;
+}
 
 export const READING_STATEMENT = "Reading your statement…";
 

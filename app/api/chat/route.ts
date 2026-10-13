@@ -4,7 +4,7 @@ import { householdInstructions, MODEL_TURN_LIMIT, todayIso } from "@/lib/chat/pr
 import { executeReadOnlyQuery } from "@/lib/chat/sql-guard";
 import type { ChatTurn, Proposal } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
-import { looksLikeOpenAiKey } from "@/lib/setup/guards";
+import { parseAssistantTarget } from "@/lib/assistant/target";
 import { guardSameOrigin, jsonResult } from "@/lib/setup/http";
 
 export const runtime = "nodejs";
@@ -44,13 +44,13 @@ export async function POST(request: Request) {
       return invalid("Invalid request.");
     }
     if (typeof body !== "object" || body === null) return invalid("Invalid request.");
-    const record = body as { apiKey?: unknown; messages?: unknown };
-    if (typeof record.apiKey !== "string" || !looksLikeOpenAiKey(record.apiKey)) {
-      return invalid("Add an OpenAI key in setup.");
-    }
+    const record = body as Record<string, unknown>;
+    const parsed = parseAssistantTarget(record);
+    if (!parsed.ok) return invalid(parsed.error);
+    const assistant = parsed.value;
     const messages = parseMessages(record.messages);
     if (!messages) return invalid("Send a message.");
-    const apiKey = record.apiKey;
+    const apiKey = assistant.type === "local" ? "" : assistant.apiKey;
 
     const household = loadHousehold();
     const instructions = householdInstructions({
@@ -62,6 +62,7 @@ export async function POST(request: Request) {
     let proposalArgs: unknown = null;
     const result = await runChatTurn({
       apiKey,
+      assistant,
       instructions,
       messages,
       mode: "chat",

@@ -1214,8 +1214,8 @@ test("saving setup clears the PDF disclosure", () => {
   try {
     store.set(PDF_DISCLOSURE_KEY, "1");
     writeConnection({
-      v: 2,
-      openaiApiKey: OPENAI_KEY,
+      v: 3,
+      assistant: { type: "openai", apiKey: OPENAI_KEY },
       currency: "EUR",
       banks: [{ name: "ING", initials: "IN" }],
     });
@@ -1517,7 +1517,10 @@ test("stored chat keeps the latest 60 items and replaces an oversized copy", () 
 });
 
 test("copy matches the tracker and example tags are absent", () => {
-  assert.equal(PDF_DISCLOSURE, "The whole PDF (text and page images) is sent to OpenAI to read it. Nothing else leaves your computer.");
+  assert.equal(
+    PDF_DISCLOSURE,
+    "This PDF goes to OpenAI so it can be read. OpenAI is told not to keep it. Nothing is saved until you confirm.",
+  );
   assert.equal(reviewIntro(4, "statement-november.pdf"), "I found 4 transactions in statement-november.pdf. Nothing is saved yet — check them first.");
   assert.equal(confirmLabel(1), "Confirm — save 1 transaction");
   const roots = ["lib/chat", "app/api/chat", "app/api/import", "app/api/transactions", "components/tracker", "app/app"];

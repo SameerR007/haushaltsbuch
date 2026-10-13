@@ -7,10 +7,11 @@ import {
   ToolChoiceViolationError,
   type ModelMessage,
 } from "ai";
+import type { AssistantTarget } from "@/lib/assistant/target";
 import { CHAT_REASONING_EFFORT, resolveChatModel } from "@/lib/chat/openai";
 import type { ChatTurn } from "@/lib/chat/types";
 import { resolveModel, stubGroceryRow, stubRentRow, stubSalaryRow } from "./models";
-import { createChatTools, invalidArgumentsInput, type ToolHandler } from "./tools";
+import { argumentsLookWrong, createChatTools, invalidArgumentsInput, type ToolHandler } from "./tools";
 
 export { stubGroceryRow, stubRentRow, stubSalaryRow };
 export type { ToolHandler };
@@ -101,19 +102,32 @@ function isTimeout(error: unknown): boolean {
   return false;
 }
 
-function mapOpenAiFailure(error: unknown): OpenAiError {
+function mapFailure(
+  error: unknown,
+  failure: { timeout: string; failed: string; unreachable: string },
+): OpenAiError {
   if (error instanceof OpenAiError) return error;
-  if (isTimeout(error)) return new OpenAiError("OpenAI took too long. Try again.");
+  if (isTimeout(error)) return new OpenAiError(failure.timeout);
   if (APICallError.isInstance(error)) {
-    if (isTimeout(error.cause)) return new OpenAiError("OpenAI took too long. Try again.");
-    if (error.statusCode != null) return new OpenAiError("OpenAI could not answer that.");
-    return new OpenAiError("Could not reach OpenAI.");
+    if (isTimeout(error.cause)) return new OpenAiError(failure.timeout);
+    if (error.statusCode != null) return new OpenAiError(failure.failed);
+    return new OpenAiError(failure.unreachable);
   }
-  return new OpenAiError("Could not reach OpenAI.");
+  return new OpenAiError(failure.unreachable);
+}
+
+function unparsable(input: string): boolean {
+  try {
+    JSON.parse(input);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 export async function runChatTurn(options: {
   apiKey: string;
+  assistant?: AssistantTarget;
   instructions: string;
   messages: ChatTurn[];
   mode: "chat" | "pdf";
@@ -121,9 +135,10 @@ export async function runChatTurn(options: {
   fetchImpl?: typeof fetch;
   executeTool: ToolHandler;
 }): Promise<{ reply: string; proposalArgs: unknown | null }> {
+  const assistant: AssistantTarget = options.assistant ?? { type: "openai", apiKey: options.apiKey };
   const resolved = resolveModel({
-    apiKey: options.apiKey,
-    modelId: resolveChatModel(),
+    assistant,
+    modelId: assistant.type === "openai" ? resolveChatModel() : assistant.model,
     reasoningEffort: CHAT_REASONING_EFFORT,
     fetchImpl: options.fetchImpl,
   });
@@ -133,8 +148,12 @@ export async function runChatTurn(options: {
     onPropose: (args) => {
       proposalArgs = args;
     },
+    validateShape: resolved.validateToolArgs,
   });
   const pdfMode = options.mode === "pdf";
+  let malformedRetries = resolved.retryMalformedTools ? 1 : 0;
+  const secret =
+    options.apiKey || (assistant.type === "openai" || assistant.type === "endpoint" ? assistant.apiKey : "");
 
   try {
     const result = await generateText({
@@ -153,12 +172,15 @@ export async function runChatTurn(options: {
           : { toolChoice: "auto" },
       repairToolCall: async ({ toolCall, error }) => {
         if (!InvalidToolInputError.isInstance(error)) return null;
-        try {
-          JSON.parse(toolCall.input);
+        const wrong = resolved.validateToolArgs
+          ? argumentsLookWrong(toolCall.toolName, toolCall.input)
+          : unparsable(toolCall.input);
+        if (!wrong) return null;
+        if (malformedRetries > 0) {
+          malformedRetries -= 1;
           return null;
-        } catch {
-          return { ...toolCall, input: invalidArgumentsInput() };
         }
+        return { ...toolCall, input: invalidArgumentsInput() };
       },
       providerOptions: resolved.providerOptions,
       maxRetries: 0,
@@ -170,14 +192,14 @@ export async function runChatTurn(options: {
       const text = stepText(step.content);
       if (text) reply = text;
     }
-    return finishReply(reply, options.apiKey, proposalArgs);
+    return finishReply(reply, secret, proposalArgs);
   } catch (error) {
     if (ToolChoiceViolationError.isInstance(error)) {
       const text = stepText(
         error.content.filter((part): part is { type: "text"; text: string } => part.type === "text"),
       );
-      return finishReply(text, options.apiKey, proposalArgs);
+      return finishReply(text, secret, proposalArgs);
     }
-    throw mapOpenAiFailure(error);
+    throw mapFailure(error, resolved.failure);
   }
 }

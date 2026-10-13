@@ -1,37 +1,77 @@
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import type { SharedV4ProviderOptions } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
+import { LOCAL_NUM_CTX } from "@/lib/assistant/copy";
+import type { AssistantTarget } from "@/lib/assistant/target";
 import { previousMonthIso } from "@/lib/chat/prompts";
+
+const OPENAI_FAILURE = {
+  timeout: "OpenAI took too long. Try again.",
+  failed: "OpenAI could not answer that.",
+  unreachable: "Could not reach OpenAI.",
+};
+
+const ASSISTANT_FAILURE = {
+  timeout: "The assistant took too long. Try again.",
+  failed: "The assistant could not answer that.",
+  unreachable: "Could not reach the assistant.",
+};
 
 export type ResolvedModel = {
   model: LanguageModel;
-  providerOptions: {
-    openai: {
-      store: false;
-      include: ["reasoning.encrypted_content"];
-      reasoningEffort: string;
-      reasoningSummary: null;
-    };
-  };
+  providerOptions: SharedV4ProviderOptions;
   nativePdf: boolean;
+  /** Local and endpoint models sometimes send broken tool JSON. Ask once more. */
+  retryMalformedTools: boolean;
+  /** When true, tool arguments are checked against the JSON schema before they run. */
+  validateToolArgs: boolean;
+  failure: { timeout: string; failed: string; unreachable: string };
 };
 
 /**
- * OpenAI only. A later milestone adds the local model here; the turn loop
- * reads `model`, `providerOptions`, and `nativePdf` and does not branch on
- * the provider name.
+ * The only place that picks a provider. The turn loop reads the model,
+ * options, and flags below and does not look at which service it is.
+ * OpenAI uses the Responses API. Local (Ollama) and an OpenAI-compatible
+ * endpoint use Chat Completions.
  */
 export function resolveModel(options: {
-  apiKey: string;
+  assistant: AssistantTarget;
   modelId: string;
   reasoningEffort: string;
   fetchImpl?: typeof fetch;
 }): ResolvedModel {
+  if (options.assistant.type === "local") {
+    return compatibleModel({
+      name: "local",
+      baseURL: options.assistant.baseUrl,
+      modelId: options.assistant.model,
+      fetchImpl: options.fetchImpl,
+      providerOptions: {
+        local: {
+          reasoningEffort: "none",
+          options: { num_ctx: LOCAL_NUM_CTX },
+        },
+      },
+    });
+  }
+  if (options.assistant.type === "endpoint") {
+    return compatibleModel({
+      name: "endpoint",
+      baseURL: options.assistant.baseUrl,
+      apiKey: options.assistant.apiKey,
+      modelId: options.assistant.model,
+      fetchImpl: options.fetchImpl,
+      providerOptions: {},
+    });
+  }
+
   const inner =
     process.env.HAUSHALTSBUCH_STUB_OPENAI === "1"
       ? createStubFetch()
       : (options.fetchImpl ?? fetch);
   const openai = createOpenAI({
-    apiKey: options.apiKey,
+    apiKey: options.assistant.apiKey,
     fetch: withOpenAiResponseCompat(inner),
   });
   return {
@@ -46,7 +86,38 @@ export function resolveModel(options: {
       },
     },
     nativePdf: true,
+    retryMalformedTools: false,
+    validateToolArgs: false,
+    failure: OPENAI_FAILURE,
   };
+}
+
+function compatibleModel(options: {
+  name: "local" | "endpoint";
+  baseURL: string;
+  apiKey?: string;
+  modelId: string;
+  fetchImpl?: typeof fetch;
+  providerOptions: SharedV4ProviderOptions;
+}): ResolvedModel {
+  const provider = createOpenAICompatible({
+    name: options.name,
+    baseURL: options.baseURL,
+    apiKey: options.apiKey,
+    fetch: withNoStore(options.fetchImpl ?? fetch),
+  });
+  return {
+    model: provider.chatModel(options.modelId),
+    providerOptions: options.providerOptions,
+    nativePdf: options.name === "endpoint",
+    retryMalformedTools: true,
+    validateToolArgs: true,
+    failure: ASSISTANT_FAILURE,
+  };
+}
+
+function withNoStore(fetchImpl: typeof fetch): typeof fetch {
+  return (input, init) => fetchImpl(input, { ...init, cache: "no-store" });
 }
 
 export function stubGroceryRow(now = new Date()) {

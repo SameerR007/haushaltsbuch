@@ -2,7 +2,7 @@
 
 Local expense tracker. The welcome page, setup chat, money chat, and Summary are in this repo. Insights is a placeholder page.
 
-Money data stays in one SQLite file on this computer. The app does not use a cloud database. The only network call during setup is an OpenAI key check.
+Money data stays in one SQLite file on this computer. The app does not use a cloud database. During setup the only network calls are an OpenAI key check, or a Test connection to an address you enter.
 
 ## Run
 
@@ -57,30 +57,35 @@ localStorage.removeItem("haushaltsbuch.connection")
 
 ## Setup
 
-`/setup` is a three-step chat:
+`/setup` is a four-step chat. The header says **Setup · step 1 of 4** through **step 4 of 4**.
 
-1. OpenAI API key, checked once. The local database file is created in the background.
-2. Currency and one or more banks with initials. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR. A later currency choice changes the symbol and the number format only. It does not convert amounts already saved, and confirm refuses a different currency once any transaction exists. Use **Set up completely new** before choosing another currency. Subtitles and cards show euro (€). Other currencies show the code and symbol when they differ, such as INR (₹) or USD ($), and the code alone when they do not, such as CHF.
-3. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
+1. Where the assistant should think: **On OpenAI**, **On this computer**, or **OpenAI-compatible endpoint**. OpenAI then asks for an API key, checked once. On this computer asks for an app address (default `http://localhost:11434`) and a model (default `qwen3.5:9b`), then **Test connection**. An endpoint asks for a base URL, a key, and a model name, then **Test connection**. Continue stays off until the check succeeds. A slow answer still counts. The local database file is created in the background.
+2. Currency. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR. A later currency choice changes the symbol and the number format only. It does not convert amounts already saved, and confirm refuses a different currency once any transaction exists. Use **Set up completely new** before choosing another currency. Subtitles and cards show euro (€). Other currencies show the code and symbol when they differ, such as INR (₹) or USD ($), and the code alone when they do not, such as CHF.
+3. One or more banks with initials.
+4. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
-**Review the data** opens **Your data**: database on this computer, currency, active banks, and whether an OpenAI key is saved in this browser. From there: **Open tracker**, **Change keys**, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**. **Back to welcome** sits at the bottom of that card. The header **← Back** link stays as a smaller second way to the same place.
+A later visit shows the saved assistant (**on this computer (qwen3.5:9b)**, **on OpenAI**, or **OpenAI-compatible endpoint (host)**) with **Change assistant**. **Open tracker** goes straight to Expenses. Currency and banks are not asked again.
+
+**Review the data** opens **Your data**: database on this computer, assistant, currency, active banks, and whether a key is saved in this browser. From there: **Open tracker**, **Change assistant**, **Change keys** when the assistant uses a key, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**. **Back to welcome** sits at the bottom of that card. The header **← Back** link stays as a smaller second way to the same place.
+
+**Change assistant** (`/data/assistant`) uses the same three choices. Saving replaces the assistant only after **Test connection** succeeds for a local app or an endpoint. Banks, currency, and chat history stay.
 
 **Add / Remove banks** keeps the bank list and the add-bank form in the card. **Done** is a full teal button at the bottom of that card at all times, including right after a removal or an add-back, and returns to Your data. After a removal the card says **Removed Sparkasse (SP). Its transactions stay saved.** and the lists refresh. **Save bank** still asks **Saved X (XX). Add another bank?** with **Add another bank** and **That’s all**. **That’s all** and **Done** both return to Your data. If a bank was added, removed, or added back, Your data says the banks were updated. The header **← Back** link stays visible as a secondary way out.
 
 **Set up completely new** keeps **Download backup** in the card, then **Back to your data** at the bottom. The last step keeps **Keep my data** as the teal button at the bottom of the card.
 
-**Change keys** stays available, including after a key expires. Leave the key field blank on Change keys to keep the saved value. Each PDF attachment asks again before anything is sent. Chat removes a leftover `haushaltsbuch.pdfDisclosureAck` when it loads. Saving setup and **Set up completely new** remove that key as well. Adding or removing a bank updates the active bank list in this browser.
+**Change keys** stays available when the assistant is OpenAI or an endpoint, including after a key expires. It is hidden for an assistant on this computer. Leave the key field blank on Change keys to keep the saved value. An endpoint key is checked with Test connection against the saved address and model. Each PDF attachment asks again before anything is sent. A local assistant cannot attach a statement yet. Chat removes a leftover `haushaltsbuch.pdfDisclosureAck` when it loads. Saving setup and **Set up completely new** remove that key as well. Adding or removing a bank updates the active bank list in this browser.
 
-Removing a bank hides it from new entries. Its transactions stay. The last active bank cannot be removed. Adding a bank whose name matches a removed one reactivates that row and updates its initials. **Set up completely new** (`/data/reset`) can download `haushaltsbuch-expenses.xlsx` and, if asked, a SQLite backup, then `POST /api/setup/reset` with `confirm: true`. Setup no longer has a **Set up again** button that skipped that backup. **Change keys** only checks the OpenAI key. It does not call confirm. The browser clears `haushaltsbuch.connection` only after reset succeeds, and setup starts again at the OpenAI key. Reset then checkpoints and vacuums the file so deleted rows are not left on disk.
+Removing a bank hides it from new entries. Its transactions stay. The last active bank cannot be removed. Adding a bank whose name matches a removed one reactivates that row and updates its initials. **Set up completely new** (`/data/reset`) can download `haushaltsbuch-expenses.xlsx` and, if asked, a SQLite backup, then `POST /api/setup/reset` with `confirm: true`. Setup no longer has a **Set up again** button that skipped that backup. **Change keys** checks the saved assistant’s key. It does not call confirm. The browser clears `haushaltsbuch.connection` only after reset succeeds, and setup starts again at where the assistant should think. Reset then checkpoints and vacuums the file so deleted rows are not left on disk.
 
 ## What stays in this browser
 
-Confirm and Change keys write one JSON object to `haushaltsbuch.connection`:
+Confirm, Change keys, and Change assistant write one JSON object to `haushaltsbuch.connection`:
 
 | Field | Stored |
 | --- | --- |
-| `v` | `2` |
-| `openaiApiKey` | Yes |
+| `v` | `3` |
+| `assistant` | `openai` (API key), `local` (address and model), or `endpoint` (base URL, model, and key). A version 2 `openaiApiKey` is read as on OpenAI |
 | `currency` | Yes, default `EUR` |
 | `banks` | Yes, `{ name, initials }` |
 | database path | No |
@@ -135,6 +140,8 @@ For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. 
 - `/app/summary` — income, expenses, and a comparison of two date ranges
 - `POST /api/setup/init` — create or migrate the local database
 - `POST /api/setup/openai` — check an OpenAI key, do not store it
+- `POST /api/setup/assistant` — check a local app or an OpenAI-compatible endpoint, do not store the address or key
+- `/data/assistant` — change the assistant after a successful Test connection
 - `POST /api/setup/confirm` — save currency and banks; drop or soft-remove banks that are not in the list
 - `POST /api/setup/reset` — delete household rows when a same-origin JSON body has `confirm: true`, checkpoint, vacuum, then reseed defaults
 - `GET /api/setup/health` — whether the database is ready, plus currency and active bank count

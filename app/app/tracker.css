@@ -506,6 +506,33 @@
   gap: 10px;
 }
 
+.tracker-clip:disabled {
+  color: #cfc6ba;
+  cursor: default;
+}
+
+.tracker-local-note {
+  width: min(760px, calc(100% - 28px));
+  margin: 0 auto 10px;
+  background: #f8f1dc;
+  color: #6b5420;
+  border: 1px solid #ead9a8;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.tracker-local-note p {
+  margin: 0;
+}
+
+.tracker-local-note a {
+  color: var(--teal);
+  font-weight: 650;
+}
+
 .tracker-clip {
   flex: none;
   width: 46px;

@@ -7,7 +7,7 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test --test-concurrency=1 lib/setup/setup.test.ts lib/chat/chat.test.ts lib/data/data.test.ts lib/data/summary.test.ts"
+    "test": "node --import tsx --test --test-concurrency=1 lib/setup/setup.test.ts lib/assistant/assistant.test.ts lib/llm/local.test.ts lib/chat/chat.test.ts lib/data/data.test.ts lib/data/summary.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.91",

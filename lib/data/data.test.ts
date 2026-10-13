@@ -177,7 +177,8 @@ test("tracker nav order, Open tracker, and the empty expenses state", () => {
   assert.match(chrome, /← Back/);
   const yours = readFileSync("components/data/your-data.tsx", "utf8");
   assert.match(yours, /className="data-primary"/);
-  assert.match(yours, /Back to welcome/);
+  assert.match(yours, /Change assistant/);
+  assert.match(yours, /Here&apos;s what&apos;s saved/);
   const reset = readFileSync("components/data/start-over.tsx", "utf8");
   assert.match(reset, /Download backup/);
   assert.match(reset, /Back to your data/);
@@ -509,8 +510,8 @@ test("browser connection keeps active banks and clears only after reset", () => 
   try {
     store.set(PDF_DISCLOSURE_KEY, "1");
     writeConnection({
-      v: 2,
-      openaiApiKey: "sk-openai-example-key",
+      v: 3,
+      assistant: { type: "openai", apiKey: "sk-openai-example-key" },
       currency: "EUR",
       banks: [
         { name: "Sparkasse", initials: "SP" },

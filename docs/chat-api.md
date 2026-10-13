@@ -27,9 +27,11 @@ Success is HTTP 200 and `"ok": true`.
 
 ## Model
 
-Chat and statement import share one model layer under `lib/llm`. `runChatTurn` (`lib/llm/run-turn.ts`) is a single Vercel AI SDK `generateText` loop. It does not choose a provider. `lib/llm/models.ts` is the only place that does: today it returns the OpenAI Responses model, `store: false`, encrypted reasoning, high reasoning effort, and `nativePdf: true`. `lib/chat/openai.ts` re-exports the turn, so `POST /api/chat` and `POST /api/import/pdf` are unchanged. There is no local model in this version.
+Chat and statement import share one model layer under `lib/llm`. `runChatTurn` (`lib/llm/run-turn.ts`) is a single Vercel AI SDK `generateText` loop. It does not choose a provider. `lib/llm/models.ts` is the only place that does.
 
-The model id is the single constant `CHAT_MODEL` in `lib/chat/openai.ts` (`gpt-5.6-luna`, GPT-5.6 Luna, which supports high reasoning). Set `HAUSHALTSBUCH_CHAT_MODEL` to use a different id. Every request sets `reasoning.effort` to `high`, `store` to `false`, and `include` to `["reasoning.encrypted_content"]`, so OpenAI is asked not to store the household data. Encrypted reasoning from one tool round is sent back on the next. Household instructions travel as a developer message in `input`, not as a top-level `instructions` field.
+OpenAI uses the Responses API: `store: false`, encrypted reasoning, high reasoning effort, and `nativePdf: true`. A local app and an OpenAI-compatible endpoint use Chat Completions. Thinking for a local model is fixed off (`reasoning_effort: "none"`) and the body sends `options.num_ctx: 8192`. There is no `store`, no `include`, and no `previous_response_id`. The full message history is sent every turn. One malformed tool call is sent back so the model can try again. A second failure returns `{ "ok": false, "error": "The arguments were not valid JSON." }` and does not run the tool. Timeouts name OpenAI only when OpenAI is selected. `HAUSHALTSBUCH_STUB_OPENAI=1` replaces only the OpenAI call.
+
+The OpenAI model id is the single constant `CHAT_MODEL` in `lib/chat/openai.ts` (`gpt-5.6-luna`, GPT-5.6 Luna, which supports high reasoning). Set `HAUSHALTSBUCH_CHAT_MODEL` to use a different id. An OpenAI request sets `reasoning.effort` to `high`, `store` to `false`, and `include` to `["reasoning.encrypted_content"]`, so OpenAI is asked not to store the household data. Encrypted reasoning from one tool round is sent back on the next. A local or endpoint request does not use those fields. Household instructions travel as a developer message in `input`, not as a top-level `instructions` field.
 
 The server runs at most 4 tool rounds and waits for each tool result before the next request. Each round sends the full input again: the conversation, the model’s function calls, and the tool outputs. It does not send `previous_response_id`, because that only works for stored responses. Responses are plain JSON. There is no streaming. Retries are off (`maxRetries: 0`). Each round times out after 120 seconds.
 
@@ -94,7 +96,8 @@ Multipart form fields:
 
 | Field | |
 | --- | --- |
-| `apiKey` | OpenAI key. Not stored. |
+| `apiKey` | OpenAI key, when the assistant is OpenAI. Not stored. |
+| `assistant` | Optional JSON. Local `{ "type": "local", "baseUrl", "model" }` or endpoint `{ "type": "endpoint", "baseUrl", "model", "apiKey" }`. A local assistant cannot import a statement yet: the route returns HTTP 400, `Statement import on this computer is coming soon. You can still add expenses by typing.`, before it reads the file. |
 | `instruction` | What to do with the statement. |
 | `file` | The PDF. About 25 MB maximum. |
 | `messages` | Optional JSON array of earlier chat turns. |
