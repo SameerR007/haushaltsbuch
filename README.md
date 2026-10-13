@@ -59,12 +59,12 @@ localStorage.removeItem("haushaltsbuch.connection")
 
 `/setup` is a four-step chat. The header says **Setup · step 1 of 4** through **step 4 of 4**.
 
-1. Where the assistant should think: **On OpenAI**, **On this computer**, or **OpenAI-compatible endpoint**. OpenAI then asks for an API key, checked once. On this computer asks for an app address (default `http://localhost:11434`) and a model (default `qwen3.5:9b`), then **Test connection**. An endpoint asks for a base URL, a key, and a model name, then **Test connection**. Continue stays off until the check succeeds. A slow answer still counts. The local database file is created in the background.
+1. Where the assistant should think: **On OpenAI**, **On this computer**, or **OpenAI-compatible endpoint**. OpenAI then asks for an API key, checked once. On this computer asks for an app address (default `http://localhost:11434`) and a model (default `qwen3.5:9b`, hint `Recommended: qwen3.5:9b · any installed model id works`), then **Test connection**. **Scanned statements (optional)** is a second plain text field (suggested `glm-ocr`) with its own **Test connection** and a **None** choice. Continue does not require an OCR model. An endpoint asks for a base URL, a key, and a model name, then **Test connection**. After that check it notes that statement import needs a model that can read PDF files and call tools. Continue stays off until the chat check succeeds. A slow answer still counts. The local database file is created in the background.
 2. Currency. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR. A later currency choice changes the symbol and the number format only. It does not convert amounts already saved, and confirm refuses a different currency once any transaction exists. Use **Set up completely new** before choosing another currency. Subtitles and cards show euro (€). Other currencies show the code and symbol when they differ, such as INR (₹) or USD ($), and the code alone when they do not, such as CHF.
 3. One or more banks with initials.
 4. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
 
-A later visit shows the saved assistant (**on this computer (qwen3.5:9b)**, **on OpenAI**, or **OpenAI-compatible endpoint (host)**) with **Change assistant**. **Open tracker** goes straight to Expenses. Currency and banks are not asked again.
+A later visit shows the saved assistant (**on this computer (qwen3.5:9b) · OCR: glm-ocr** when an OCR model is set, **on this computer (qwen3.5:9b)** when it is not, **on OpenAI**, or **OpenAI-compatible endpoint (host)**) with **Change assistant**. **Open tracker** goes straight to Expenses. Currency and banks are not asked again.
 
 **Review the data** opens **Your data**: database on this computer, assistant, currency, active banks, and whether a key is saved in this browser. From there: **Open tracker**, **Change assistant**, **Change keys** when the assistant uses a key, **Add / Remove banks**, and, under **Start over from scratch**, **Set up completely new**. **Back to welcome** sits at the bottom of that card. The header **← Back** link stays as a smaller second way to the same place.
 
@@ -74,7 +74,7 @@ A later visit shows the saved assistant (**on this computer (qwen3.5:9b)**, **on
 
 **Set up completely new** keeps **Download backup** in the card, then **Back to your data** at the bottom. The last step keeps **Keep my data** as the teal button at the bottom of the card.
 
-**Change keys** stays available when the assistant is OpenAI or an endpoint, including after a key expires. It is hidden for an assistant on this computer. Leave the key field blank on Change keys to keep the saved value. An endpoint key is checked with Test connection against the saved address and model. Each PDF attachment asks again before anything is sent. A local assistant cannot attach a statement yet. Chat removes a leftover `haushaltsbuch.pdfDisclosureAck` when it loads. Saving setup and **Set up completely new** remove that key as well. Adding or removing a bank updates the active bank list in this browser.
+**Change keys** stays available when the assistant is OpenAI or an endpoint, including after a key expires. It is hidden for an assistant on this computer. Leave the key field blank on Change keys to keep the saved value. An endpoint key is checked with Test connection against the saved address and model. Each PDF attachment to OpenAI or an endpoint asks again before anything is sent, and the notice names that host. A local assistant reads the statement on this computer: text pages go to the chat model, and scanned pages go to the optional OCR model. Chat removes a leftover `haushaltsbuch.pdfDisclosureAck` when it loads. Saving setup and **Set up completely new** remove that key as well. Adding or removing a bank updates the active bank list in this browser.
 
 Removing a bank hides it from new entries. Its transactions stay. The last active bank cannot be removed. Adding a bank whose name matches a removed one reactivates that row and updates its initials. **Set up completely new** (`/data/reset`) can download `haushaltsbuch-expenses.xlsx` and, if asked, a SQLite backup, then `POST /api/setup/reset` with `confirm: true`. Setup no longer has a **Set up again** button that skipped that backup. **Change keys** checks the saved assistant’s key. It does not call confirm. The browser clears `haushaltsbuch.connection` only after reset succeeds, and setup starts again at where the assistant should think. Reset then checkpoints and vacuums the file so deleted rows are not left on disk.
 
@@ -85,7 +85,7 @@ Confirm, Change keys, and Change assistant write one JSON object to `haushaltsbu
 | Field | Stored |
 | --- | --- |
 | `v` | `3` |
-| `assistant` | `openai` (API key), `local` (address and model), or `endpoint` (base URL, model, and key). A version 2 `openaiApiKey` is read as on OpenAI |
+| `assistant` | `openai` (API key), `local` (address, model, and optional `ocrModel`), or `endpoint` (base URL, model, and key). A version 2 `openaiApiKey` is read as on OpenAI |
 | `currency` | Yes, default `EUR` |
 | `banks` | Yes, `{ name, initials }` |
 | database path | No |

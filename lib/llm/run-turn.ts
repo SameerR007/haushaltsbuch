@@ -7,6 +7,7 @@ import {
   ToolChoiceViolationError,
   type ModelMessage,
 } from "ai";
+import { endpointPdfReadError } from "@/lib/assistant/copy";
 import type { AssistantTarget } from "@/lib/assistant/target";
 import { CHAT_REASONING_EFFORT, resolveChatModel } from "@/lib/chat/openai";
 import type { ChatTurn } from "@/lib/chat/types";
@@ -21,9 +22,12 @@ const REPLY_CAP = 8_000;
 const STEP_TIMEOUT_MS = 120_000;
 
 export class OpenAiError extends Error {
-  constructor(message: string) {
+  readonly fileRejected: boolean;
+
+  constructor(message: string, options?: { fileRejected?: boolean }) {
     super(message);
     this.name = "OpenAiError";
+    this.fileRejected = options?.fileRejected === true;
   }
 }
 
@@ -105,8 +109,17 @@ function isTimeout(error: unknown): boolean {
 function mapFailure(
   error: unknown,
   failure: { timeout: string; failed: string; unreachable: string },
+  context: { pdf: boolean; assistant: AssistantTarget },
 ): OpenAiError {
   if (error instanceof OpenAiError) return error;
+  if (
+    context.pdf &&
+    context.assistant.type === "endpoint" &&
+    APICallError.isInstance(error) &&
+    error.statusCode === 400
+  ) {
+    return new OpenAiError(endpointPdfReadError(context.assistant.model), { fileRejected: true });
+  }
   if (isTimeout(error)) return new OpenAiError(failure.timeout);
   if (APICallError.isInstance(error)) {
     if (isTimeout(error.cause)) return new OpenAiError(failure.timeout);
@@ -200,6 +213,6 @@ export async function runChatTurn(options: {
       );
       return finishReply(text, secret, proposalArgs);
     }
-    throw mapFailure(error, resolved.failure);
+    throw mapFailure(error, resolved.failure, { pdf: pdfMode, assistant });
   }
 }

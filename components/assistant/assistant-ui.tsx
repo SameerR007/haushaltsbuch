@@ -5,8 +5,17 @@ import { FormEvent, useState } from "react";
 import {
   DEFAULT_LOCAL_ADDRESS,
   DEFAULT_LOCAL_MODEL,
+  ENDPOINT_IMPORT_NOTE,
+  ENDPOINT_IMPORT_TITLE,
   LM_STUDIO_ADDRESS,
+  LOCAL_MODEL_HINT,
   LOCAL_NUM_CTX,
+  OCR_MODEL_HINT,
+  OCR_NONE_NOTE,
+  OCR_PLACEHOLDER,
+  OCR_SECTION_BODY,
+  OCR_SECTION_TITLE,
+  SUGGESTED_OCR_MODEL,
 } from "@/lib/assistant/copy";
 import type { AssistantKind } from "@/lib/assistant/target";
 
@@ -104,6 +113,7 @@ export function AssistantChoice({
 export function LocalConnectionCard({
   initialAddress = DEFAULT_LOCAL_ADDRESS,
   initialModel = DEFAULT_LOCAL_MODEL,
+  initialOcr,
   continueLabel,
   onContinue,
   onReadyChange,
@@ -113,20 +123,36 @@ export function LocalConnectionCard({
 }: {
   initialAddress?: string;
   initialModel?: string;
+  /** Omit to prefill the suggested OCR model. Pass null when none is saved. */
+  initialOcr?: string | null;
   continueLabel?: string;
-  onContinue?: (address: string, model: string) => void;
-  onReadyChange?: (ready: { address: string; model: string } | null) => void;
+  onContinue?: (address: string, model: string, ocrModel: string | null) => void;
+  onReadyChange?: (ready: { address: string; model: string; ocrModel: string | null } | null) => void;
   cancelHref?: string;
   intro?: boolean;
   showHelp?: boolean;
 }) {
   const [address, setAddress] = useState(initialAddress);
   const [model, setModel] = useState(initialModel);
+  const [ocrModel, setOcrModel] = useState(initialOcr === undefined ? SUGGESTED_OCR_MODEL : (initialOcr ?? ""));
+  const [ocrNone, setOcrNone] = useState(initialOcr === null || initialOcr === "");
   const [probe, setProbe] = useState<ProbeView | null>(null);
+  const [ocrProbe, setOcrProbe] = useState<ProbeView | null>(null);
   const [pending, setPending] = useState(false);
+  const [ocrPending, setOcrPending] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [ocrCopied, setOcrCopied] = useState(false);
   const ready = probe?.ok === true;
+  const chosenOcr = ocrNone ? null : ocrModel.trim() || null;
+
+  function publish(nextProbe: ProbeView | null, ocr: string | null) {
+    if (nextProbe?.ok !== true) {
+      onReadyChange?.(null);
+      return;
+    }
+    onReadyChange?.({ address: address.trim(), model: model.trim(), ocrModel: ocr });
+  }
 
   function edit(nextAddress: string, nextModel: string) {
     setAddress(nextAddress);
@@ -146,8 +172,32 @@ export function LocalConnectionCard({
     const result = await postProbe({ type: "local", address: address.trim(), model: model.trim() });
     setProbe(result);
     setHelpOpen(false);
-    if (result.ok) onReadyChange?.({ address: address.trim(), model: model.trim() });
+    publish(result, chosenOcr);
     setPending(false);
+  }
+
+  async function onTestOcr() {
+    if (ocrPending || ocrNone || !ocrModel.trim()) return;
+    setOcrPending(true);
+    setOcrCopied(false);
+    setOcrProbe(null);
+    const result = await postProbe({ type: "ocr", address: address.trim(), model: ocrModel.trim() });
+    setOcrProbe(result);
+    setOcrPending(false);
+  }
+
+  function chooseNone() {
+    setOcrNone(true);
+    setOcrModel("");
+    setOcrProbe(null);
+    publish(probe, null);
+  }
+
+  function editOcr(value: string) {
+    setOcrModel(value);
+    setOcrNone(false);
+    setOcrProbe(null);
+    publish(probe, value.trim() || null);
   }
 
   return (
@@ -181,6 +231,7 @@ export function LocalConnectionCard({
           onChange={(event) => edit(address, event.target.value)}
         />
       </div>
+      <p className="setup-hint">{LOCAL_MODEL_HINT}</p>
       <div className="setup-chips">
         <button className="setup-chip primary" type="submit" disabled={pending} data-testid="test-connection">
           {pending ? "Testing…" : "Test connection"}
@@ -190,19 +241,68 @@ export function LocalConnectionCard({
             Cancel
           </Link>
         ) : null}
-        {continueLabel && onContinue && ready ? (
+      </div>
+      <ProbeBanner probe={probe} copied={copied} onCopy={setCopied} />
+      <hr className="assistant-split" />
+      <p>
+        <strong>{OCR_SECTION_TITLE}</strong> <span className="setup-hint">(optional)</span>
+      </p>
+      <p className="setup-hint">{OCR_SECTION_BODY}</p>
+      <div className="setup-field">
+        <label htmlFor="ocr-model">OCR model</label>
+        <input
+          id="ocr-model"
+          value={ocrNone ? "" : ocrModel}
+          placeholder={OCR_PLACEHOLDER}
+          autoComplete="off"
+          spellCheck={false}
+          disabled={pending || ocrPending || ocrNone}
+          data-testid="ocr-model"
+          onChange={(event) => editOcr(event.target.value)}
+        />
+      </div>
+      <p className="setup-hint">{OCR_MODEL_HINT}</p>
+      <div className="setup-chips">
+        <button
+          className="setup-chip primary"
+          type="button"
+          disabled={pending || ocrPending || ocrNone || !ocrModel.trim()}
+          data-testid="ocr-test"
+          onClick={() => void onTestOcr()}
+        >
+          {ocrPending ? "Testing…" : "Test connection"}
+        </button>
+        <button
+          className={ocrNone ? "setup-chip is-selected" : "setup-chip"}
+          type="button"
+          aria-pressed={ocrNone}
+          data-testid="ocr-none"
+          disabled={pending || ocrPending}
+          onClick={chooseNone}
+        >
+          {ocrNone ? "✓ None" : "None"}
+        </button>
+      </div>
+      {ocrNone ? (
+        <div className="assistant-banner is-warn" role="status" data-testid="ocr-none-note">
+          <p>{OCR_NONE_NOTE}</p>
+        </div>
+      ) : (
+        <ProbeBanner probe={ocrProbe} copied={ocrCopied} onCopy={setOcrCopied} />
+      )}
+      {continueLabel && onContinue && ready ? (
+        <div className="setup-chips">
           <button
             className="setup-chip primary"
             type="button"
-            disabled={pending}
+            disabled={pending || ocrPending}
             data-testid="assistant-continue"
-            onClick={() => onContinue(address.trim(), model.trim())}
+            onClick={() => onContinue(address.trim(), model.trim(), chosenOcr)}
           >
             {continueLabel}
           </button>
-        ) : null}
-      </div>
-      <ProbeBanner probe={probe} copied={copied} onCopy={setCopied} />
+        </div>
+      ) : null}
       {showHelp ? (
         probe ? (
           <HelpToggle open={helpOpen} onToggle={() => setHelpOpen((open) => !open)} />
@@ -323,7 +423,18 @@ export function EndpointConnectionCard({
             Cancel
           </Link>
         ) : null}
-        {continueLabel && onContinue && ready ? (
+      </div>
+      <ProbeBanner probe={probe} />
+      {ready ? (
+        <div className="assistant-banner is-warn" data-testid="endpoint-import-note">
+          <p>
+            <strong>{ENDPOINT_IMPORT_TITLE}</strong>
+          </p>
+          <p>{ENDPOINT_IMPORT_NOTE}</p>
+        </div>
+      ) : null}
+      {continueLabel && onContinue && ready ? (
+        <div className="setup-chips">
           <button
             className="setup-chip primary"
             type="button"
@@ -333,9 +444,8 @@ export function EndpointConnectionCard({
           >
             {continueLabel}
           </button>
-        ) : null}
-      </div>
-      <ProbeBanner probe={probe} />
+        </div>
+      ) : null}
       <p className="setup-hint">
         The key is kept in this browser only. Questions and statements go to the address you enter, so use a
         service you trust.

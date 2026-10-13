@@ -71,6 +71,14 @@ The check lists models, sends a tiny chat, then a forced tool call. A chat slowe
 { "type": "local", "address": "http://localhost:11434", "model": "qwen3.5:9b" }
 ```
 
+An OCR check is separate and optional. It does not send an image. Ollama is `POST {origin}/api/show` and ready when `capabilities` includes `vision`. LM Studio is `GET {baseUrl}/models` and ready when that model’s `type` is `vlm`. A missing Ollama model also returns `command` (`ollama pull glm-ocr`). **None** is not sent here. Continue does not wait for this check.
+
+```json
+{ "type": "ocr", "baseUrl": "http://127.0.0.1:11434/v1", "model": "glm-ocr" }
+```
+
+Success is HTTP 200: `{ "ok": true, "status": "ready", "title": "Ready: glm-ocr can read images.", "detail": "" }`. A failed check is HTTP 422 with `status` `missing`, `blind`, or `unreachable`.
+
 ```json
 { "type": "endpoint", "baseUrl": "https://your-server.example/v1", "model": "the-model-id", "apiKey": "…" }
 ```
@@ -82,6 +90,8 @@ Success is HTTP 200: `{ "ok": true, "status": "connected", "title": "Connected."
 | `unreachable` | Ollama isn't running. |
 | `missing` | Connected, but the model isn't downloaded. Also returns `command`, for example `ollama pull qwen3.5:9b`. |
 | `no-tools` | That model can't use tools. |
+| `ready` | Ready: glm-ocr can read images. OCR check only. |
+| `blind` | glm-ocr can't read images. OCR check only. |
 
 A missing or wrong-shaped body is HTTP 400. `text/plain` is HTTP 415.
 

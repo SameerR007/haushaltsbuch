@@ -586,8 +586,13 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         <div>
           <LocalConnectionCard
             continueLabel="Continue"
-            onContinue={(address, model) => {
-              setDraft({ type: "local", address, model });
+            onContinue={(address, model, ocrModel) => {
+              setDraft({
+                type: "local",
+                address,
+                model,
+                ...(ocrModel ? { ocrModel } : {}),
+              });
               showCurrencyStep();
             }}
           />

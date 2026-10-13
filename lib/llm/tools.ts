@@ -1,4 +1,5 @@
 import { jsonSchema, tool } from "ai";
+import { proposedArgsValid } from "./rows-schema";
 
 /** Tool results sent back to the model are cut at this many JSON characters. */
 export const TOOL_OUTPUT_CAP = 80_000;
@@ -25,8 +26,7 @@ function sqlShape(value: unknown): boolean {
 
 function proposeShape(value: unknown): boolean {
   if (isInvalidArguments(value)) return true;
-  if (typeof value !== "object" || value === null) return false;
-  return Array.isArray((value as { rows?: unknown }).rows);
+  return proposedArgsValid(value);
 }
 
 /** True when the tool input should be repaired. Valid JSON of the right shape is fine. */

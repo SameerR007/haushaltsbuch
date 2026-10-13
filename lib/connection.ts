@@ -51,7 +51,7 @@ export type SavedBank = {
  */
 export type AssistantSettings =
   | { type: "openai"; apiKey: string }
-  | { type: "local"; address: string; model: string }
+  | { type: "local"; address: string; model: string; ocrModel?: string | null }
   | { type: "endpoint"; baseUrl: string; model: string; apiKey: string };
 
 /**
@@ -85,18 +85,23 @@ export function assistantComplete(assistant: AssistantSettings): boolean {
   return chatBaseUrl(assistant.baseUrl) !== null && assistant.apiKey.trim().length > 0;
 }
 
-/** Review-the-data value: “on this computer, qwen3.5:9b”, “on OpenAI”, or the endpoint host. */
+/** “on this computer (qwen3.5:9b) · OCR: glm-ocr”. The OCR part is omitted when none is set. */
+export function localAssistantLabel(model: string, ocrModel?: string | null): string {
+  const base = `on this computer (${model})`;
+  const ocr = ocrModel?.trim() ?? "";
+  return ocr ? `${base} · OCR: ${ocr}` : base;
+}
+
+/** Review-the-data and the landing line. The endpoint key is never included. */
 export function assistantSummary(assistant: AssistantSettings): string {
-  if (assistant.type === "local") return `on this computer, ${assistant.model}`;
+  if (assistant.type === "local") return localAssistantLabel(assistant.model, assistant.ocrModel);
   if (assistant.type === "openai") return "on OpenAI";
   const host = endpointHostname(assistant.baseUrl);
   return host ? `OpenAI-compatible endpoint (${host})` : "OpenAI-compatible endpoint";
 }
 
-/** Landing line under “Assistant:”. The endpoint key is never included. */
+/** Landing line under “Assistant:”. */
 export function assistantHomeLabel(assistant: AssistantSettings): string {
-  if (assistant.type === "local") return `on this computer (${assistant.model})`;
-  if (assistant.type === "openai") return "on OpenAI";
   return assistantSummary(assistant);
 }
 
@@ -111,11 +116,13 @@ export function assistantRequestFields(assistant: AssistantSettings): {
 } {
   if (assistant.type === "openai") return { apiKey: assistant.apiKey };
   if (assistant.type === "local") {
+    const ocr = assistant.ocrModel?.trim() ?? "";
     return {
       assistant: {
         type: "local",
         baseUrl: chatBaseUrl(assistant.address) ?? assistant.address,
         model: assistant.model,
+        ...(ocr ? { ocrModel: ocr } : {}),
       },
     };
   }
@@ -155,6 +162,14 @@ export function parseConnection(raw: string | null | undefined): SavedConnection
   return { v: 3, assistant, currency: row.currency, banks };
 }
 
+function optionalOcr(value: unknown): string | null | "invalid" {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return "invalid";
+  const model = value.trim();
+  if (!model) return null;
+  return modelNameOk(model) ? model : "invalid";
+}
+
 function parseOpenAiKey(value: unknown): AssistantSettings | null {
   if (typeof value !== "string" || !value.startsWith("sk-") || value.length < 10 || value.length > 300) {
     return null;
@@ -171,7 +186,9 @@ function parseAssistant(value: unknown): AssistantSettings | null {
     const address = row.address.trim();
     const model = row.model.trim();
     if (localAddressError(address) || !modelNameOk(model)) return null;
-    return { type: "local", address, model };
+    const ocr = optionalOcr(row.ocrModel);
+    if (ocr === "invalid") return null;
+    return ocr ? { type: "local", address, model, ocrModel: ocr } : { type: "local", address, model };
   }
   if (row.type === "endpoint") {
     if (typeof row.baseUrl !== "string" || typeof row.model !== "string" || typeof row.apiKey !== "string") {

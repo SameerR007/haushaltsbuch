@@ -184,6 +184,12 @@
   border-color: var(--teal);
 }
 
+.setup-chip.is-selected {
+  border-color: var(--teal);
+  color: var(--teal-deep);
+  background: #f3faf7;
+}
+
 .setup-field {
   margin-top: 10px;
   display: flex;
@@ -208,6 +214,11 @@
   font-family: inherit;
   background: #fff;
   color: var(--ink);
+}
+
+.setup-field input:disabled {
+  background: #f6f1e8;
+  color: #8a837a;
 }
 
 .setup-hint {
@@ -350,9 +361,16 @@
   color: #9f2d22;
 }
 
-.assistant-banner.is-slow {
+.assistant-banner.is-slow,
+.assistant-banner.is-warn {
   background: #f8f1dc;
   color: #6b5420;
+}
+
+.assistant-split {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 16px 0 14px;
 }
 
 .assistant-command {

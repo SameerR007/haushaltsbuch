@@ -1,5 +1,6 @@
 "use client";
 
+import { StatementReview } from "@/components/tracker/statement-review";
 import { confirmLabel, reviewIntro, REVIEW_FOOTER, totalLabel } from "@/lib/chat/copy";
 import { formatReviewAmount, formatRowDate } from "@/lib/chat/money";
 import type { Proposal, ReviewRow } from "@/lib/chat/types";
@@ -54,6 +55,19 @@ export function ReviewCard({
       <section className="tracker-card">
         <p>Cancelled. Nothing was saved.</p>
       </section>
+    );
+  }
+
+  if (proposal.statement && phase === "review") {
+    return (
+      <StatementReview
+        proposal={proposal}
+        busy={busy}
+        error={error}
+        onRows={onRows}
+        onPhase={onPhase}
+        onConfirm={onConfirm}
+      />
     );
   }
 

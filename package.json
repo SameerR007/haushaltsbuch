@@ -7,17 +7,19 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test --test-concurrency=1 lib/setup/setup.test.ts lib/assistant/assistant.test.ts lib/llm/local.test.ts lib/chat/chat.test.ts lib/data/data.test.ts lib/data/summary.test.ts"
+    "test": "node --import tsx --test --test-concurrency=1 lib/setup/setup.test.ts lib/assistant/assistant.test.ts lib/llm/local.test.ts lib/llm/statement.test.ts lib/chat/chat.test.ts lib/data/data.test.ts lib/data/summary.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.91",
     "@ai-sdk/openai-compatible": "3.0.67",
+    "@napi-rs/canvas": "^1.0.11",
     "ai": "7.0.137",
     "better-sqlite3": "^13.0.3",
     "exceljs": "^4.4.0",
     "next": "15.5.27",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "unpdf": "^1.8.1",
     "zod": "4.6.6"
   },
   "devDependencies": {

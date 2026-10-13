@@ -2,11 +2,18 @@
 
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { ReviewCard } from "@/components/tracker/review-card";
-import { endpointHostname, LOCAL_IMPORT_SOON } from "@/lib/assistant/copy";
+import {
+  DEFAULT_STATEMENT_INSTRUCTION,
+  endpointHostname,
+  IMPORT_STATEMENT,
+  IMPORT_THIS_STATEMENT,
+  LOCAL_STATEMENT_NOTE,
+  readingScannedPage,
+  scannedPageMix,
+} from "@/lib/assistant/copy";
 import {
   EMPTY_HEADING,
   EMPTY_SUBTITLE,
-  EMPTY_SUBTITLE_TYPED,
   PDF_DISCLOSURE,
   PLACEHOLDER_EMPTY,
   PLACEHOLDER_FOLLOWUP,
@@ -85,6 +92,8 @@ export function TrackerChat() {
   const [ack, setAck] = useState(false);
   const [promptsUsed, setPromptsUsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [reading, setReading] = useState<Reading | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   function nextId() {
     idRef.current += 1;
@@ -164,20 +173,26 @@ export function TrackerChat() {
     (item) => item.kind === "user" || item.kind === "assistant" || item.kind === "proposal",
   );
   const started = promptsUsed || items.some((item) => item.kind === "user");
-  const allowPdf = connection?.assistant.type !== "local";
+  const localAssistant = connection?.assistant.type === "local";
+  const endpointAssistant = connection?.assistant.type === "endpoint";
   const prompts =
     ready && banksReady
       ? suggestedPrompts({
           bankName: connection?.banks[0]?.name ?? null,
           currency: connection?.currency ?? null,
-          statement: allowPdf,
+          statement: true,
+          statementPrompt: localAssistant ? IMPORT_STATEMENT : undefined,
+          statementLast: localAssistant,
         })
       : [];
-  const showDisclosure = allowPdf && Boolean(attachment?.file) && !ack;
-  const disclosure =
-    connection?.assistant.type === "endpoint"
-      ? pdfGoesTo(endpointHostname(connection.assistant.baseUrl))
-      : PDF_DISCLOSURE;
+  const showDisclosure = !localAssistant && Boolean(attachment?.file) && !ack;
+  const disclosure = endpointAssistant
+    ? pdfGoesTo(endpointHostname(connection?.assistant.type === "endpoint" ? connection.assistant.baseUrl : ""))
+    : PDF_DISCLOSURE;
+  const reviewingStatement = items.some(
+    (item) => item.kind === "proposal" && item.phase === "review" && Boolean(item.proposal.statement),
+  );
+  const showImport = Boolean(attachment?.file) && !reading && (localAssistant || (endpointAssistant && ack));
 
   function patchProposal(id: number, patch: Partial<Extract<Item, { kind: "proposal" }>>) {
     setItems((current) =>
@@ -187,7 +202,6 @@ export function TrackerChat() {
 
   async function onPickFile(file: File | undefined) {
     setFormError("");
-    if (!allowPdf) return;
     if (fileRef.current) fileRef.current.value = "";
     if (!file) return;
     if (file.size > MAX_PDF_BYTES) {
@@ -199,7 +213,7 @@ export function TrackerChat() {
       setFormError(PDF_NOT_PDF);
       return;
     }
-    setAck(false);
+    setAck(localAssistant);
     setAttachment({
       file,
       name: file.name || "statement.pdf",
@@ -210,7 +224,6 @@ export function TrackerChat() {
 
   function onDropPdf(event: DragEvent<HTMLElement>) {
     event.preventDefault();
-    if (!allowPdf) return;
     void onPickFile(event.dataTransfer.files?.[0]);
   }
 
@@ -243,6 +256,131 @@ export function TrackerChat() {
     return turns;
   }
 
+  function assistantFrom(data: Record<string, unknown>, fallback: string): Item {
+    const error = typeof data.error === "string" ? data.error : fallback;
+    const detail = typeof data.detail === "string" ? data.detail : "";
+    return {
+      id: nextId(),
+      kind: "assistant",
+      text: error,
+      ...(data.changeAssistant === true ? { changeAssistant: true } : {}),
+      ...(detail ? { detail } : {}),
+    };
+  }
+
+  async function runImport(instruction: string, file: Attachment, quiet: boolean) {
+    const saved = connection ?? readConnection();
+    if (!saved?.assistant) {
+      setPromptsUsed(true);
+      setItems((current) => [
+        ...current,
+        { id: nextId(), kind: "user", text: instruction },
+        {
+          id: nextId(),
+          kind: "assistant",
+          text: "Add an assistant in setup before sending.",
+          setupLink: true,
+        },
+      ]);
+      return;
+    }
+    if (!file.file) {
+      setFormError(REATTACH_PDF);
+      return;
+    }
+    sendLock.current = true;
+    const prior = history();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const local = saved.assistant.type === "local";
+    try {
+      setDraft("");
+      setFormError("");
+      setPending(true);
+      setPromptsUsed(true);
+      const statusId = nextId();
+      if (local) {
+        setReading({
+          filename: file.name || "statement.pdf",
+          phase: "text",
+          page: 0,
+          total: 0,
+          model: "",
+          textPages: 0,
+          scannedPages: 0,
+        });
+      } else {
+        setItems((current) => [
+          ...current.filter((item) => item.kind !== "status"),
+          ...(quiet
+            ? []
+            : [{ id: nextId(), kind: "user" as const, text: instruction, statementName: file.name || "statement.pdf" }]),
+          { id: statusId, kind: "status" as const, text: READING_STATEMENT },
+        ]);
+      }
+      const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: instruction }]);
+      const data = await postPdf(assistantRequestFields(saved.assistant), instruction, file, turns.slice(0, -1), {
+        signal: controller.signal,
+        onProgress: (event) => {
+          setReading({
+            filename: file.name || "statement.pdf",
+            phase: "scan",
+            page: event.page,
+            total: event.total,
+            model: event.model,
+            textPages: event.textPages,
+            scannedPages: event.scannedPages,
+          });
+        },
+      });
+      if (controller.signal.aborted || data?.cancelled === true) {
+        setItems((current) => [
+          ...current.filter((item) => item.id !== statusId),
+          { id: nextId(), kind: "assistant", text: "Cancelled. Nothing was saved." },
+        ]);
+        return;
+      }
+      const proposal = data?.ok === true ? data.proposal : null;
+      const accepted = isProposal(proposal) && proposal.rows.length > 0;
+      if (accepted && !local) {
+        setAttachment(null);
+        setAck(false);
+        if (fileRef.current) fileRef.current.value = "";
+      }
+      setItems((current) => {
+        const lead = current.filter((item) => item.id !== statusId && item.kind !== "status");
+        if (!data) {
+          return [...lead, { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." }];
+        }
+        if (data.ok !== true) return [...lead, assistantFrom(data, "Could not read that statement.")];
+        if (accepted && isProposal(proposal)) {
+          return [
+            ...lead,
+            { id: nextId(), kind: "proposal", phase: "review", proposal, error: "", busy: false },
+          ];
+        }
+        return [...lead, { id: nextId(), kind: "assistant", text: "No transactions were read from that statement." }];
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setItems((current) => [
+          ...current.filter((item) => item.kind !== "status"),
+          { id: nextId(), kind: "assistant", text: "Cancelled. Nothing was saved." },
+        ]);
+        return;
+      }
+      setItems((current) => [
+        ...current.filter((item) => item.kind !== "status"),
+        { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." },
+      ]);
+    } finally {
+      abortRef.current = null;
+      setReading(null);
+      sendLock.current = false;
+      setPending(false);
+    }
+  }
+
   async function onSend(event: FormEvent) {
     event.preventDefault();
     const text = draft.trim();
@@ -251,11 +389,11 @@ export function TrackerChat() {
       setFormError(REATTACH_PDF);
       return;
     }
-    if (!allowPdf && attachment?.file) {
-      setFormError(LOCAL_IMPORT_SOON);
+    if (attachment && !ack && !localAssistant) return;
+    if (attachment?.file && !reviewingStatement) {
+      await runImport(text, attachment, false);
       return;
     }
-    if (attachment && !ack) return;
     const saved = connection ?? readConnection();
     if (!saved?.assistant) {
       setPromptsUsed(true);
@@ -265,7 +403,7 @@ export function TrackerChat() {
         {
           id: nextId(),
           kind: "assistant",
-          text: "Add an OpenAI key in setup before sending.",
+          text: "Add an assistant in setup before sending.",
           setupLink: true,
         },
       ]);
@@ -273,56 +411,31 @@ export function TrackerChat() {
       return;
     }
     sendLock.current = true;
-    const file = attachment;
     const prior = history();
     try {
       setDraft("");
-      setAttachment(null);
       setFormError("");
       setPending(true);
       setPromptsUsed(true);
-      if (fileRef.current) fileRef.current.value = "";
       const statusId = nextId();
       setItems((current) => [
         ...current.filter((item) => item.kind !== "status"),
-        {
-          id: nextId(),
-          kind: "user",
-          text,
-          ...(file ? { statementName: file.name || "statement.pdf" } : {}),
-        },
-        { id: statusId, kind: "status", text: file ? READING_STATEMENT : "Working…" },
+        { id: nextId(), kind: "user", text },
+        { id: statusId, kind: "status", text: "Working…" },
       ]);
-
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: text }]);
-      const fields = assistantRequestFields(saved.assistant);
-      const data = file
-        ? await postPdf(fields, text, file, turns.slice(0, -1))
-        : await postChat(fields, turns);
+      const data = await postChat(assistantRequestFields(saved.assistant), turns);
       setItems((current) => {
         const without = current.filter((item) => item.id !== statusId);
         if (!data) {
-          return [
-            ...without,
-            { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." },
-          ];
+          return [...without, { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." }];
         }
-        if (data.ok !== true) {
-          const error = typeof data.error === "string" ? data.error : "Could not do that.";
-          return [...without, { id: nextId(), kind: "assistant", text: error }];
-        }
+        if (data.ok !== true) return [...without, assistantFrom(data, "Could not do that.")];
         const proposal = data.proposal;
         if (isProposal(proposal) && proposal.rows.length > 0) {
           return [
             ...without,
-            {
-              id: nextId(),
-              kind: "proposal",
-              phase: "review",
-              proposal,
-              error: "",
-              busy: false,
-            },
+            { id: nextId(), kind: "proposal", phase: "review", proposal, error: "", busy: false },
           ];
         }
         const reply = typeof data.reply === "string" && data.reply ? data.reply : "I couldn’t read a transaction from that. Try rephrasing it.";
@@ -363,6 +476,9 @@ export function TrackerChat() {
       batchId: data.batchId,
       error: "",
     });
+    setAttachment(null);
+    setAck(false);
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   async function undo(id: number) {
@@ -387,6 +503,54 @@ export function TrackerChat() {
 
   return (
     <main className="tracker-main" onDragOver={(event) => event.preventDefault()} onDrop={onDropPdf}>
+      {reading ? (
+        <div className="tracker-reading">
+          {attachment ? <ImportLaunch attachment={attachment} disabled /> : null}
+          <section className="tracker-card import-progress" aria-live="polite">
+            <h2>
+              {reading.phase === "scan"
+                ? readingScannedPage(reading.page, reading.total, reading.model)
+                : "Reading statement…"}
+            </h2>
+            <p>
+              {reading.phase === "scan"
+                ? scannedPageMix(reading.filename, reading.textPages, reading.scannedPages)
+                : reading.filename}
+            </p>
+            <div className="import-bar" aria-hidden="true">
+              <span
+                style={{
+                  width:
+                    reading.phase === "scan" && reading.total > 0
+                      ? `${Math.min(95, 20 + (reading.page / reading.total) * 75)}%`
+                      : "35%",
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className="import-cancel"
+              onClick={() => abortRef.current?.abort()}
+            >
+              Cancel
+            </button>
+          </section>
+        </div>
+      ) : (
+        <>
+      {showImport && attachment ? (
+        <div className="tracker-reading is-ready">
+          <ImportLaunch
+            attachment={attachment}
+            disabled={reviewingStatement}
+            onImport={
+              reviewingStatement
+                ? undefined
+                : () => void runImport(draft.trim() || DEFAULT_STATEMENT_INSTRUCTION, attachment, !draft.trim())
+            }
+          />
+        </div>
+      ) : null}
       {hydrated && hasThread ? (
         <div className="tracker-thread" ref={threadRef} aria-live="polite">
           {items.map((item) => {
@@ -400,8 +564,16 @@ export function TrackerChat() {
             }
             if (item.kind === "assistant") {
               return (
-                <div key={item.id} className="tracker-assistant">
-                  <p>{item.text}</p>
+                <div key={item.id} className={item.changeAssistant ? "tracker-assistant is-import-error" : "tracker-assistant"}>
+                  <p>
+                    {item.text}{" "}
+                    {item.changeAssistant ? (
+                      <a className="tracker-setup-link" href="/data/assistant">
+                        Change assistant
+                      </a>
+                    ) : null}
+                  </p>
+                  {item.detail ? <p className="tracker-import-detail">{item.detail}</p> : null}
                   {item.setupLink && (
                     <a className="tracker-setup-link" href="/setup">
                       Open setup
@@ -427,7 +599,14 @@ export function TrackerChat() {
                 onRows={(rows: ReviewRow[]) =>
                   patchProposal(item.id, { proposal: { ...item.proposal, rows } })
                 }
-                onPhase={(phase) => patchProposal(item.id, { phase })}
+                onPhase={(phase) => {
+                  patchProposal(item.id, { phase });
+                  if (phase === "cancelled") {
+                    setAttachment(null);
+                    setAck(false);
+                    if (fileRef.current) fileRef.current.value = "";
+                  }
+                }}
                 onConfirm={() => void confirm(item.id)}
                 onUndo={() => void undo(item.id)}
               />
@@ -437,7 +616,7 @@ export function TrackerChat() {
       ) : hydrated ? (
         <div className="tracker-empty">
           <h1>{EMPTY_HEADING}</h1>
-          <p>{allowPdf ? EMPTY_SUBTITLE : EMPTY_SUBTITLE_TYPED}</p>
+          <p>{localAssistant ? "Type it in plain language, or attach a bank statement PDF." : EMPTY_SUBTITLE}</p>
           {prompts.length > 0 && (
             <div className="tracker-prompts">
               {prompts.map((prompt) => (
@@ -446,10 +625,15 @@ export function TrackerChat() {
                   type="button"
                   className="tracker-prompt"
                   onClick={() => {
+                    if (prompt === IMPORT_STATEMENT) {
+                      fileRef.current?.click();
+                      return;
+                    }
                     setDraft(prompt);
                     inputRef.current?.focus();
                   }}
                 >
+                  {prompt === IMPORT_STATEMENT ? <span className="prompt-clip" aria-hidden="true"><PaperclipIcon /></span> : null}
                   {prompt}
                 </button>
               ))}
@@ -458,6 +642,8 @@ export function TrackerChat() {
         </div>
       ) : (
         <div className="tracker-empty" />
+      )}
+        </>
       )}
 
       <form className="tracker-form" onSubmit={(event) => void onSend(event)}>
@@ -474,15 +660,19 @@ export function TrackerChat() {
             </div>
           </div>
         )}
-        {!allowPdf && (
-          <div className="tracker-local-note" data-testid="local-import-note">
-            <p>
-              <strong>Statement import on this computer is coming soon.</strong> You can still add expenses by
-              typing. <a href="/data/assistant">Change assistant</a>
-            </p>
-          </div>
+        {localAssistant && (
+          <p className="tracker-privacy" data-testid="local-statement-note">
+            <span aria-hidden="true">🔒 </span>
+            {LOCAL_STATEMENT_NOTE}
+          </p>
         )}
-        {allowPdf && attachment && (
+        {endpointAssistant && (attachment || reading) ? (
+          <p className="tracker-privacy" data-testid="endpoint-transfer-note">
+            <span aria-hidden="true">🔒 </span>
+            {disclosure}
+          </p>
+        ) : null}
+        {attachment && !showImport ? (
           <div className="tracker-chip-row">
             <span className="tracker-chip">
               {attachmentLabel(attachment.name, attachment.pages, attachment.size)}
@@ -507,10 +697,7 @@ export function TrackerChat() {
             type="button"
             className="tracker-clip"
             aria-label="Attach a bank statement PDF"
-            disabled={!allowPdf}
-            onClick={() => {
-              if (allowPdf) fileRef.current?.click();
-            }}
+            onClick={() => fileRef.current?.click()}
           >
             <PaperclipIcon />
           </button>
@@ -519,7 +706,7 @@ export function TrackerChat() {
             className={draft ? "has-value" : undefined}
             value={draft}
             aria-label="Expense or instruction"
-            placeholder={started ? PLACEHOLDER_FOLLOWUP : allowPdf ? PLACEHOLDER_EMPTY : PLACEHOLDER_TYPED}
+            placeholder={started ? PLACEHOLDER_FOLLOWUP : localAssistant ? PLACEHOLDER_TYPED : PLACEHOLDER_EMPTY}
             onChange={(event) => setDraft(event.target.value)}
             autoComplete="off"
           />
@@ -566,11 +753,54 @@ async function postChat(
   return postJson("/api/chat", { ...fields, messages });
 }
 
+type ScanEvent = {
+  page: number;
+  total: number;
+  model: string;
+  textPages: number;
+  scannedPages: number;
+};
+
+type Reading = {
+  filename: string;
+  phase: "text" | "scan";
+  page: number;
+  total: number;
+  model: string;
+  textPages: number;
+  scannedPages: number;
+};
+
+function ImportLaunch({
+  attachment,
+  disabled = false,
+  onImport,
+}: {
+  attachment: Attachment;
+  disabled?: boolean;
+  onImport?: () => void;
+}) {
+  const pages = attachment.pages && attachment.pages > 0 ? `${attachment.pages} ${attachment.pages === 1 ? "page" : "pages"}` : "";
+  return (
+    <div className="import-launch">
+      <p>
+        <span aria-hidden="true">📄 </span>
+        {attachment.name}
+        {pages ? ` · ${pages}` : ""}
+      </p>
+      <button type="button" disabled={disabled || !onImport} onClick={onImport}>
+        {IMPORT_THIS_STATEMENT}
+      </button>
+    </div>
+  );
+}
+
 async function postPdf(
   fields: { apiKey?: string; assistant?: object },
   instruction: string,
   attachment: Attachment,
   messages: ChatTurn[],
+  options?: { signal?: AbortSignal; onProgress?: (event: ScanEvent) => void },
 ): Promise<Record<string, unknown> | null> {
   try {
     const form = new FormData();
@@ -580,11 +810,52 @@ async function postPdf(
     form.set("messages", JSON.stringify(messages));
     if (!attachment.file) return null;
     form.set("file", attachment.file, attachment.name);
-    const response = await fetch("/api/import/pdf", { method: "POST", body: form });
+    const response = await fetch("/api/import/pdf", { method: "POST", body: form, signal: options?.signal });
+    const type = response.headers.get("content-type") ?? "";
+    if (type.includes("ndjson")) return readNdjson(response, options?.onProgress);
     return readBody(response);
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     return null;
   }
+}
+
+async function readNdjson(
+  response: Response,
+  onProgress?: (event: ScanEvent) => void,
+): Promise<Record<string, unknown> | null> {
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: Record<string, unknown> | null = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (event.type === "progress" && event.phase === "scan") {
+        onProgress?.({
+          page: Number(event.page) || 0,
+          total: Number(event.total) || 0,
+          model: typeof event.model === "string" ? event.model : "",
+          textPages: Number(event.textPages) || 0,
+          scannedPages: Number(event.scannedPages) || 0,
+        });
+      }
+      if (event.type === "result") result = event;
+    }
+  }
+  return result;
 }
 
 async function readBody(response: Response): Promise<Record<string, unknown> | null> {

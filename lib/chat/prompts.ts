@@ -74,6 +74,9 @@ export function suggestedPrompts(input: {
   currency?: string | null;
   now?: Date;
   statement?: boolean;
+  /** Local chat uses a paperclip prompt at the end. OpenAI keeps the middle prompt. */
+  statementPrompt?: string;
+  statementLast?: boolean;
 }): string[] {
   const { monthName, dayPhrase } = previousFullMonth(input.now ?? new Date());
   const amount = sampleAmount(input.currency);
@@ -82,7 +85,11 @@ export function suggestedPrompts(input: {
     ? `Add ${amount} groceries from ${bank} on ${dayPhrase}`
     : `Add ${amount} groceries on ${dayPhrase}`;
   const prompts = [add, `How much did I spend on food in ${monthName}?`];
-  if (input.statement !== false) prompts.splice(1, 0, "Add the transactions from this bank statement");
+  if (input.statement !== false) {
+    const label = input.statementPrompt ?? "Add the transactions from this bank statement";
+    if (input.statementLast) prompts.push(label);
+    else prompts.splice(1, 0, label);
+  }
   return prompts;
 }
 
@@ -129,4 +136,11 @@ export function withPdfInstructions(instructions: string): string {
   return `${instructions}
 
 A bank statement PDF is attached. Read the file itself. The app does not extract its text. Answer only by calling propose_transactions. One row per transaction on the statement. ${STATEMENT_ROWS_RULE} If a row is unclear, set uncertain to true. Do not guess a category or a bank when several are possible.`;
+}
+
+/** Local import already extracted the statement on this computer. The PDF is not attached. */
+export function withLocalStatementInstructions(instructions: string): string {
+  return `${instructions}
+
+The statement text was read on this computer and is in the user message. Pages marked fallback were read from an image because OCR failed: set uncertain to true for every transaction from those pages and copy the payee exactly. Answer only by calling propose_transactions. One row per transaction. ${STATEMENT_ROWS_RULE} If a row is unclear, set uncertain to true. Do not guess a category or a bank when several are possible.`;
 }

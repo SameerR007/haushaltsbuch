@@ -1,3 +1,5 @@
+import { NOTHING_SAVED_TYPE } from "@/lib/assistant/copy";
+import { parseAssistantTarget } from "@/lib/assistant/target";
 import { loadHousehold } from "@/lib/chat/household";
 import { OpenAiError, runChatTurn } from "@/lib/chat/openai";
 import {
@@ -8,17 +10,17 @@ import {
   safePdfName,
 } from "@/lib/chat/pdf-meta";
 import { householdInstructions, MODEL_TURN_LIMIT, recentModelTurns, todayIso, withPdfInstructions } from "@/lib/chat/prompts";
-import type { ChatTurn, Proposal } from "@/lib/chat/types";
+import type { ChatTurn, Proposal, StatementReview } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
-import { LOCAL_IMPORT_SOON } from "@/lib/assistant/copy";
-import { parseAssistantTarget } from "@/lib/assistant/target";
+import { readLocalStatement, type ScanProgress } from "@/lib/llm/local-statement";
 import { guardSameOrigin, jsonResult } from "@/lib/setup/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// The PDF and the OpenAI key are forwarded to OpenAI for this request only.
-// The key is not stored or logged. Statement text is not extracted on this machine.
+// OpenAI and an OpenAI-compatible endpoint receive the PDF as a file part.
+// A local assistant reads the text layer and scanned pages on this machine.
+// Nothing is written here. Confirm is the only save.
 
 function invalid(error: string): Response {
   return jsonResult({ ok: false, code: "invalid", error }, 400);
@@ -77,8 +79,6 @@ export async function POST(request: Request) {
     const parsedAssistant = parseAssistantTarget(assistantBody);
     if (!parsedAssistant.ok) return invalid(parsedAssistant.error);
     const assistant = parsedAssistant.value;
-    if (assistant.type === "local") return invalid(LOCAL_IMPORT_SOON);
-    const apiKey = assistant.apiKey;
     const instruction = form.get("instruction");
     const file = form.get("file");
     if (typeof instruction !== "string" || !instruction.trim() || instruction.length > 8000) {
@@ -89,9 +89,22 @@ export async function POST(request: Request) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (!isPdfBytes(bytes)) return invalid(PDF_NOT_PDF);
     const filename = safePdfName(file instanceof File ? file.name : "statement.pdf");
-
     const household = loadHousehold();
     const prior = parseMessages(typeof form.get("messages") === "string" ? String(form.get("messages")) : null);
+
+    if (assistant.type === "local") {
+      return streamLocalImport({
+        request,
+        bytes,
+        filename,
+        instruction: instruction.trim(),
+        prior,
+        household,
+        assistant,
+      });
+    }
+
+    const apiKey = assistant.apiKey;
     const messages: ChatTurn[] = recentModelTurns([...prior, { role: "user", content: instruction.trim() }]);
     let proposalArgs: unknown = null;
     await runChatTurn({
@@ -133,8 +146,92 @@ export async function POST(request: Request) {
     };
     return jsonResult({ ok: true, proposal }, 200);
   } catch (error) {
-    const message =
-      error instanceof OpenAiError ? error.message : "Could not read that statement.";
+    if (error instanceof OpenAiError && error.fileRejected) {
+      return jsonResult(
+        {
+          ok: false,
+          code: "rejected",
+          error: error.message,
+          changeAssistant: true,
+          detail: NOTHING_SAVED_TYPE,
+        },
+        422,
+      );
+    }
+    const message = error instanceof OpenAiError ? error.message : "Could not read that statement.";
     return jsonResult({ ok: false, code: "rejected", error: message }, 422);
   }
+}
+
+function streamLocalImport(options: {
+  request: Request;
+  bytes: Uint8Array;
+  filename: string;
+  instruction: string;
+  prior: ChatTurn[];
+  household: ReturnType<typeof loadHousehold>;
+  assistant: { type: "local"; baseUrl: string; model: string; ocrModel?: string | null };
+}): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: unknown) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
+      try {
+        const result = await readLocalStatement({
+          bytes: options.bytes,
+          filename: options.filename,
+          baseUrl: options.assistant.baseUrl,
+          model: options.assistant.model,
+          ocrModel: options.assistant.ocrModel?.trim() || null,
+          instruction: options.instruction,
+          messages: options.prior,
+          household: options.household,
+          signal: options.request.signal,
+          onProgress: (progress: ScanProgress) => {
+            send({
+              type: "progress",
+              phase: "scan",
+              filename: options.filename,
+              page: progress.page,
+              total: progress.total,
+              model: progress.model,
+              textPages: progress.textPages,
+              scannedPages: progress.scannedPages,
+            });
+          },
+        });
+        if (!result.rows.length) {
+          const error = result.statement.failedPage
+            ? `Couldn't read page ${result.statement.failedPage}. Nothing was saved.`
+            : "No transactions were read from that statement.";
+          send({ type: "result", ok: false, code: "rejected", error });
+          return;
+        }
+        const proposal: Proposal = {
+          sourceName: options.filename,
+          currency: options.household.currency,
+          categories: options.household.categories,
+          banks: options.household.banks,
+          rows: result.rows,
+          statement: result.statement satisfies StatementReview,
+        };
+        send({ type: "result", ok: true, proposal });
+      } catch (error) {
+        if (options.request.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+          send({ type: "result", ok: false, cancelled: true, error: "Cancelled. Nothing was saved." });
+          return;
+        }
+        const message = error instanceof OpenAiError ? error.message : "Could not read that statement.";
+        send({ type: "result", ok: false, code: "rejected", error: message });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+  });
 }
