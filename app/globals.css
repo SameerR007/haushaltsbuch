@@ -140,6 +140,39 @@ h1 {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+.assistant-home {
+  margin: 0 auto 18px;
+  width: 100%;
+  background: #f7f1e8;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.assistant-home p {
+  margin: 0;
+}
+
+.assistant-home a {
+  color: var(--teal);
+  font-weight: 650;
+}
+
+.assistant-home-label {
+  color: var(--muted);
+}
+
+.assistant-home-value {
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.assistant-home-inline strong {
+  font-weight: 700;
+}
+
 .pill {
   font-size: 11px;
   font-weight: 600;

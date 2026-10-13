@@ -73,18 +73,17 @@ export function suggestedPrompts(input: {
   bankName?: string | null;
   currency?: string | null;
   now?: Date;
-}): [string, string, string] {
+  statement?: boolean;
+}): string[] {
   const { monthName, dayPhrase } = previousFullMonth(input.now ?? new Date());
   const amount = sampleAmount(input.currency);
   const bank = input.bankName?.trim() ?? "";
   const add = bank
     ? `Add ${amount} groceries from ${bank} on ${dayPhrase}`
     : `Add ${amount} groceries on ${dayPhrase}`;
-  return [
-    add,
-    "Add the transactions from this bank statement",
-    `How much did I spend on food in ${monthName}?`,
-  ];
+  const prompts = [add, `How much did I spend on food in ${monthName}?`];
+  if (input.statement !== false) prompts.splice(1, 0, "Add the transactions from this bank statement");
+  return prompts;
 }
 
 export function householdInstructions(input: {

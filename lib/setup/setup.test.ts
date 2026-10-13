@@ -212,7 +212,7 @@ test("a currency change does not convert saved amounts", () => {
   });
 });
 
-test("connection JSON is version 2 and drops cloud fields", () => {
+test("a version 2 OpenAI connection is read as version 3 and drops cloud fields", () => {
   assert.equal(hasSavedConnection("1"), true);
   assert.equal(hasSavedConnection(""), false);
   assert.equal(parseConnection("1"), null);
@@ -241,7 +241,9 @@ test("connection JSON is version 2 and drops cloud fields", () => {
     }),
   );
   assert.ok(parsed);
-  assert.equal(parsed.v, 2);
+  assert.equal(parsed.v, 3);
+  assert.equal(parsed.assistant.type, "openai");
+  if (parsed.assistant.type === "openai") assert.equal(parsed.assistant.apiKey, OPENAI_KEY);
   assert.equal(parsed.banks[0]?.initials, "IN");
   const emptyBanks = parseConnection(
     JSON.stringify({

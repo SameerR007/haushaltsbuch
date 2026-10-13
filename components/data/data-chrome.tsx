@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 function stepLabel(path: string): string {
+  if (path.startsWith("/data/assistant")) return "CHANGE ASSISTANT";
   if (path.startsWith("/data/banks")) return "ADD / REMOVE BANKS";
   if (path.startsWith("/data/reset")) return "SET UP COMPLETELY NEW";
   return "YOUR DATA";

@@ -2,16 +2,26 @@
 
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { ReviewCard } from "@/components/tracker/review-card";
+import { endpointHostname, LOCAL_IMPORT_SOON } from "@/lib/assistant/copy";
 import {
   EMPTY_HEADING,
   EMPTY_SUBTITLE,
+  EMPTY_SUBTITLE_TYPED,
   PDF_DISCLOSURE,
   PLACEHOLDER_EMPTY,
   PLACEHOLDER_FOLLOWUP,
+  PLACEHOLDER_TYPED,
   READING_STATEMENT,
   REATTACH_PDF,
+  pdfGoesTo,
 } from "@/lib/chat/copy";
-import { clearPdfDisclosureAck, readConnection, rememberActiveBanks, type SavedConnection } from "@/lib/connection";
+import {
+  assistantRequestFields,
+  clearPdfDisclosureAck,
+  readConnection,
+  rememberActiveBanks,
+  type SavedConnection,
+} from "@/lib/connection";
 import { parseHousehold } from "@/lib/data/parse";
 import { attachmentLabel, countPdfPages, isPdfBytes, MAX_PDF_BYTES, PDF_NOT_PDF, PDF_TOO_LARGE } from "@/lib/chat/pdf-meta";
 import {
@@ -154,14 +164,20 @@ export function TrackerChat() {
     (item) => item.kind === "user" || item.kind === "assistant" || item.kind === "proposal",
   );
   const started = promptsUsed || items.some((item) => item.kind === "user");
+  const allowPdf = connection?.assistant.type !== "local";
   const prompts =
     ready && banksReady
       ? suggestedPrompts({
           bankName: connection?.banks[0]?.name ?? null,
           currency: connection?.currency ?? null,
+          statement: allowPdf,
         })
       : [];
-  const showDisclosure = Boolean(attachment?.file) && !ack;
+  const showDisclosure = allowPdf && Boolean(attachment?.file) && !ack;
+  const disclosure =
+    connection?.assistant.type === "endpoint"
+      ? pdfGoesTo(endpointHostname(connection.assistant.baseUrl))
+      : PDF_DISCLOSURE;
 
   function patchProposal(id: number, patch: Partial<Extract<Item, { kind: "proposal" }>>) {
     setItems((current) =>
@@ -171,6 +187,7 @@ export function TrackerChat() {
 
   async function onPickFile(file: File | undefined) {
     setFormError("");
+    if (!allowPdf) return;
     if (fileRef.current) fileRef.current.value = "";
     if (!file) return;
     if (file.size > MAX_PDF_BYTES) {
@@ -193,6 +210,7 @@ export function TrackerChat() {
 
   function onDropPdf(event: DragEvent<HTMLElement>) {
     event.preventDefault();
+    if (!allowPdf) return;
     void onPickFile(event.dataTransfer.files?.[0]);
   }
 
@@ -233,9 +251,13 @@ export function TrackerChat() {
       setFormError(REATTACH_PDF);
       return;
     }
+    if (!allowPdf && attachment?.file) {
+      setFormError(LOCAL_IMPORT_SOON);
+      return;
+    }
     if (attachment && !ack) return;
     const saved = connection ?? readConnection();
-    if (!saved?.openaiApiKey) {
+    if (!saved?.assistant) {
       setPromptsUsed(true);
       setItems((current) => [
         ...current,
@@ -273,9 +295,10 @@ export function TrackerChat() {
       ]);
 
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: text }]);
+      const fields = assistantRequestFields(saved.assistant);
       const data = file
-        ? await postPdf(saved.openaiApiKey, text, file, turns.slice(0, -1))
-        : await postChat(saved.openaiApiKey, turns);
+        ? await postPdf(fields, text, file, turns.slice(0, -1))
+        : await postChat(fields, turns);
       setItems((current) => {
         const without = current.filter((item) => item.id !== statusId);
         if (!data) {
@@ -414,7 +437,7 @@ export function TrackerChat() {
       ) : hydrated ? (
         <div className="tracker-empty">
           <h1>{EMPTY_HEADING}</h1>
-          <p>{EMPTY_SUBTITLE}</p>
+          <p>{allowPdf ? EMPTY_SUBTITLE : EMPTY_SUBTITLE_TYPED}</p>
           {prompts.length > 0 && (
             <div className="tracker-prompts">
               {prompts.map((prompt) => (
@@ -440,7 +463,7 @@ export function TrackerChat() {
       <form className="tracker-form" onSubmit={(event) => void onSend(event)}>
         {showDisclosure && (
           <div className="tracker-notice">
-            <p>{PDF_DISCLOSURE}</p>
+            <p>{disclosure}</p>
             <div className="tracker-notice-actions">
               <button type="button" className="tracker-confirm" onClick={acknowledge}>
                 Continue
@@ -451,7 +474,15 @@ export function TrackerChat() {
             </div>
           </div>
         )}
-        {attachment && (
+        {!allowPdf && (
+          <div className="tracker-local-note" data-testid="local-import-note">
+            <p>
+              <strong>Statement import on this computer is coming soon.</strong> You can still add expenses by
+              typing. <a href="/data/assistant">Change assistant</a>
+            </p>
+          </div>
+        )}
+        {allowPdf && attachment && (
           <div className="tracker-chip-row">
             <span className="tracker-chip">
               {attachmentLabel(attachment.name, attachment.pages, attachment.size)}
@@ -476,7 +507,10 @@ export function TrackerChat() {
             type="button"
             className="tracker-clip"
             aria-label="Attach a bank statement PDF"
-            onClick={() => fileRef.current?.click()}
+            disabled={!allowPdf}
+            onClick={() => {
+              if (allowPdf) fileRef.current?.click();
+            }}
           >
             <PaperclipIcon />
           </button>
@@ -485,7 +519,7 @@ export function TrackerChat() {
             className={draft ? "has-value" : undefined}
             value={draft}
             aria-label="Expense or instruction"
-            placeholder={started ? PLACEHOLDER_FOLLOWUP : PLACEHOLDER_EMPTY}
+            placeholder={started ? PLACEHOLDER_FOLLOWUP : allowPdf ? PLACEHOLDER_EMPTY : PLACEHOLDER_TYPED}
             onChange={(event) => setDraft(event.target.value)}
             autoComplete="off"
           />
@@ -525,19 +559,23 @@ async function postJson(path: string, body: object): Promise<Record<string, unkn
   }
 }
 
-async function postChat(apiKey: string, messages: ChatTurn[]): Promise<Record<string, unknown> | null> {
-  return postJson("/api/chat", { apiKey, messages });
+async function postChat(
+  fields: { apiKey?: string; assistant?: object },
+  messages: ChatTurn[],
+): Promise<Record<string, unknown> | null> {
+  return postJson("/api/chat", { ...fields, messages });
 }
 
 async function postPdf(
-  apiKey: string,
+  fields: { apiKey?: string; assistant?: object },
   instruction: string,
   attachment: Attachment,
   messages: ChatTurn[],
 ): Promise<Record<string, unknown> | null> {
   try {
     const form = new FormData();
-    form.set("apiKey", apiKey);
+    if (fields.apiKey) form.set("apiKey", fields.apiKey);
+    if (fields.assistant) form.set("assistant", JSON.stringify(fields.assistant));
     form.set("instruction", instruction);
     form.set("messages", JSON.stringify(messages));
     if (!attachment.file) return null;

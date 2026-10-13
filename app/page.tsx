@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { WelcomeAssistant } from "@/components/welcome-assistant";
 import { TRACKER_HOME } from "@/components/tracker/nav";
 
 export default function Home() {
@@ -10,6 +11,7 @@ export default function Home() {
         Track spending in plain language. Your money stays in a database on
         this computer — the app runs on your machine.
       </p>
+      <WelcomeAssistant />
       <div className="actions">
         <Link className="primary first-only" href="/setup">
           Get started
@@ -22,13 +24,13 @@ export default function Home() {
         </Link>
       </div>
       <p className="foot first-only">
-        We’ll walk you through an OpenAI key, currency (default €), and your banks.
+        We’ll ask where the assistant should think, then currency (default €) and your banks.
       </p>
       <p className="foot returning-only">
         Welcome back — pick up where you left off.
       </p>
       <div className="pills">
-        <span className="pill">Default €</span>
+        <span className="pill first-only">Default €</span>
         <span className="pill">Chat + summary</span>
         <span className="pill">On this computer</span>
       </div>

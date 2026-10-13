@@ -10,7 +10,8 @@ import {
 import { householdInstructions, MODEL_TURN_LIMIT, recentModelTurns, todayIso, withPdfInstructions } from "@/lib/chat/prompts";
 import type { ChatTurn, Proposal } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
-import { looksLikeOpenAiKey } from "@/lib/setup/guards";
+import { LOCAL_IMPORT_SOON } from "@/lib/assistant/copy";
+import { parseAssistantTarget } from "@/lib/assistant/target";
 import { guardSameOrigin, jsonResult } from "@/lib/setup/http";
 
 export const runtime = "nodejs";
@@ -57,12 +58,29 @@ export async function POST(request: Request) {
     } catch {
       return invalid("Invalid request.");
     }
-    const apiKey = form.get("apiKey");
+    const assistantField = form.get("assistant");
+    const legacyKey = form.get("apiKey");
+    let assistantBody: Record<string, unknown> = {};
+    if (typeof assistantField === "string" && assistantField.trim()) {
+      try {
+        const parsed = JSON.parse(assistantField) as unknown;
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          return invalid("Add an assistant in setup.");
+        }
+        assistantBody = { assistant: parsed };
+      } catch {
+        return invalid("Add an assistant in setup.");
+      }
+    } else if (typeof legacyKey === "string") {
+      assistantBody = { apiKey: legacyKey };
+    }
+    const parsedAssistant = parseAssistantTarget(assistantBody);
+    if (!parsedAssistant.ok) return invalid(parsedAssistant.error);
+    const assistant = parsedAssistant.value;
+    if (assistant.type === "local") return invalid(LOCAL_IMPORT_SOON);
+    const apiKey = assistant.apiKey;
     const instruction = form.get("instruction");
     const file = form.get("file");
-    if (typeof apiKey !== "string" || !looksLikeOpenAiKey(apiKey)) {
-      return invalid("Add an OpenAI key in setup.");
-    }
     if (typeof instruction !== "string" || !instruction.trim() || instruction.length > 8000) {
       return invalid("Add an instruction for this statement.");
     }
@@ -78,6 +96,7 @@ export async function POST(request: Request) {
     let proposalArgs: unknown = null;
     await runChatTurn({
       apiKey,
+      assistant,
       instructions: withPdfInstructions(
         householdInstructions({
           currency: household.currency,
