@@ -36,6 +36,7 @@ import {
 import { attachmentLabel, countPdfPages, formatFileSize } from "./pdf-meta";
 import { householdInstructions, MODEL_TURN_LIMIT, previousFullMonth, recentModelTurns, RUN_SQL_RULE, SIGNED_AMOUNT_RULE, STATEMENT_ROWS_RULE, suggestedPrompts, withPdfInstructions } from "./prompts";
 import { executeReadOnlyQuery, guardReadQuery, SQL_ROW_CAP } from "./sql-guard";
+import { addCurrentYear, reframeForModel } from "./reframe";
 import { confirmTransactions, undoTransactions } from "./transactions";
 import { reviewProposedRows, rowsToSave } from "./validate-rows";
 
@@ -1563,3 +1564,39 @@ function walk(dir: string): string[] {
       : [];
   });
 }
+
+test("a month without a year gets the current year; a year the user gave is kept", () => {
+  const now = new Date(2026, 9, 16);
+  const cases: [string, string][] = [
+    ["how much did i spend in August on Food", "how much did i spend in August 2026 on Food"],
+    ["What is the food expense in 2024?", "What is the food expense in 2024?"],
+    ["food in August 2024", "food in August 2024"],
+    ["Add 12.50 groceries from Tom on 12 September", "Add 12.50 groceries from Tom on 12 September 2026"],
+    ["Add coffee on September 12th", "Add coffee on September 12th 2026"],
+    ["compare aug and sep", "compare aug 2026 and sep 2026"],
+    ["between June and December", "between June 2026 and December 2026"],
+    ["how much in may", "how much in may 2026"],
+    ["May I add a coffee?", "May I add a coffee?"],
+    ["we march on", "we march on"],
+    ["how much did I spend on food?", "how much did I spend on food?"],
+  ];
+  for (const [input, expected] of cases) assert.equal(addCurrentYear(input, now), expected, input);
+
+  const sent = reframeForModel("how much did i spend in August on Food", now);
+  assert.equal(sent.question, "how much did i spend in August 2026 on Food");
+  assert.equal(sent.content.endsWith("Today is Friday, 16 October 2026 (2026-10-16)."), true);
+
+  const chat = householdInstructions({ currency: "EUR", categories: ["food"], banks: [{ name: "ING", initials: "IN" }] });
+  assert.equal(chat.includes("Today's date is"), false);
+  assert.match(chat, /Each user message ends with today's date/);
+
+  const stored = parseStoredChat(
+    JSON.stringify({
+      v: 1,
+      promptsUsed: true,
+      items: [{ id: 2, kind: "user", text: "food in August", sentAs: "food in August 2026" }],
+      attachment: null,
+    }),
+  );
+  assert.deepEqual(stored?.items[0], { id: 2, kind: "user", text: "food in August", sentAs: "food in August 2026" });
+});

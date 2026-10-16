@@ -324,7 +324,7 @@ export function TrackerChat() {
   function history(): ChatTurn[] {
     const turns: ChatTurn[] = [];
     for (const item of items) {
-      if (item.kind === "user") turns.push({ role: "user", content: item.text });
+      if (item.kind === "user") turns.push({ role: "user", content: item.sentAs ?? item.text });
       else if (item.kind === "assistant") turns.push({ role: "assistant", content: item.text });
       else if (item.kind === "proposal" && item.phase === "saved") {
         turns.push({ role: "assistant", content: "The user saved the proposed transactions." });
@@ -563,16 +563,20 @@ export function TrackerChat() {
       setPending(true);
       setPromptsUsed(true);
       const statusId = nextId();
+      const userId = nextId();
       setItems((current) => [
         ...current.filter((item) => item.kind !== "status"),
-        { id: nextId(), kind: "user", text },
+        { id: userId, kind: "user", text },
         { id: statusId, kind: "status", text: "Working…" },
       ]);
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: text }]);
       const data = await postChat(assistantRequestFields(saved.assistant), turns);
       if (epoch !== chatEpoch.current) return;
+      const sentAs = typeof data?.sentAs === "string" && data.sentAs !== text ? data.sentAs : null;
       setItems((current) => {
-        const without = current.filter((item) => item.id !== statusId);
+        const without = current
+          .filter((item) => item.id !== statusId)
+          .map((item) => (sentAs && item.id === userId && item.kind === "user" ? { ...item, sentAs } : item));
         if (!data) {
           return [...without, { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." }];
         }
@@ -661,6 +665,11 @@ export function TrackerChat() {
                 <p key={item.id} className="tracker-user">
                   {item.text}
                   {item.statementName ? <span className="tracker-statement">{item.statementName}</span> : null}
+                  {item.sentAs ? (
+                    <span className="tracker-sent-as" data-testid="sent-as">
+                      Sent as: {item.sentAs}
+                    </span>
+                  ) : null}
                 </p>
               );
             }

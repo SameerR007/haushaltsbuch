@@ -23,6 +23,8 @@ export type StoredUser = {
   kind: "user";
   text: string;
   statementName?: string;
+  /** The question as the model got it, when the app filled in the year. */
+  sentAs?: string;
 };
 
 export type StoredAssistant = {
@@ -212,7 +214,14 @@ function parseItem(value: unknown): StoredItem | null {
     const text = clip(value.text);
     if (!text) return null;
     const statementName = typeof value.statementName === "string" ? clip(value.statementName).slice(0, 120) : "";
-    return statementName ? { id, kind: "user", text, statementName } : { id, kind: "user", text };
+    const sentAs = typeof value.sentAs === "string" ? clip(value.sentAs) : "";
+    return {
+      id,
+      kind: "user",
+      text,
+      ...(statementName ? { statementName } : {}),
+      ...(sentAs && sentAs !== text ? { sentAs } : {}),
+    };
   }
   if (value.kind === "assistant" && typeof value.text === "string") {
     const text = clip(value.text);

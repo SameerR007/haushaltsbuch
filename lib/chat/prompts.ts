@@ -97,7 +97,8 @@ export function householdInstructions(input: {
   currency: string;
   categories: readonly string[];
   banks: readonly BankRef[];
-  today: string;
+  /** Statement import only. Chat puts today's date on the user's message instead (lib/chat/reframe.ts). */
+  today?: string;
 }): string {
   const banks = input.banks.length
     ? input.banks.map((bank) => `- ${bank.name} (${bank.initials})`).join("\n")
@@ -127,7 +128,11 @@ ${STATEMENT_ROWS_RULE}
 
 ${AMBIGUITY_RULE}
 
-Today's date is ${input.today}. You resolve words such as today and yesterday. The app does not rewrite dates.
+${
+    input.today
+      ? `Today's date is ${input.today}. You resolve words such as today and yesterday.`
+      : "Each user message ends with today's date. Use it for words such as today and yesterday. A month in the message already has its year."
+  }
 
 For a question, reply in plain sentences after run_sql. For new money rows, call propose_transactions and do not claim they were saved.`;
 }
