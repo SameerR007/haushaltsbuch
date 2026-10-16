@@ -1,6 +1,7 @@
 "use client";
 
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { createChatStore } from "@/components/tracker/chat-store";
 import { ReviewCard } from "@/components/tracker/review-card";
 import {
   endpointHostname,
@@ -85,26 +86,73 @@ function PaperclipIcon() {
   );
 }
 
+type ChatState = {
+  items: Item[];
+  draft: string;
+  attachment: Attachment | null;
+  pending: boolean;
+  formError: string;
+  ack: boolean;
+  promptsUsed: boolean;
+  hydrated: boolean;
+  reading: Reading | null;
+};
+
+// The chat lives outside the component so a read or an answer keeps running while another page is
+// open, and is on screen when the user comes back. New chat (or a reload) starts over.
+const chat = createChatStore<ChatState>({
+  items: [],
+  draft: "",
+  attachment: null,
+  pending: false,
+  formError: "",
+  ack: false,
+  promptsUsed: false,
+  hydrated: false,
+  reading: null,
+});
+const idRef = { current: 1 };
+const sendLock = { current: false };
+const actionLock = { current: new Set<number>() };
+const abortRef: { current: AbortController | null } = { current: null };
+/** Bumped by New chat. Work started in an earlier chat drops its result. */
+const chatEpoch = { current: 0 };
+
+// Saved on every change, including while the user is on another page.
+let lastSaved: Pick<ChatState, "items" | "promptsUsed" | "attachment"> | null = null;
+chat.subscribe(() => {
+  const state = chat.get();
+  if (!state.hydrated) return;
+  if (
+    lastSaved &&
+    lastSaved.items === state.items &&
+    lastSaved.promptsUsed === state.promptsUsed &&
+    lastSaved.attachment === state.attachment
+  ) {
+    return;
+  }
+  lastSaved = { items: state.items, promptsUsed: state.promptsUsed, attachment: state.attachment };
+  const stored = buildStoredChat({ promptsUsed: state.promptsUsed, items: state.items, attachment: state.attachment });
+  if (!showNewChatButton(stored)) clearStoredChat();
+  else writeStoredChat(stored);
+});
+
 export function TrackerChat() {
-  const idRef = useRef(1);
   const threadRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const sendLock = useRef(false);
-  const actionLock = useRef(new Set<number>());
-  const [items, setItems] = useState<Item[]>([]);
-  const [draft, setDraft] = useState("");
-  const [attachment, setAttachment] = useState<Attachment | null>(null);
-  const [pending, setPending] = useState(false);
-  const [formError, setFormError] = useState("");
+  const [items, setItems] = chat.useField("items");
+  const [draft, setDraft] = chat.useField("draft");
+  const [attachment, setAttachment] = chat.useField("attachment");
+  const [pending, setPending] = chat.useField("pending");
+  const [formError, setFormError] = chat.useField("formError");
   const [connection, setConnection] = useState<SavedConnection | null>(null);
   const [ready, setReady] = useState(false);
   const [banksReady, setBanksReady] = useState(false);
-  const [ack, setAck] = useState(false);
-  const [promptsUsed, setPromptsUsed] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
-  const [reading, setReading] = useState<Reading | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [ack, setAck] = chat.useField("ack");
+  const [promptsUsed, setPromptsUsed] = chat.useField("promptsUsed");
+  const [hydrated, setHydrated] = chat.useField("hydrated");
+  const [reading, setReading] = chat.useField("reading");
   const [now, setNow] = useState(0);
   const readingSince = reading?.startedAt ?? null;
 
@@ -114,6 +162,10 @@ export function TrackerChat() {
   }
 
   useEffect(() => {
+    // Once per page load. Coming back from another page keeps what is already here.
+    if (chat.get().hydrated) return;
+    clearPdfDisclosureAck();
+    setAck(false);
     const stored = readStoredChat();
     if (stored) {
       setPromptsUsed(stored.promptsUsed);
@@ -125,17 +177,14 @@ export function TrackerChat() {
       idRef.current = maxId;
     }
     setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    const stored = buildStoredChat({ promptsUsed, items, attachment });
-    if (!showNewChatButton(stored)) clearStoredChat();
-    else writeStoredChat(stored);
-  }, [hydrated, promptsUsed, items, attachment]);
+  }, [setAck, setAttachment, setHydrated, setItems, setPromptsUsed]);
 
   useEffect(() => {
     function reset() {
+      chatEpoch.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setReading(null);
       setItems([]);
       setDraft("");
       setAttachment(null);
@@ -150,13 +199,11 @@ export function TrackerChat() {
     }
     window.addEventListener(CHAT_RESET_EVENT, reset);
     return () => window.removeEventListener(CHAT_RESET_EVENT, reset);
-  }, []);
+  }, [setAck, setAttachment, setDraft, setFormError, setItems, setPending, setPromptsUsed, setReading]);
 
   useEffect(() => {
     const existing = readConnection();
     setConnection(existing);
-    clearPdfDisclosureAck();
-    setAck(false);
     setReady(true);
     let ignore = false;
     void (async () => {
@@ -312,6 +359,7 @@ export function TrackerChat() {
       return;
     }
     sendLock.current = true;
+    const epoch = chatEpoch.current;
     const prior = history();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -360,6 +408,7 @@ export function TrackerChat() {
           );
         },
       });
+      if (epoch !== chatEpoch.current) return;
       if (controller.signal.aborted || data?.cancelled === true) {
         setItems((current) => [...current, { id: nextId(), kind: "assistant", text: "Cancelled. Nothing was saved." }]);
         return;
@@ -385,16 +434,19 @@ export function TrackerChat() {
         return [...current, { id: nextId(), kind: "assistant", text: "No transactions were read from that statement." }];
       });
     } catch (error) {
+      if (epoch !== chatEpoch.current) return;
       const text =
         error instanceof DOMException && error.name === "AbortError"
           ? "Cancelled. Nothing was saved."
           : "Could not reach the tracker. Try again.";
       setItems((current) => [...current, { id: nextId(), kind: "assistant", text }]);
     } finally {
-      abortRef.current = null;
-      setReading(null);
-      sendLock.current = false;
-      setPending(false);
+      if (epoch === chatEpoch.current) {
+        abortRef.current = null;
+        setReading(null);
+        sendLock.current = false;
+        setPending(false);
+      }
     }
   }
 
@@ -404,6 +456,7 @@ export function TrackerChat() {
     const file = attachment;
     if (!saved?.assistant || saved.assistant.type !== "local" || !file?.file || reading || sendLock.current) return;
     sendLock.current = true;
+    const epoch = chatEpoch.current;
     const controller = new AbortController();
     abortRef.current = controller;
     const filename = file.name || "statement.pdf";
@@ -428,7 +481,7 @@ export function TrackerChat() {
           setReading((current) => (current ? { ...current, phase: "scan", ...event } : current));
         },
       });
-      if (controller.signal.aborted || data?.cancelled === true) return;
+      if (epoch !== chatEpoch.current || controller.signal.aborted || data?.cancelled === true) return;
       const read = data?.ok === true ? readPagesOf(data.read) : null;
       if (read) {
         setAttachment((current) => (current && current.file === file.file ? { ...current, read } : current));
@@ -443,14 +496,16 @@ export function TrackerChat() {
           : { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." },
       ]);
     } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
+      if (epoch === chatEpoch.current && !(error instanceof DOMException && error.name === "AbortError")) {
         setItems((current) => [...current, { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." }]);
       }
     } finally {
-      abortRef.current = null;
-      setReading(null);
-      sendLock.current = false;
-      setPending(false);
+      if (epoch === chatEpoch.current) {
+        abortRef.current = null;
+        setReading(null);
+        sendLock.current = false;
+        setPending(false);
+      }
     }
   }
 
@@ -486,6 +541,7 @@ export function TrackerChat() {
       return;
     }
     sendLock.current = true;
+    const epoch = chatEpoch.current;
     const prior = history();
     try {
       setDraft("");
@@ -500,6 +556,7 @@ export function TrackerChat() {
       ]);
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: text }]);
       const data = await postChat(assistantRequestFields(saved.assistant), turns);
+      if (epoch !== chatEpoch.current) return;
       setItems((current) => {
         const without = current.filter((item) => item.id !== statusId);
         if (!data) {
@@ -517,8 +574,10 @@ export function TrackerChat() {
         return [...without, { id: nextId(), kind: "assistant", text: reply }];
       });
     } finally {
-      sendLock.current = false;
-      setPending(false);
+      if (epoch === chatEpoch.current) {
+        sendLock.current = false;
+        setPending(false);
+      }
     }
   }
 
@@ -527,6 +586,7 @@ export function TrackerChat() {
     if (!item || item.kind !== "proposal" || item.busy || actionLock.current.has(id)) return;
     actionLock.current.add(id);
     patchProposal(id, { busy: true, error: "" });
+    const epoch = chatEpoch.current;
     const data = await postJson("/api/transactions/confirm", {
       rows: rowsToSave(item.proposal.rows).map((row) => ({
         date: row.date,
@@ -537,6 +597,7 @@ export function TrackerChat() {
       })),
     });
     actionLock.current.delete(id);
+    if (epoch !== chatEpoch.current) return;
     if (!data || data.ok !== true || !Array.isArray(data.ids) || typeof data.batchId !== "string") {
       patchProposal(id, {
         busy: false,
