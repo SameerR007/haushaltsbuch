@@ -48,13 +48,13 @@ The file holds categories, banks, transactions, and the currency preference. It 
 
 ## Landing
 
-The welcome screen picks first visit or returning from `localStorage`. There is no toggle on the page.
+The home page has one **Get started** button. It picks first visit or returning from `localStorage`. There is no toggle on the page.
 
 | | |
 | --- | --- |
 | **Key** | `haushaltsbuch.connection` |
-| **Missing or `""`** | First visit. **Get started** links to `/setup`. |
-| **Any non-empty string** | Returning. **Open tracker** links to `/app/expenses`. **Review the data** links to `/data`. |
+| **Missing or `""`** | First visit. **Get started** links to the setup chat at `/setup/chat`. |
+| **Any non-empty string** | Returning. **Get started** links to the setup card at `/setup`, where **Open tracker** links to `/expenses` and **Review the data** links to `/data`. |
 
 The key is read in `app/layout.tsx` before first paint (`html[data-visit="returning"]`). The constant lives in `lib/connection.ts`.
 
@@ -72,12 +72,12 @@ localStorage.removeItem("haushaltsbuch.connection")
 
 ## Setup
 
-`/setup` is a four-step chat. The header says **Setup · step 1 of 4** through **step 4 of 4**.
+`/setup/chat` is a four-step chat. The header says **Setup · step 1 of 4** through **step 4 of 4**.
 
 1. Where the assistant should think: **On OpenAI**, **On this computer**, or **OpenAI-compatible endpoint**. OpenAI then asks for an API key, checked once. On this computer asks for an app address (default `http://localhost:11434`) and a model (default `gemma4:12b-mlx`, hint `Recommended: gemma4:12b-mlx · any installed model id works`; the -mlx build needs a Mac with Apple silicon), then **Test connection**. **Scanned statements (optional)** is a second plain text field (suggested `glm-ocr`) with its own **Test connection** and a **None** choice. Continue does not require an OCR model. An endpoint asks for a base URL, a key, and a model name, then **Test connection**. After that check it notes that statement import needs a model that can read PDF files and call tools. Continue stays off until the chat check succeeds. A slow answer still counts. The local database file is created in the background.
 2. Currency. Euro (€) starts selected. The other choices are INR (₹), USD ($), and Other… for a three-letter ISO code such as CHF. The preference stored before that choice stays EUR. A later currency choice changes the symbol and the number format only. It does not convert amounts already saved, and confirm refuses a different currency once any transaction exists. Use **Set up completely new** before choosing another currency. Subtitles and cards show euro (€). Other currencies show the code and symbol when they differ, such as INR (₹) or USD ($), and the code alone when they do not, such as CHF.
 3. One or more banks with initials.
-4. Confirm. The browser writes `haushaltsbuch.connection`, and the welcome screen shows **Open tracker**.
+4. Confirm. The browser writes `haushaltsbuch.connection`, and the setup card at `/setup` shows **Open tracker**.
 
 A later visit shows the saved assistant (**on this computer (gemma4:12b-mlx) · OCR: glm-ocr** when an OCR model is set, **on this computer (gemma4:12b-mlx)** when it is not, **on OpenAI**, or **OpenAI-compatible endpoint (host)**) with **Change assistant**. **Open tracker** goes straight to Expenses. Currency and banks are not asked again.
 
@@ -122,9 +122,9 @@ No sample transactions are inserted. Confirm updates the currency and the submit
 
 ## Tracker
 
-`/app` is the money chat.
+`/chat` is the money chat.
 
-The header is **Haushaltsbuch**, then **Home**, **Expenses**, **Chat**, **Summary**, and **Insights ↗** (opens in a new window). **Home** and the **Haushaltsbuch** title both open the welcome screen. Home is not the active tab on Expenses, Chat, Summary, or Insights. Insights is a placeholder. **Open tracker** (welcome, setup, and Your data) opens Expenses at `/app/expenses`.
+The header is **Haushaltsbuch**, then **Home**, **Setup**, **Expenses**, **Chat**, **Summary**, and **Insights ↗** (opens in a new window). The same links sit top right on the home page and both setup pages. **Home** and the **Haushaltsbuch** title both open the home page. Home is not the active tab on any other page, and Setup stays active on `/setup/chat`. Insights is a placeholder. **Open tracker** (setup card, setup chat, and Your data) opens Expenses at `/expenses`.
 
 **Summary** has two views, **One period** and **Compare two periods**. Each keeps its own dates in this browser (`haushaltsbuch.summary`), including while you switch to Chat and back. **Set up completely new** removes those dates. One period opens on the latest calendar month that has a transaction. From and To take one click per date: the first click sets the start and the second sets the end. Month and whole-year chips jump to that range. The view shows income (salary next to other income), expenses, net, a category donut, and the five largest expenses. It does not show a comparison. Compare two periods keeps its own Period A and Period B. The first time it opens, Period A matches One period and Period B is the previous range; after that the two views stay separate, and changing a compare date reloads only that view. A whole month’s previous range is the previous calendar month, a whole year uses the previous calendar year, and any other range uses the same number of days immediately before. Totals are calculated on this computer. A largest-expense row opens that row in Expenses. An empty One period range says **No expenses in 1 March 2025 – 31 March 2025 yet**, with plain dates, and offers **Go to Chat**.
 
@@ -144,15 +144,17 @@ For a local UI check without calling OpenAI, set `HAUSHALTSBUCH_STUB_OPENAI=1`. 
 
 ## Routes
 
-- `/` — landing
+- `/` — home
+- `/setup` — setup card for a returning browser: assistant, Open tracker, Review the data
+- `/setup/chat` — setup chat. `?mode=keys` opens Change keys
 - `/data` — your data, for a returning browser
 - `/data/banks` — add or soft-remove banks
 - `/data/reset` — backup, then delete everything and start setup again
-- `/setup` — setup chat. `?mode=keys` opens Change keys
-- `/app` — money chat
-- `/app/expenses` — editable expenses
-- `/app/insights` — placeholder, opened in a separate window
-- `/app/summary` — income, expenses, and a comparison of two date ranges
+- `/chat` — money chat
+- `/expenses` — editable expenses
+- `/insights` — placeholder, opened in a separate window
+- `/summary` — income, expenses, and a comparison of two date ranges
+- Old paths (`/app/...`, `/welcome`, `/setup?mode=keys`) redirect to the ones above
 - `POST /api/setup/init` — create or migrate the local database
 - `POST /api/setup/openai` — check an OpenAI key, do not store it
 - `POST /api/setup/assistant` — check a local app or an OpenAI-compatible endpoint, do not store the address or key

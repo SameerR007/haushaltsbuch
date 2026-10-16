@@ -1,4 +1,4 @@
-import { formatPageList, skippedScansNote } from "@/lib/assistant/copy";
+import { skippedScansNote } from "@/lib/assistant/copy";
 import type { Proposal, ReviewRow, StatementReview } from "./types";
 
 export type { StatementReview };
@@ -134,46 +134,6 @@ export function balancePassedText(verdict: Extract<BalanceVerdict, { status: "pa
 
 export function balanceMismatchText(verdict: Extract<BalanceVerdict, { status: "mismatch" }>, currency: string): string {
   return `These rows add up to ${formatSignedAmount(verdict.sum, currency)}. The whole statement changed by ${formatSignedAmount(verdict.change, currency)}. If you asked for every row, ${formatMissingAmount(verdict.missing, currency)} is missing: check the amounts below.`;
-}
-
-export function shortStatementDate(iso: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!match) return iso;
-  return `${match[3]}.${match[2]}.`;
-}
-
-export function statementPeriodLabel(start: string, end: string): string {
-  const format = (iso: string) => {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-    if (!match) return iso;
-    return `${match[3]}.${match[2]}.${match[1]}`;
-  };
-  return `${format(start)} \u2013 ${format(end)}`;
-}
-
-export function statementTitle(count: number, sourceName: string | null, statement: StatementReview): string {
-  const noun = `${count} ${count === 1 ? "row" : "rows"}`;
-  if (statement.failedPage) {
-    const read = statement.pages.filter((page) => page.status === "read").map((page) => page.page);
-    const range = formatPageList(read);
-    return range ? `${noun} from pages ${range}` : `${noun} from ${sourceName ?? "the statement"}`;
-  }
-  return `${noun} from ${sourceName ?? "the statement"}`;
-}
-
-export function statementSubtitle(sourceName: string | null, statement: StatementReview): string {
-  if (statement.failedPage) return `${sourceName ?? "Statement"} \u00b7 read on this computer`;
-  if (statement.skippedPages.length > 0) {
-    const range = formatPageList(statement.textPages);
-    return range ? `Pages ${range} read on this computer` : "Read on this computer";
-  }
-  const parts: string[] = [];
-  if (statement.account) parts.push(statement.account);
-  if (statement.periodStart && statement.periodEnd) {
-    parts.push(statementPeriodLabel(statement.periodStart, statement.periodEnd));
-  }
-  parts.push("read on this computer");
-  return parts.join(" \u00b7 ");
 }
 
 export function skippedNote(statement: StatementReview): string | null {

@@ -1,39 +1,55 @@
 import Link from "next/link";
-import { WelcomeAssistant } from "@/components/welcome-assistant";
-import { TRACKER_HOME } from "@/components/tracker/nav";
+import { SiteNav } from "@/components/site-nav";
+import { HomeVideo } from "@/components/home-video";
 
 export default function Home() {
   return (
-    <main className="card">
-      <p className="eyebrow">Local · Private</p>
-      <h1>Welcome to Haushaltsbuch</h1>
-      <p className="lede">
-        Track spending in plain language. Your money stays in a database on
-        this computer — the app runs on your machine.
-      </p>
-      <WelcomeAssistant />
-      <div className="actions">
-        <Link className="primary first-only" href="/setup">
-          Get started
-        </Link>
-        <Link className="primary returning-only" href={TRACKER_HOME}>
-          Open tracker
-        </Link>
-        <Link className="linkish returning-only" href="/data">
-          Review the data
-        </Link>
-      </div>
-      <p className="foot first-only">
-        We’ll ask where the assistant should think, then currency (default €) and your banks.
-      </p>
-      <p className="foot returning-only">
-        Welcome back — pick up where you left off.
-      </p>
-      <div className="pills">
-        <span className="pill first-only">Default €</span>
-        <span className="pill">Chat + summary</span>
-        <span className="pill">On this computer</span>
-      </div>
+    <>
+      <SiteNav className="site-nav-float" />
+    <main className="home">
+      <section className="home-copy">
+        <p className="eyebrow">Local · Private</p>
+        <h1 className="home-title">Haushaltsbuch</h1>
+        <p className="home-tagline">Your household budget, in plain language.</p>
+        <p className="home-desc">
+          Haushaltsbuch keeps all your expenses in a database on your own
+          computer. Type in what you spent or upload a bank statement, then chat
+          with your data to see where your money went.
+        </p>
+        <ul className="home-points">
+          <li>
+            <strong>Add expenses your way.</strong> Type them in the chat, or upload a
+            bank statement PDF and review the rows before saving.
+          </li>
+          <li>
+            <strong>Chat with your money.</strong> Ask “what did I spend on groceries in
+            March?” and get a straight answer.
+          </li>
+          <li>
+            <strong>Analyse any period.</strong> Look at a month or any date range, and
+            compare two periods side by side.
+          </li>
+          <li>
+            <strong>Fully local if you want.</strong> Run the AI on this computer so
+            nothing leaves it, or connect OpenAI instead.
+          </li>
+        </ul>
+
+        {/* One button for everyone: first visit goes to setup, returning to the setup card. */}
+        <div className="home-actions">
+          <Link className="primary first-only" href="/setup/chat">
+            Get started
+          </Link>
+          <Link className="primary returning-only" href="/setup">
+            Get started
+          </Link>
+        </div>
+      </section>
+
+      <section className="home-media">
+        <HomeVideo />
+      </section>
     </main>
+    </>
   );
 }

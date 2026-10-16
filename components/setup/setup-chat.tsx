@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SiteNav } from "@/components/site-nav";
 import { TRACKER_HOME } from "@/components/tracker/nav";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
@@ -606,7 +607,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
           />
           <div className="setup-chips">
             <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
-              Choose again
+              Back
             </button>
           </div>
         </div>
@@ -624,7 +625,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
           />
           <div className="setup-chips">
             <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
-              Choose again
+              Back
             </button>
           </div>
         </div>
@@ -655,7 +656,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
               {pending && !locked ? "Checking…" : "Continue"}
             </button>
             <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
-              Choose again
+              Back
             </button>
           </div>
         </form>
@@ -834,7 +835,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
     if (message.widget === "done") {
       return (
         <div>
-          <p>You’re set. The welcome screen will show Open tracker.</p>
+          <p>You’re set!</p>
           <div className="setup-chips">
             <Link className="setup-chip primary" href={TRACKER_HOME}>
               Open tracker
@@ -957,6 +958,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
           <div className="setup-step" data-testid="setup-step">
             {stepLabel(phase)}
           </div>
+          <SiteNav />
         </div>
       </header>
       <main className="setup-shell">

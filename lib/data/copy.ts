@@ -22,8 +22,8 @@ export const SUMMARY_ONE = "One period";
 export const SUMMARY_COMPARE = "Compare two periods";
 export const SUMMARY_NET_NOTE = "Income minus expenses";
 export const SUMMARY_UPDATING = "Updating…";
-export const SUMMARY_COMPARE_LEAD =
-  "Compare any two date ranges. These dates are separate from the One period view and are kept even when you switch back and forth.";
+export const SUMMARY_ONE_LEAD = "See income and spending for one date range.";
+export const SUMMARY_COMPARE_LEAD = "Compare any two date ranges.";
 export const SUMMARY_COMPARE_LEGEND =
   "Green means better (more income, less spending), red means worse.";
 

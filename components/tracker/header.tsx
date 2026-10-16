@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NEW_CHAT_CONFIRM } from "@/lib/chat/copy";
 import { CHAT_CHANGED_EVENT, needsNewChatConfirm, readStoredChat, requestNewChat, showNewChatButton } from "@/lib/chat/persist";
-import { isTrackerNavActive, TRACKER_NAV } from "@/components/tracker/nav";
+import { SiteNav } from "@/components/site-nav";
 
 export function TrackerHeader() {
   const pathname = usePathname();
-  const chat = pathname === "/app";
+  const chat = pathname === "/chat";
   const [showNew, setShowNew] = useState(false);
 
   useEffect(() => {
@@ -39,30 +39,7 @@ export function TrackerHeader() {
             New chat
           </button>
         ) : null}
-        <nav className="tracker-nav" aria-label="Tracker">
-          {TRACKER_NAV.map((item) =>
-            item.external ? (
-              <a
-                key={item.href}
-                className={isTrackerNavActive(pathname, item) ? "is-active" : undefined}
-                href={item.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Insights, opens in a new window"
-              >
-                {item.label}
-              </a>
-            ) : (
-              <Link
-                key={item.href}
-                className={isTrackerNavActive(pathname, item) ? "is-active" : undefined}
-                href={item.href}
-              >
-                {item.label}
-              </Link>
-            ),
-          )}
-        </nav>
+        <SiteNav />
       </div>
     </header>
   );

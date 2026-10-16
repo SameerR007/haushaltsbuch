@@ -38,7 +38,7 @@ import { householdInstructions, MODEL_TURN_LIMIT, previousFullMonth, recentModel
 import { executeReadOnlyQuery, guardReadQuery, SQL_ROW_CAP } from "./sql-guard";
 import { addCurrentYear, reframeForModel } from "./reframe";
 import { confirmTransactions, undoTransactions } from "./transactions";
-import { reviewProposedRows, rowsToSave } from "./validate-rows";
+import { editReviewRow, reviewProposedRows, rowsToSave } from "./validate-rows";
 
 const OPENAI_KEY = "sk-openai-example-key";
 
@@ -372,6 +372,29 @@ test("review flags bad fields, defaults one bank, and marks duplicates", () => {
     },
   );
   assert.equal(manyBanks[0]?.flags.includes("unknown_bank"), true);
+});
+
+test("a cell edit re-checks the row and keeps a duplicate only while it matches", () => {
+  const banks = [{ name: "Sparkasse", initials: "SP" }];
+  const categories = ["grocery", "rent"];
+  const existing = [{ id: 7, date: "2026-09-12", amount: -12.5, bank: "Sparkasse", notes: "Groceries" }];
+  const [bad, duplicate] = reviewProposedRows(
+    [
+      { date: "nope", description: "Bad", category: "fun", bank: "Sparkasse", amount: -3, uncertain: true },
+      { date: "2026-09-12", description: "Groceries", category: "grocery", bank: "Sparkasse", amount: -12.5, uncertain: false },
+    ],
+    { categories, banks, existing },
+  );
+  assert.ok(bad && duplicate);
+  const fixed = editReviewRow(bad, { dateInput: "2026-09-01", date: "2026-09-01", category: "rent" }, { categories, banks });
+  assert.deepEqual(fixed.flags, []);
+  const kept = editReviewRow(duplicate, { category: "rent" }, { categories, banks });
+  assert.deepEqual(kept.flags, ["duplicate"]);
+  assert.equal(kept.duplicateOf, 7);
+  const changed = editReviewRow(duplicate, { amountInput: "-13", amount: -13 }, { categories, banks });
+  assert.deepEqual(changed.flags, []);
+  assert.equal(changed.duplicateOf, null);
+  assert.equal(rowsToSave([changed]).length, 1);
 });
 
 test("a statement fixture keeps salary and other incoming rows", () => {
@@ -1527,11 +1550,11 @@ test("stored chat keeps the latest 60 items and replaces an oversized copy", () 
 test("copy matches the tracker and example tags are absent", () => {
   assert.equal(
     PDF_DISCLOSURE,
-    "This PDF goes to OpenAI so it can be read. OpenAI is told not to keep it. Nothing is saved until you confirm.",
+    "This PDF goes to OpenAI so it can be read. Nothing is saved until you confirm.",
   );
-  assert.equal(reviewIntro(4, "statement-november.pdf"), "I found 4 transactions in statement-november.pdf. Nothing is saved yet — check them first.");
+  assert.equal(reviewIntro(4, "statement-november.pdf"), "I found 4 transactions in statement-november.pdf. Nothing is saved yet.");
   assert.equal(confirmLabel(1), "Confirm — save 1 transaction");
-  const roots = ["lib/chat", "app/api/chat", "app/api/import", "app/api/transactions", "components/tracker", "app/app"];
+  const roots = ["lib/chat", "app/api/chat", "app/api/import", "app/api/transactions", "components/tracker", "app/(tracker)"];
   const files = roots.flatMap((dir) => walk(dir));
   assert.ok(files.length > 8);
   for (const file of files) {

@@ -706,7 +706,7 @@ export function TrackerChat() {
                   ) : null}
                   {item.detail ? <p className="tracker-import-detail">{item.detail}</p> : null}
                   {item.setupLink && (
-                    <a className="tracker-setup-link" href="/setup">
+                    <a className="tracker-setup-link" href="/setup/chat">
                       Open setup
                     </a>
                   )}

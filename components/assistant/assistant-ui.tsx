@@ -32,7 +32,7 @@ const CHOICES: { id: AssistantKind; title: string; body: string }[] = [
   {
     id: "openai",
     title: "On OpenAI",
-    body: "Fastest and most accurate. Your questions and statements are sent to OpenAI, which is told not to keep them. Needs an API key.",
+    body: "Fastest and most accurate. Your questions and statements are sent to OpenAI. Needs an API key.",
   },
   {
     id: "local",

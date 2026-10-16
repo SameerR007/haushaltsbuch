@@ -353,7 +353,7 @@ test("summary route stays read-only and has no bank breakdown", () => {
   const route = readFileSync("app/api/summary/route.ts", "utf8");
   const query = readFileSync("lib/data/summary.ts", "utf8");
   const page = readFileSync("components/tracker/summary-board.tsx", "utf8");
-  const css = readFileSync("app/app/tracker.css", "utf8");
+  const css = readFileSync("app/(tracker)/tracker.css", "utf8");
   assert.equal(route.includes("guardStateChange"), false);
   assert.equal(route.includes("openai"), false);
   assert.equal(query.includes("openai"), false);

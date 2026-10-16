@@ -8,7 +8,7 @@ export default function InsightsPage() {
   return (
     <main className="tracker-placeholder">
       <h1>Insights</h1>
-      <p>This page isn’t built yet.</p>
+      <p>coming soon</p>
     </main>
   );
 }

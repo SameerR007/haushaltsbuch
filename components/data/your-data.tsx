@@ -87,7 +87,7 @@ export function YourData({ updated }: { updated: boolean }) {
           Open tracker
         </Link>
         {assistant && assistantUsesKey(assistant) ? (
-          <Link className="data-secondary" href="/setup?mode=keys">
+          <Link className="data-secondary" href="/setup/chat?mode=keys">
             Change keys
           </Link>
         ) : null}

@@ -5,6 +5,6 @@ export const metadata: Metadata = {
   title: "Chat · Haushaltsbuch",
 };
 
-export default function TrackerPage() {
+export default function ChatPage() {
   return <TrackerChat />;
 }

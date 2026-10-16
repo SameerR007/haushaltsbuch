@@ -184,7 +184,7 @@ export function ExpensesBoard({ focusId = null }: { focusId?: string | null }) {
         <div className="expenses-empty">
           <p className="expenses-empty-lead">{EXPENSES_EMPTY_LEAD}</p>
           <p className="expenses-empty-note">{EXPENSES_EMPTY_NOTE}</p>
-          <Link className="expenses-go-chat" href="/app">
+          <Link className="expenses-go-chat" href="/chat">
             {EXPENSES_EMPTY_ACTION}
           </Link>
         </div>
