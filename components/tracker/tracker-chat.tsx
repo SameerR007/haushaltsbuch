@@ -3,14 +3,18 @@
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { ReviewCard } from "@/components/tracker/review-card";
 import {
-  DEFAULT_STATEMENT_INSTRUCTION,
   endpointHostname,
   FINISH_REVIEW_FIRST,
+  ADD_EVERYTHING,
+  ADD_EVERYTHING_INSTRUCTION,
+  FINDING_ROWS,
   IMPORT_BUTTON,
   IMPORT_STATEMENT,
   LOCAL_READ_HINT,
   LOCAL_STATEMENT_NOTE,
-  PLACEHOLDER_ATTACHED,
+  PLACEHOLDER_IMPORT_FIRST,
+  PLACEHOLDER_STATEMENT_READY,
+  PLACEHOLDER_STATEMENT_SEND,
   readingScannedPage,
   scannedPageMix,
 } from "@/lib/assistant/copy";
@@ -55,11 +59,15 @@ type Item =
   | { id: number; kind: "status"; text: string }
   | (StoredProposal & { busy: boolean });
 
+type ReadPage = { page: number; kind: string; text: string };
+
 type Attachment = {
   file: File | null;
   name: string;
   size: number;
   pages: number | null;
+  /** Local assistant only: pages already read on this computer by Import. */
+  read?: ReadPage[] | null;
 };
 
 function PaperclipIcon() {
@@ -204,7 +212,10 @@ export function TrackerChat() {
   const reviewingStatement = items.some(
     (item) => item.kind === "proposal" && item.phase === "review" && Boolean(item.proposal.statement),
   );
-  const canImport = Boolean(attachment?.file) && !reading && !showDisclosure && !reviewingStatement;
+  // A local assistant reads the PDF first (Import), then the note picks the rows (Send).
+  const needsRead = localAssistant && Boolean(attachment?.file) && !attachment?.read && !reviewingStatement;
+  const statementReady =
+    Boolean(attachment?.file) && !reading && !showDisclosure && !reviewingStatement && !needsRead;
 
   function patchProposal(id: number, patch: Partial<Extract<Item, { kind: "proposal" }>>) {
     setItems((current) =>
@@ -312,6 +323,7 @@ export function TrackerChat() {
       setPromptsUsed(true);
       setReading({
         filename,
+        step: "propose",
         phase: "text",
         page: 0,
         total: 0,
@@ -325,7 +337,12 @@ export function TrackerChat() {
         { id: nextId(), kind: "user", text: instruction, statementName: filename },
       ]);
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: instruction }]);
-      const data = await postPdf(assistantRequestFields(saved.assistant), instruction, file, turns.slice(0, -1), {
+      const local = saved.assistant.type === "local";
+      const data = await postPdf(assistantRequestFields(saved.assistant), file, {
+        instruction,
+        messages: turns.slice(0, -1),
+        step: local && file.read ? "propose" : undefined,
+        pages: local && file.read ? file.read : undefined,
         signal: controller.signal,
         onProgress: (event) => {
           setReading((current) =>
@@ -349,7 +366,7 @@ export function TrackerChat() {
       }
       const proposal = data?.ok === true ? data.proposal : null;
       const accepted = isProposal(proposal) && proposal.rows.length > 0;
-      if (accepted) {
+      if (accepted && !local) {
         setAttachment(null);
         setAck(false);
         if (fileRef.current) fileRef.current.value = "";
@@ -381,6 +398,62 @@ export function TrackerChat() {
     }
   }
 
+  /** Import: read the PDF on this computer. No model picks rows yet; that waits for the user's note. */
+  async function readStatement() {
+    const saved = connection ?? readConnection();
+    const file = attachment;
+    if (!saved?.assistant || saved.assistant.type !== "local" || !file?.file || reading || sendLock.current) return;
+    sendLock.current = true;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const filename = file.name || "statement.pdf";
+    try {
+      setFormError("");
+      setPending(true);
+      setReading({
+        filename,
+        step: "read",
+        phase: "text",
+        page: 0,
+        total: 0,
+        model: "",
+        textPages: 0,
+        scannedPages: 0,
+        startedAt: Date.now(),
+      });
+      const data = await postPdf(assistantRequestFields(saved.assistant), file, {
+        step: "read",
+        signal: controller.signal,
+        onProgress: (event) => {
+          setReading((current) => (current ? { ...current, phase: "scan", ...event } : current));
+        },
+      });
+      if (controller.signal.aborted || data?.cancelled === true) return;
+      const read = data?.ok === true ? readPagesOf(data.read) : null;
+      if (read) {
+        setAttachment((current) => (current && current.file === file.file ? { ...current, read } : current));
+        inputRef.current?.focus();
+        return;
+      }
+      setPromptsUsed(true);
+      setItems((current) => [
+        ...current,
+        data
+          ? assistantFrom(data, "Could not read that statement.")
+          : { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." },
+      ]);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setItems((current) => [...current, { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." }]);
+      }
+    } finally {
+      abortRef.current = null;
+      setReading(null);
+      sendLock.current = false;
+      setPending(false);
+    }
+  }
+
   async function onSend(event: FormEvent) {
     event.preventDefault();
     const text = draft.trim();
@@ -391,7 +464,8 @@ export function TrackerChat() {
     }
     if (attachment && !ack && !localAssistant) return;
     if (attachment?.file && !reviewingStatement) {
-      await runImport(text || DEFAULT_STATEMENT_INSTRUCTION, attachment);
+      if (needsRead || !text) return;
+      await runImport(text, attachment);
       return;
     }
     if (!text) return;
@@ -554,7 +628,7 @@ export function TrackerChat() {
                 }
                 onPhase={(phase) => {
                   patchProposal(item.id, { phase });
-                  if (phase === "cancelled") {
+                  if (phase === "cancelled" && !attachment?.read) {
                     setAttachment(null);
                     setAck(false);
                     if (fileRef.current) fileRef.current.value = "";
@@ -628,23 +702,29 @@ export function TrackerChat() {
             <FileBadge />
             <div className="tracker-tray-body">
               <p className="tracker-tray-title">
-                {reading.phase === "scan"
-                  ? readingScannedPage(reading.page, reading.total, reading.model)
-                  : READING_STATEMENT}
+                {reading.step === "propose"
+                  ? FINDING_ROWS
+                  : reading.phase === "scan"
+                    ? readingScannedPage(reading.page, reading.total, reading.model)
+                    : READING_STATEMENT}
               </p>
               <p className="tracker-tray-meta">
-                {reading.phase === "scan"
+                {reading.step === "read" && reading.phase === "scan"
                   ? scannedPageMix(reading.filename, reading.textPages, reading.scannedPages)
                   : reading.filename}
-                {localAssistant ? ` · ${LOCAL_READ_HINT}` : ""}
+                {localAssistant && (reading.step === "propose" || reading.phase === "scan") ? ` · ${LOCAL_READ_HINT}` : ""}
               </p>
               <div
-                className={reading.phase === "scan" && reading.total > 0 ? "import-bar" : "import-bar is-indeterminate"}
+                className={
+                  reading.step === "read" && reading.phase === "scan" && reading.total > 0
+                    ? "import-bar"
+                    : "import-bar is-indeterminate"
+                }
                 aria-hidden="true"
               >
                 <span
                   style={
-                    reading.phase === "scan" && reading.total > 0
+                    reading.step === "read" && reading.phase === "scan" && reading.total > 0
                       ? { width: `${Math.min(95, 10 + (reading.page / reading.total) * 85)}%` }
                       : undefined
                   }
@@ -670,6 +750,26 @@ export function TrackerChat() {
                 })}
               </p>
             </div>
+            {needsRead ? (
+              <button
+                type="button"
+                className="tracker-tray-import"
+                data-testid="import-read"
+                disabled={pending}
+                onClick={() => void readStatement()}
+              >
+                {IMPORT_BUTTON}
+              </button>
+            ) : localAssistant && statementReady ? (
+              <button
+                type="button"
+                className="tracker-tray-quick"
+                disabled={pending}
+                onClick={() => void runImport(ADD_EVERYTHING_INSTRUCTION, attachment)}
+              >
+                {ADD_EVERYTHING}
+              </button>
+            ) : null}
             <button
               type="button"
               className="tracker-chip-remove"
@@ -700,13 +800,17 @@ export function TrackerChat() {
             value={draft}
             aria-label="Expense or instruction"
             placeholder={
-              canImport
-                ? PLACEHOLDER_ATTACHED
-                : started
-                  ? PLACEHOLDER_FOLLOWUP
-                  : localAssistant
-                    ? PLACEHOLDER_TYPED
-                    : PLACEHOLDER_EMPTY
+              needsRead
+                ? PLACEHOLDER_IMPORT_FIRST
+                : statementReady
+                  ? localAssistant
+                    ? PLACEHOLDER_STATEMENT_READY
+                    : PLACEHOLDER_STATEMENT_SEND
+                  : started
+                    ? PLACEHOLDER_FOLLOWUP
+                    : localAssistant
+                      ? PLACEHOLDER_TYPED
+                      : PLACEHOLDER_EMPTY
             }
             onChange={(event) => setDraft(event.target.value)}
             autoComplete="off"
@@ -714,9 +818,9 @@ export function TrackerChat() {
           <button
             className="tracker-send"
             type="submit"
-            disabled={pending || showDisclosure || !(draft.trim() || canImport)}
+            disabled={pending || showDisclosure || needsRead || !draft.trim()}
           >
-            {canImport ? IMPORT_BUTTON : "Send"}
+            Send
           </button>
         </div>
         {formError && <p className="tracker-form-error tracker-form-error-pad">{formError}</p>}
@@ -768,6 +872,8 @@ type ScanEvent = {
 
 type Reading = {
   filename: string;
+  /** read: Import is reading the PDF. propose: the model is picking rows for the user's note. */
+  step: "read" | "propose";
   phase: "text" | "scan";
   page: number;
   total: number;
@@ -789,13 +895,33 @@ function attachmentMeta(attachment: Attachment, state: { reviewing: boolean; loc
   if (!attachment.file) return "Reattach to send";
   if (state.reviewing) return FINISH_REVIEW_FIRST;
   const parts: string[] = [];
+  if (attachment.read) {
+    const count = attachment.read.filter((page) => page.text.trim()).length;
+    parts.push(`${count} ${count === 1 ? "page" : "pages"} read on this computer`);
+    parts.push("say what to add, then Send");
+    return parts.join(" · ");
+  }
   if (attachment.pages && attachment.pages > 0) {
     parts.push(`${attachment.pages} ${attachment.pages === 1 ? "page" : "pages"}`);
   }
   const size = formatFileSize(attachment.size);
   if (size) parts.push(size);
-  parts.push(state.local ? "read on this computer" : "ready to import");
+  parts.push(state.local ? "read on this computer" : "say what to add, then Send");
   return parts.join(" · ");
+}
+
+function readPagesOf(value: unknown): ReadPage[] | null {
+  if (typeof value !== "object" || value === null) return null;
+  const pages = (value as { pages?: unknown }).pages;
+  if (!Array.isArray(pages)) return null;
+  const read: ReadPage[] = [];
+  for (const item of pages) {
+    if (typeof item !== "object" || item === null) return null;
+    const record = item as { page?: unknown; kind?: unknown; text?: unknown };
+    if (typeof record.page !== "number" || typeof record.kind !== "string" || typeof record.text !== "string") return null;
+    read.push({ page: record.page, kind: record.kind, text: record.text });
+  }
+  return read.length ? read : null;
 }
 
 function formatElapsed(ms: number): string {
@@ -805,22 +931,34 @@ function formatElapsed(ms: number): string {
 
 async function postPdf(
   fields: { apiKey?: string; assistant?: object },
-  instruction: string,
   attachment: Attachment,
-  messages: ChatTurn[],
-  options?: { signal?: AbortSignal; onProgress?: (event: ScanEvent) => void },
+  options: {
+    instruction?: string;
+    messages?: ChatTurn[];
+    step?: "read" | "propose";
+    pages?: ReadPage[];
+    signal?: AbortSignal;
+    onProgress?: (event: ScanEvent) => void;
+  },
 ): Promise<Record<string, unknown> | null> {
   try {
     const form = new FormData();
     if (fields.apiKey) form.set("apiKey", fields.apiKey);
     if (fields.assistant) form.set("assistant", JSON.stringify(fields.assistant));
-    form.set("instruction", instruction);
-    form.set("messages", JSON.stringify(messages));
-    if (!attachment.file) return null;
-    form.set("file", attachment.file, attachment.name);
-    const response = await fetch("/api/import/pdf", { method: "POST", body: form, signal: options?.signal });
+    if (options.instruction) form.set("instruction", options.instruction);
+    form.set("messages", JSON.stringify(options.messages ?? []));
+    if (options.step) form.set("step", options.step);
+    if (options.step === "propose" && options.pages) {
+      // The text was read on this computer and goes back to this computer only.
+      form.set("pages", JSON.stringify(options.pages));
+      form.set("filename", attachment.name);
+    } else {
+      if (!attachment.file) return null;
+      form.set("file", attachment.file, attachment.name);
+    }
+    const response = await fetch("/api/import/pdf", { method: "POST", body: form, signal: options.signal });
     const type = response.headers.get("content-type") ?? "";
-    if (type.includes("ndjson")) return readNdjson(response, options?.onProgress);
+    if (type.includes("ndjson")) return readNdjson(response, options.onProgress);
     return readBody(response);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;

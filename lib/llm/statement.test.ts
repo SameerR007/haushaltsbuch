@@ -16,7 +16,7 @@ import {
 } from "../chat/statement";
 import type { Household } from "../chat/household";
 import { checkImageCapability, describeImageCapability } from "./capabilities";
-import { readLocalStatement, type ScanProgress } from "./local-statement";
+import { proposeFromPages, readLocalStatement, readStatementPages, type ScanProgress } from "./local-statement";
 import { buildStatementPdf } from "./pdf-fixture";
 import { extractPageTexts } from "./pdf-text";
 import { OpenAiError, runChatTurn } from "./run-turn";
@@ -312,7 +312,7 @@ test("reconciliation reports a pass and a mismatch in euros", () => {
     assert.equal(failed.missing, 14);
     assert.equal(
       balanceMismatchText(failed, "EUR"),
-      "Rows add up to €-398.35, but the statement changed by €-412.35. €14.00 is missing. Check the rows marked uncertain.",
+      "These rows add up to €-398.35. The whole statement changed by €-412.35. If you asked for every row, €14.00 is missing: check the amounts below.",
     );
   }
 });
@@ -458,6 +458,94 @@ test("an endpoint PDF rejection stays on that endpoint and names the model", asy
       assert.equal(payload.changeAssistant, true);
       assert.equal(payload.detail, NOTHING_SAVED_TYPE);
       assert.equal(urls.some((url) => url.includes("/api/show")), false);
+    } finally {
+      globalThis.fetch = previous;
+    }
+  });
+});
+
+test("Import reads pages without the model, and Send picks rows for the note without the model's Uncertain", async () => {
+  const calls: string[] = [];
+  const pages = await readStatementPages({
+    bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+    baseUrl: "http://127.0.0.1:11434/v1",
+    model: "qwen3.5:9b",
+    ocrModel: "glm-ocr",
+    fetchImpl: async (input) => {
+      calls.push(String(input));
+      return textReply("unused");
+    },
+    extractTexts: async () => [TEXT_PAGE],
+  });
+  assert.equal(calls.length, 0);
+  assert.equal(pages[0]?.kind, "text");
+
+  const bodies: string[] = [];
+  const result = await proposeFromPages({
+    pages,
+    baseUrl: "http://127.0.0.1:11434/v1",
+    model: "qwen3.5:9b",
+    ocrModel: "glm-ocr",
+    instruction: "Only the salary",
+    messages: [],
+    household,
+    fetchImpl: async (_input, init) => {
+      bodies.push(bodyText(init));
+      return toolRows([{ ...PASS_ROWS[0], uncertain: true }]);
+    },
+  });
+  assert.equal(bodies.length, 1);
+  assert.match(bodies[0] ?? "", /Only the salary/);
+  assert.match(bodies[0] ?? "", /Gehalt Beispiel GmbH/);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0]?.flags.includes("uncertain"), false);
+});
+
+test("the read step returns pages, and the propose step takes them back without a file", async () => {
+  await withTempDb(async () => {
+    const previous = globalThis.fetch;
+    const urls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return toolRows(PASS_ROWS);
+    }) as typeof fetch;
+    try {
+      const assistant = JSON.stringify({ type: "local", baseUrl: "http://127.0.0.1:11434/v1", model: "qwen3.5:9b" });
+      const read = new FormData();
+      read.set("assistant", assistant);
+      read.set("step", "read");
+      read.set("file", new File([buildStatementPdf([TEXT_PAGE])], "DKB_Sept_2026.pdf", { type: "application/pdf" }));
+      const readResponse = await postPdf(new Request("http://localhost/api/import/pdf", { method: "POST", body: read }));
+      const readEvent = JSON.parse((await readResponse.text()).trim().split("\n").pop() ?? "{}") as {
+        ok?: boolean;
+        read?: { pages: { page: number; kind: string; text: string }[] };
+      };
+      assert.equal(readEvent.ok, true);
+      assert.match(readEvent.read?.pages[0]?.text ?? "", /Gehalt Beispiel GmbH/);
+      assert.equal(urls.length, 0);
+
+      const propose = new FormData();
+      propose.set("assistant", assistant);
+      propose.set("step", "propose");
+      propose.set("instruction", "Add the expenses");
+      propose.set("filename", "DKB_Sept_2026.pdf");
+      propose.set("pages", JSON.stringify(readEvent.read?.pages));
+      const proposeResponse = await postPdf(new Request("http://localhost/api/import/pdf", { method: "POST", body: propose }));
+      const proposeEvent = JSON.parse((await proposeResponse.text()).trim().split("\n").pop() ?? "{}") as {
+        ok?: boolean;
+        proposal?: { sourceName: string; rows: unknown[] };
+      };
+      assert.equal(proposeEvent.ok, true);
+      assert.equal(proposeEvent.proposal?.sourceName, "DKB_Sept_2026.pdf");
+      assert.equal(proposeEvent.proposal?.rows.length, 2);
+
+      const bad = new FormData();
+      bad.set("assistant", assistant);
+      bad.set("step", "propose");
+      bad.set("instruction", "Add the expenses");
+      bad.set("pages", JSON.stringify([{ page: 1, kind: "made-up", text: "x" }]));
+      const badResponse = await postPdf(new Request("http://localhost/api/import/pdf", { method: "POST", body: bad }));
+      assert.equal(badResponse.status, 400);
     } finally {
       globalThis.fetch = previous;
     }

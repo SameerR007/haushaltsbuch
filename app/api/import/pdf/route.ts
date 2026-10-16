@@ -12,7 +12,16 @@ import {
 import { householdInstructions, MODEL_TURN_LIMIT, recentModelTurns, todayIso, withPdfInstructions } from "@/lib/chat/prompts";
 import type { ChatTurn, Proposal, StatementReview } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
-import { readLocalStatement, type ScanProgress } from "@/lib/llm/local-statement";
+import {
+  combinedPageText,
+  proposeFromPages,
+  readLocalStatement,
+  readStatementPages,
+  type LocalStatementResult,
+  type PageKind,
+  type PageOutcome,
+  type ScanProgress,
+} from "@/lib/llm/local-statement";
 import { guardSameOrigin, jsonResult } from "@/lib/setup/http";
 
 export const runtime = "nodejs";
@@ -79,33 +88,80 @@ export async function POST(request: Request) {
     const parsedAssistant = parseAssistantTarget(assistantBody);
     if (!parsedAssistant.ok) return invalid(parsedAssistant.error);
     const assistant = parsedAssistant.value;
+    const step = form.get("step");
     const instruction = form.get("instruction");
-    const file = form.get("file");
-    if (typeof instruction !== "string" || !instruction.trim() || instruction.length > 8000) {
+    const household = loadHousehold();
+    const prior = parseMessages(typeof form.get("messages") === "string" ? String(form.get("messages")) : null);
+    const instructionOk = typeof instruction === "string" && instruction.trim() && instruction.length <= 8000;
+
+    if (assistant.type === "local" && step === "propose") {
+      if (!instructionOk) return invalid("Say what to add from this statement.");
+      const pages = parsePages(form.get("pages"));
+      if (!pages) return invalid("Import the statement again.");
+      const filename = safePdfName(typeof form.get("filename") === "string" ? String(form.get("filename")) : "statement.pdf");
+      return streamLocal(request, async () => {
+        const result = await proposeFromPages({
+          pages,
+          baseUrl: assistant.baseUrl,
+          model: assistant.model,
+          ocrModel: assistant.ocrModel?.trim() || null,
+          instruction: String(instruction).trim(),
+          messages: prior,
+          household,
+          signal: request.signal,
+        });
+        return proposalEvent(result, filename, household);
+      });
+    }
+
+    if (!instructionOk && !(assistant.type === "local" && step === "read")) {
       return invalid("Add an instruction for this statement.");
     }
+    const file = form.get("file");
     if (!(file instanceof Blob)) return invalid(PDF_NOT_PDF);
     if (file.size > MAX_PDF_BYTES) return invalid(PDF_TOO_LARGE);
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (!isPdfBytes(bytes)) return invalid(PDF_NOT_PDF);
     const filename = safePdfName(file instanceof File ? file.name : "statement.pdf");
-    const household = loadHousehold();
-    const prior = parseMessages(typeof form.get("messages") === "string" ? String(form.get("messages")) : null);
 
     if (assistant.type === "local") {
-      return streamLocalImport({
-        request,
+      const reading = {
         bytes,
-        filename,
-        instruction: instruction.trim(),
-        prior,
-        household,
-        assistant,
+        baseUrl: assistant.baseUrl,
+        model: assistant.model,
+        ocrModel: assistant.ocrModel?.trim() || null,
+        signal: request.signal,
+      };
+      if (step === "read") {
+        return streamLocal(request, async (send) => {
+          const pages = await readStatementPages({ ...reading, onProgress: progressSender(send, filename) });
+          if (!combinedPageText(pages).trim()) {
+            const failed = pages.find((page) => page.kind === "failed");
+            return {
+              type: "result",
+              ok: false,
+              code: "rejected",
+              error: failed ? `Couldn't read page ${failed.page}. Nothing was saved.` : "No text could be read from that statement.",
+            };
+          }
+          return { type: "result", ok: true, read: { pages } };
+        });
+      }
+      return streamLocal(request, async (send) => {
+        const result = await readLocalStatement({
+          ...reading,
+          filename,
+          instruction: String(instruction).trim(),
+          messages: prior,
+          household,
+          onProgress: progressSender(send, filename),
+        });
+        return proposalEvent(result, filename, household);
       });
     }
 
     const apiKey = assistant.apiKey;
-    const messages: ChatTurn[] = recentModelTurns([...prior, { role: "user", content: instruction.trim() }]);
+    const messages: ChatTurn[] = recentModelTurns([...prior, { role: "user", content: String(instruction).trim() }]);
     let proposalArgs: unknown = null;
     await runChatTurn({
       apiKey,
@@ -163,70 +219,91 @@ export async function POST(request: Request) {
   }
 }
 
-function streamLocalImport(options: {
-  request: Request;
-  bytes: Uint8Array;
-  filename: string;
-  instruction: string;
-  prior: ChatTurn[];
-  household: ReturnType<typeof loadHousehold>;
-  assistant: { type: "local"; baseUrl: string; model: string; ocrModel?: string | null };
-}): Response {
+type Send = (event: unknown) => void;
+
+function progressSender(send: Send, filename: string) {
+  return (progress: ScanProgress) => {
+    send({
+      type: "progress",
+      phase: "scan",
+      filename,
+      page: progress.page,
+      total: progress.total,
+      model: progress.model,
+      textPages: progress.textPages,
+      scannedPages: progress.scannedPages,
+    });
+  };
+}
+
+function proposalEvent(result: LocalStatementResult, filename: string, household: ReturnType<typeof loadHousehold>) {
+  if (!result.rows.length) {
+    const error = result.statement.failedPage
+      ? `Couldn't read page ${result.statement.failedPage}. Nothing was saved.`
+      : "No transactions matched that. Try saying it another way.";
+    return { type: "result", ok: false, code: "rejected", error };
+  }
+  const proposal: Proposal = {
+    sourceName: filename,
+    currency: household.currency,
+    categories: household.categories,
+    banks: household.banks,
+    rows: result.rows,
+    statement: result.statement satisfies StatementReview,
+  };
+  return { type: "result", ok: true, proposal };
+}
+
+const PAGE_KINDS = new Set<PageKind>(["text", "scanned", "ocr", "fallback", "skipped", "failed", "unread"]);
+
+/** Pages sent back by the browser after the read step. Text stays on this computer. */
+function parsePages(value: FormDataEntryValue | null): PageOutcome[] | null {
+  if (typeof value !== "string" || value.length > 2_000_000) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 500) return null;
+  const pages: PageOutcome[] = [];
+  for (const item of parsed) {
+    if (typeof item !== "object" || item === null) return null;
+    const record = item as { page?: unknown; kind?: unknown; text?: unknown };
+    if (typeof record.page !== "number" || !Number.isInteger(record.page) || record.page < 1) return null;
+    if (typeof record.kind !== "string" || !PAGE_KINDS.has(record.kind as PageKind)) return null;
+    if (typeof record.text !== "string") return null;
+    pages.push({ page: record.page, kind: record.kind as PageKind, text: record.text });
+  }
+  return pages;
+}
+
+function streamLocal(request: Request, work: (send: Send) => Promise<unknown>): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (event: unknown) => {
-        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      const send: Send = (event) => {
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        } catch {
+          // The browser already went away.
+        }
       };
       try {
-        const result = await readLocalStatement({
-          bytes: options.bytes,
-          filename: options.filename,
-          baseUrl: options.assistant.baseUrl,
-          model: options.assistant.model,
-          ocrModel: options.assistant.ocrModel?.trim() || null,
-          instruction: options.instruction,
-          messages: options.prior,
-          household: options.household,
-          signal: options.request.signal,
-          onProgress: (progress: ScanProgress) => {
-            send({
-              type: "progress",
-              phase: "scan",
-              filename: options.filename,
-              page: progress.page,
-              total: progress.total,
-              model: progress.model,
-              textPages: progress.textPages,
-              scannedPages: progress.scannedPages,
-            });
-          },
-        });
-        if (!result.rows.length) {
-          const error = result.statement.failedPage
-            ? `Couldn't read page ${result.statement.failedPage}. Nothing was saved.`
-            : "No transactions were read from that statement.";
-          send({ type: "result", ok: false, code: "rejected", error });
-          return;
-        }
-        const proposal: Proposal = {
-          sourceName: options.filename,
-          currency: options.household.currency,
-          categories: options.household.categories,
-          banks: options.household.banks,
-          rows: result.rows,
-          statement: result.statement satisfies StatementReview,
-        };
-        send({ type: "result", ok: true, proposal });
+        send(await work(send));
       } catch (error) {
-        if (options.request.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+        if (request.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
           send({ type: "result", ok: false, cancelled: true, error: "Cancelled. Nothing was saved." });
           return;
         }
         const message = error instanceof OpenAiError ? error.message : "Could not read that statement.";
         send({ type: "result", ok: false, code: "rejected", error: message });
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // Already closed.
+        }
       }
     },
   });

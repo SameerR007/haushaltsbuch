@@ -133,7 +133,7 @@ export function balancePassedText(verdict: Extract<BalanceVerdict, { status: "pa
 }
 
 export function balanceMismatchText(verdict: Extract<BalanceVerdict, { status: "mismatch" }>, currency: string): string {
-  return `Rows add up to ${formatSignedAmount(verdict.sum, currency)}, but the statement changed by ${formatSignedAmount(verdict.change, currency)}. ${formatMissingAmount(verdict.missing, currency)} is missing. Check the rows marked uncertain.`;
+  return `These rows add up to ${formatSignedAmount(verdict.sum, currency)}. The whole statement changed by ${formatSignedAmount(verdict.change, currency)}. If you asked for every row, ${formatMissingAmount(verdict.missing, currency)} is missing: check the amounts below.`;
 }
 
 export function shortStatementDate(iso: string): string {

@@ -146,6 +146,7 @@ export async function runChatTurn(options: {
   mode: "chat" | "pdf";
   pdf?: { filename: string; data: Buffer };
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
   executeTool: ToolHandler;
 }): Promise<{ reply: string; proposalArgs: unknown | null }> {
   const assistant: AssistantTarget = options.assistant ?? { type: "openai", apiKey: options.apiKey };
@@ -197,6 +198,7 @@ export async function runChatTurn(options: {
       },
       providerOptions: resolved.providerOptions,
       maxRetries: 0,
+      abortSignal: options.signal,
       timeout: { stepMs: STEP_TIMEOUT_MS },
     });
 
@@ -212,6 +214,11 @@ export async function runChatTurn(options: {
         error.content.filter((part): part is { type: "text"; text: string } => part.type === "text"),
       );
       return finishReply(text, secret, proposalArgs);
+    }
+    if (options.signal?.aborted) {
+      const cancelled = new Error("Cancelled");
+      cancelled.name = "AbortError";
+      throw cancelled;
     }
     throw mapFailure(error, resolved.failure, { pdf: pdfMode, assistant });
   }

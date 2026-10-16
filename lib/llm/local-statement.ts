@@ -1,6 +1,6 @@
 import { FALLBACK_ROW_NOTE } from "@/lib/assistant/copy";
 import type { Household } from "@/lib/chat/household";
-import { householdInstructions, todayIso, withLocalStatementInstructions } from "@/lib/chat/prompts";
+import { householdInstructions, recentModelTurns, todayIso, withLocalStatementInstructions } from "@/lib/chat/prompts";
 import { parseStatementFacts, textLooksUseful, type StatementReview } from "@/lib/chat/statement";
 import type { ChatTurn, ReviewRow, RowFlag, StatementPage, StatementPageStatus } from "@/lib/chat/types";
 import { reviewProposedRows } from "@/lib/chat/validate-rows";
@@ -34,9 +34,21 @@ export type LocalStatementResult = {
   proposalArgs: unknown | null;
 };
 
-export async function readLocalStatement(options: {
+type ReadOptions = {
   bytes: Uint8Array;
-  filename: string;
+  baseUrl: string;
+  model: string;
+  ocrModel: string | null;
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+  onProgress?: (event: ScanProgress) => void;
+  extractTexts?: (bytes: Uint8Array) => Promise<string[]>;
+  renderPage?: (bytes: Uint8Array, pageNumber: number) => Promise<Uint8Array>;
+  checkVision?: (model: string) => Promise<ImageCapability>;
+};
+
+type ProposeOptions = {
+  pages: PageOutcome[];
   baseUrl: string;
   model: string;
   ocrModel: string | null;
@@ -45,11 +57,18 @@ export async function readLocalStatement(options: {
   household: Household;
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
-  onProgress?: (event: ScanProgress) => void;
-  extractTexts?: (bytes: Uint8Array) => Promise<string[]>;
-  renderPage?: (bytes: Uint8Array, pageNumber: number) => Promise<Uint8Array>;
-  checkVision?: (model: string) => Promise<ImageCapability>;
-}): Promise<LocalStatementResult> {
+};
+
+/** Read and convert, then propose rows, in one call. */
+export async function readLocalStatement(
+  options: ReadOptions & Omit<ProposeOptions, "pages"> & { filename: string },
+): Promise<LocalStatementResult> {
+  const pages = await readStatementPages(options);
+  return proposeFromPages({ ...options, pages });
+}
+
+/** Step one: the text layer, plus OCR for scanned pages. No chat model call. */
+export async function readStatementPages(options: ReadOptions): Promise<PageOutcome[]> {
   throwIfAborted(options.signal);
   const extract = options.extractTexts ?? extractPageTexts;
   const render = options.renderPage ?? renderStatementPage;
@@ -58,18 +77,15 @@ export async function readLocalStatement(options: {
     ((model: string) =>
       checkImageCapability({ baseUrl: options.baseUrl, model, fetchImpl: options.fetchImpl }));
   const texts = await extract(options.bytes);
-  const pages: PageOutcome[] = texts.map((text, index) => ({
-    page: index + 1,
-    kind: classifyPageText(text) === "text" ? "text" : "scanned",
-    text: classifyPageText(text) === "text" ? text : "",
-  }));
+  const pages: PageOutcome[] = texts.map((text, index) => {
+    const kind = classifyPageText(text);
+    return { page: index + 1, kind, text: kind === "text" ? text : "" };
+  });
   const scanned = pages.filter((page) => page.kind === "scanned");
-  const textCount = pages.length - scanned.length;
-
   if (scanned.length > 0) {
     await readScannedPages({
       pages: scanned,
-      textCount,
+      textCount: pages.length - scanned.length,
       bytes: options.bytes,
       baseUrl: options.baseUrl,
       model: options.model,
@@ -81,11 +97,20 @@ export async function readLocalStatement(options: {
       visionOf,
     });
   }
+  return pages;
+}
 
-  const combined = pages
+export function combinedPageText(pages: readonly PageOutcome[]): string {
+  return pages
     .filter((page) => page.text.trim())
     .map((page) => `--- page ${page.page} (${page.kind}) ---\n${page.text.trim()}`)
     .join("\n\n");
+}
+
+/** Step two: the chat model proposes rows from text already read, following the user's instruction. */
+export async function proposeFromPages(options: ProposeOptions): Promise<LocalStatementResult> {
+  const pages = options.pages;
+  const combined = combinedPageText(pages);
   const facts = parseStatementFacts(combined);
   const statement = toStatement(pages, facts);
   if (!combined.trim()) {
@@ -105,7 +130,7 @@ export async function readLocalStatement(options: {
       }),
     ),
     messages: [
-      ...options.messages,
+      ...recentModelTurns(options.messages),
       {
         role: "user",
         content: `${options.instruction.trim()}\n\nStatement text read on this computer:\n\n${combined}`,
@@ -113,6 +138,7 @@ export async function readLocalStatement(options: {
     ],
     mode: "pdf",
     fetchImpl: options.fetchImpl,
+    signal: options.signal,
     executeTool: (name) => {
       if (name === "propose_transactions") return { ok: true, saved: false };
       return { ok: false, error: "Only propose_transactions is available for a statement." };
@@ -122,14 +148,15 @@ export async function readLocalStatement(options: {
     .filter((page) => page.kind === "fallback")
     .map((page) => page.text)
     .join("\n");
-  const rows = markFallback(
-    reviewProposedRows(rowsFrom(turn.proposalArgs), {
-      categories: options.household.categories,
-      banks: options.household.banks,
-      existing: options.household.existing,
-    }),
-    fallbackText,
-  );
+  // A local model leaves most rows marked uncertain (its own guess, or a bank name that is not saved),
+  // so the tag says nothing. The review card asks for a full check instead. Rows from a page read
+  // after OCR failed are still tagged.
+  const reviewed = reviewProposedRows(rowsFrom(turn.proposalArgs), {
+    categories: options.household.categories,
+    banks: options.household.banks,
+    existing: options.household.existing,
+  }).map((row) => ({ ...row, flags: row.flags.filter((flag) => flag !== "uncertain") }));
+  const rows = markFallback(reviewed, fallbackText);
   return { pages, statement, rows, proposalArgs: turn.proposalArgs };
 }
 

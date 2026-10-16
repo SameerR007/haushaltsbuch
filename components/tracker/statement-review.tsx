@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  LOCAL_REVIEW_NOTE,
   missingPageBalanceNote,
   unreadablePageNote,
 } from "@/lib/assistant/copy";
@@ -17,7 +18,6 @@ import {
 } from "@/lib/chat/statement";
 import type { Proposal, ReviewRow, RowFlag } from "@/lib/chat/types";
 import { parseAmount, parseIsoDate, rowBlocksSave, rowsToSave } from "@/lib/chat/validate-rows";
-import { formatSignedAmount } from "@/lib/chat/statement";
 
 export function StatementReview({
   proposal,
@@ -75,6 +75,9 @@ export function StatementReview({
     <section className="tracker-card statement-card" aria-label="Review statement">
       <h2 className="statement-title">{title}</h2>
       <p className="statement-sub">{subtitle}</p>
+      <div className="statement-banner is-check" role="note" data-testid="local-review-note">
+        <p>{LOCAL_REVIEW_NOTE}</p>
+      </div>
       {statement.failedPage ? (
         <>
           <div className="statement-banner is-bad" role="status">
@@ -154,18 +157,12 @@ export function StatementReview({
                     )}
                   </td>
                   <td className="is-num">
-                    {uncertain ? (
-                      <input
-                        aria-label="Amount"
-                        className="statement-amount"
-                        value={row.amountInput}
-                        onChange={(event) => editAmount(index, event.target.value)}
-                      />
-                    ) : amount === null ? (
-                      row.amountInput || "—"
-                    ) : (
-                      formatSignedAmount(amount, proposal.currency)
-                    )}
+                    <input
+                      aria-label="Amount"
+                      className="statement-amount"
+                      value={row.amountInput}
+                      onChange={(event) => editAmount(index, event.target.value)}
+                    />
                   </td>
                   <td>
                     {amount === null ? (
@@ -205,7 +202,7 @@ export function StatementReview({
       {error ? <p className="tracker-form-error">{error}</p> : null}
       <div className="tracker-card-actions">
         <button type="button" className="tracker-confirm" disabled={busy || count === 0 || blocked} onClick={onConfirm}>
-          {mismatch ? `Add ${count} rows anyway` : `Add ${count} ${count === 1 ? "row" : "rows"}`}
+          {`Add ${count} ${count === 1 ? "row" : "rows"}`}
         </button>
         <button type="button" className="tracker-quiet" disabled={busy} onClick={() => onPhase("cancelled")}>
           Discard

@@ -636,8 +636,8 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.match(pdf, /Answer only by calling propose_transactions/);
   assert.equal(text.includes(STATEMENT_ROWS_RULE), true);
   assert.equal(pdf.includes(STATEMENT_ROWS_RULE), true);
-  assert.match(text, /never only the negative ones/);
-  assert.match(text, /expenses, spending, transactions, or add this/);
+  assert.match(text, /expenses, spending, transactions, all of it, or add this still mean every row/);
+  assert.match(text, /a date or date range, a payee or shop, a category/);
   assert.match(pdf, /One row per transaction on the statement/);
   assert.equal(formatReviewAmount(2850, "EUR").startsWith("+"), true);
   assert.match(formatReviewAmount(2850, "EUR"), /\+.*2,850\.00/);

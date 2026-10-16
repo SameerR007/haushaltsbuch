@@ -51,7 +51,14 @@ export const FALLBACK_ROW_NOTE = "Read by fallback (chat model)";
 export const IMPORT_STATEMENT = "Import a bank statement";
 export const IMPORT_BUTTON = "Import";
 export const LOCAL_READ_HINT = "A model on this computer can take a minute or two.";
-export const PLACEHOLDER_ATTACHED = "Add a note if you like, then Import";
+export const PLACEHOLDER_IMPORT_FIRST = "Press Import to read the statement first";
+export const PLACEHOLDER_STATEMENT_READY = "What should I add? e.g. everything, or groceries from 1 to 15 August";
+export const PLACEHOLDER_STATEMENT_SEND = "What should I add from this statement?";
+export const FINDING_ROWS = "Finding the transactions…";
+export const ADD_EVERYTHING = "Add everything";
+export const ADD_EVERYTHING_INSTRUCTION = "Add every transaction from this statement, money in and money out.";
+export const LOCAL_REVIEW_NOTE =
+  "Please check every row before you add them. A model on this computer can sometimes misread a date or an amount, or add a row that is not on the statement.";
 export const FINISH_REVIEW_FIRST = "Confirm or cancel the statement above first.";
 export const DEFAULT_STATEMENT_INSTRUCTION = "Add the transactions from this bank statement";
 

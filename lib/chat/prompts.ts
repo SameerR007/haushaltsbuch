@@ -24,7 +24,7 @@ export const PROPOSE_RULE =
  * Used for typed adds and for the PDF import instructions.
  */
 export const STATEMENT_ROWS_RULE =
-  "A bank statement or ledger import always includes every row, never only the negative ones, whatever wording the user uses (expenses, spending, transactions, or add this). Expenses are negative amounts. Income, including salary, refunds, and other incoming money, is positive. Use the salary category for salary.";
+  "By default a statement import includes every row, money in and money out. Words like expenses, spending, transactions, all of it, or add this still mean every row, including salary, refunds, and other incoming money. Only leave rows out when the user clearly narrows it: a date or date range, a payee or shop, a category, or only money in or only money out. Then include exactly the rows that match. Expenses are negative amounts. Income, including salary, refunds, and other incoming money, is positive. Use the salary category for salary.";
 
 export function todayIso(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
