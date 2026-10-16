@@ -183,6 +183,12 @@ export async function runChatTurn(options: {
         return { ...toolCall, input: invalidArgumentsInput() };
       },
       providerOptions: resolved.providerOptions,
+      // Recorded only when Langfuse tracing is registered (instrumentation.ts).
+      runtimeContext: { assistant: assistant.type, mode: options.mode },
+      telemetry: {
+        functionId: `haushaltsbuch-${options.mode}`,
+        includeRuntimeContext: { assistant: true, mode: true },
+      },
       maxRetries: 0,
       timeout: { stepMs: STEP_TIMEOUT_MS },
     });

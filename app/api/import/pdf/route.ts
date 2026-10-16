@@ -13,6 +13,7 @@ import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
 import { LOCAL_IMPORT_SOON } from "@/lib/assistant/copy";
 import { parseAssistantTarget } from "@/lib/assistant/target";
 import { guardSameOrigin, jsonResult } from "@/lib/setup/http";
+import { traceSessionId, withSpan, withTrace } from "@/lib/tracing/langfuse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,31 +94,49 @@ export async function POST(request: Request) {
     const household = loadHousehold();
     const prior = parseMessages(typeof form.get("messages") === "string" ? String(form.get("messages")) : null);
     const messages: ChatTurn[] = recentModelTurns([...prior, { role: "user", content: instruction.trim() }]);
-    let proposalArgs: unknown = null;
-    await runChatTurn({
-      apiKey,
-      assistant,
-      instructions: withPdfInstructions(
-        householdInstructions({
-          currency: household.currency,
-          categories: household.categories,
-          banks: household.banks,
-          today: todayIso(),
-        }),
-      ),
-      messages,
-      mode: "pdf",
-      pdf: { filename, data: Buffer.from(bytes) },
-      executeTool: (name, args) => {
-        if (name === "propose_transactions") {
-          proposalArgs = args;
-          return { ok: true, saved: false, count: rowsOf(args).length };
-        }
-        return { ok: false, error: "Only propose_transactions is available for a statement." };
+    const rows = await withTrace(
+      {
+        name: "pdf-import",
+        sessionId: traceSessionId(form.get("sessionId")),
+        tags: ["pdf", assistant.type],
+        input: { messages, statement: { filename, bytes: bytes.length } },
+        metadata: { assistant: assistant.type, model: assistant.type === "openai" ? undefined : assistant.model },
       },
-    });
-
-    const rows = proposalArgs ? reviewProposedRows(rowsOf(proposalArgs), household) : [];
+      async (root) => {
+        let proposalArgs: unknown = null;
+        await runChatTurn({
+          apiKey,
+          assistant,
+          instructions: withPdfInstructions(
+            householdInstructions({
+              currency: household.currency,
+              categories: household.categories,
+              banks: household.banks,
+              today: todayIso(),
+            }),
+          ),
+          messages,
+          mode: "pdf",
+          pdf: { filename, data: Buffer.from(bytes) },
+          executeTool: (name, args) => {
+            if (name === "propose_transactions") {
+              proposalArgs = args;
+              return { ok: true, saved: false, count: rowsOf(args).length };
+            }
+            return { ok: false, error: "Only propose_transactions is available for a statement." };
+          },
+        });
+        const reviewed = proposalArgs
+          ? await withSpan("review-rows", "span", proposalArgs, (span) => {
+              const result = reviewProposedRows(rowsOf(proposalArgs), household);
+              span.update({ output: result });
+              return result;
+            })
+          : [];
+        root.update({ output: { proposedRows: reviewed.length } });
+        return reviewed;
+      },
+    );
     if (!rows.length) {
       return jsonResult(
         { ok: false, code: "rejected", error: "No transactions were read from that statement." },

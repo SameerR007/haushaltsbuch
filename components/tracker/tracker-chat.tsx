@@ -85,6 +85,7 @@ export function TrackerChat() {
   const [ack, setAck] = useState(false);
   const [promptsUsed, setPromptsUsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [sessionId, setSessionId] = useState("");
 
   function nextId() {
     idRef.current += 1;
@@ -95,6 +96,7 @@ export function TrackerChat() {
     const stored = readStoredChat();
     if (stored) {
       setPromptsUsed(stored.promptsUsed);
+      setSessionId(stored.sessionId ?? "");
       setItems(
         stored.items.map((item) => (item.kind === "proposal" ? { ...item, busy: false } : item)),
       );
@@ -107,10 +109,10 @@ export function TrackerChat() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const stored = buildStoredChat({ promptsUsed, items, attachment });
+    const stored = buildStoredChat({ promptsUsed, items, attachment, sessionId });
     if (!showNewChatButton(stored)) clearStoredChat();
     else writeStoredChat(stored);
-  }, [hydrated, promptsUsed, items, attachment]);
+  }, [hydrated, promptsUsed, items, attachment, sessionId]);
 
   useEffect(() => {
     function reset() {
@@ -120,6 +122,7 @@ export function TrackerChat() {
       setFormError("");
       setPending(false);
       setPromptsUsed(false);
+      setSessionId("");
       setAck(false);
       idRef.current = 1;
       sendLock.current = false;
@@ -295,7 +298,9 @@ export function TrackerChat() {
       ]);
 
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: text }]);
-      const fields = assistantRequestFields(saved.assistant);
+      const session = sessionId || newSessionId();
+      if (session !== sessionId) setSessionId(session);
+      const fields = { ...assistantRequestFields(saved.assistant), sessionId: session };
       const data = file
         ? await postPdf(fields, text, file, turns.slice(0, -1))
         : await postChat(fields, turns);
@@ -559,15 +564,24 @@ async function postJson(path: string, body: object): Promise<Record<string, unkn
   }
 }
 
+/** Only used to group a conversation's turns when Langfuse tracing is on. */
+function newSessionId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 async function postChat(
-  fields: { apiKey?: string; assistant?: object },
+  fields: { apiKey?: string; assistant?: object; sessionId?: string },
   messages: ChatTurn[],
 ): Promise<Record<string, unknown> | null> {
   return postJson("/api/chat", { ...fields, messages });
 }
 
 async function postPdf(
-  fields: { apiKey?: string; assistant?: object },
+  fields: { apiKey?: string; assistant?: object; sessionId?: string },
   instruction: string,
   attachment: Attachment,
   messages: ChatTurn[],
@@ -576,6 +590,7 @@ async function postPdf(
     const form = new FormData();
     if (fields.apiKey) form.set("apiKey", fields.apiKey);
     if (fields.assistant) form.set("assistant", JSON.stringify(fields.assistant));
+    if (fields.sessionId) form.set("sessionId", fields.sessionId);
     form.set("instruction", instruction);
     form.set("messages", JSON.stringify(messages));
     if (!attachment.file) return null;
