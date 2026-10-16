@@ -1,7 +1,7 @@
 /** Plain-language Test connection copy. The setup screens use these sentences as written. */
 
 export const DEFAULT_LOCAL_ADDRESS = "http://localhost:11434";
-export const DEFAULT_LOCAL_MODEL = "qwen3.5:9b";
+export const DEFAULT_LOCAL_MODEL = "gemma4:12b-mlx";
 export const LM_STUDIO_ADDRESS = "http://localhost:1234";
 export const SMALLER_LOCAL_MODEL = "qwen3.5:4b";
 
@@ -18,7 +18,7 @@ export const OLLAMA_NOT_RUNNING_DETAIL = "Open the Ollama app and try again.";
 export const MODEL_MISSING_TITLE = "Connected, but the model isn't downloaded.";
 export const MODEL_MISSING_DETAIL = "Open Terminal and run this, then test again:";
 export const NO_TOOLS_TITLE = "That model can't use tools.";
-export const NO_TOOLS_DETAIL = "Pick qwen3.5:9b.";
+export const NO_TOOLS_DETAIL = "Pick gemma4:12b-mlx.";
 
 export const ENDPOINT_UNREACHABLE_TITLE = "Couldn't reach that address.";
 export const ENDPOINT_UNREACHABLE_DETAIL = "Check the URL and try again.";
@@ -29,7 +29,7 @@ export const ENDPOINT_NO_TOOLS_DETAIL = "Pick a model that can call tools.";
 export const ENDPOINT_KEY_TITLE = "That key was refused.";
 export const ENDPOINT_KEY_DETAIL = "Check it and try again.";
 
-export const LOCAL_MODEL_HINT = "Recommended: qwen3.5:9b · any installed model id works";
+export const LOCAL_MODEL_HINT = "Recommended: gemma4:12b-mlx · any installed model id works";
 export const SUGGESTED_OCR_MODEL = "glm-ocr";
 export const OCR_MODEL_HINT = "Suggested: glm-ocr";
 export const OCR_SECTION_TITLE = "Scanned statements";

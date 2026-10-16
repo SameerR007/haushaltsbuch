@@ -1,7 +1,6 @@
 import {
   APICallError,
   generateText,
-  hasToolCall,
   InvalidToolInputError,
   isStepCount,
   ToolChoiceViolationError,
@@ -12,12 +11,28 @@ import type { AssistantTarget } from "@/lib/assistant/target";
 import { CHAT_REASONING_EFFORT, resolveChatModel } from "@/lib/chat/openai";
 import type { ChatTurn } from "@/lib/chat/types";
 import { resolveModel, stubGroceryRow, stubRentRow, stubSalaryRow } from "./models";
-import { argumentsLookWrong, createChatTools, invalidArgumentsInput, type ToolHandler } from "./tools";
+import {
+  argumentsLookWrong,
+  createChatTools,
+  invalidArgumentsInput,
+  normalizeProposeInput,
+  type ToolHandler,
+} from "./tools";
 
 export { stubGroceryRow, stubRentRow, stubSalaryRow };
 export type { ToolHandler };
 
 const STEP_LIMIT = 4;
+
+/** A statement proposal ran. A rejected call is a tool error, not a result, so it does not stop the turn. */
+function proposalAccepted({ steps }: { steps: ReadonlyArray<{ content: ReadonlyArray<{ type: string }> }> }): boolean {
+  const last = steps[steps.length - 1];
+  return (
+    last?.content.some(
+      (part) => part.type === "tool-result" && (part as { toolName?: string }).toolName === "propose_transactions",
+    ) ?? false
+  );
+}
 const REPLY_CAP = 8_000;
 const STEP_TIMEOUT_MS = 120_000;
 
@@ -177,15 +192,18 @@ export async function runChatTurn(options: {
       tools,
       toolChoice: "auto",
       activeTools: pdfMode ? ["propose_transactions"] : undefined,
-      stopWhen: pdfMode
-        ? [isStepCount(STEP_LIMIT), hasToolCall("propose_transactions")]
-        : isStepCount(STEP_LIMIT),
+      // A statement turn ends once a proposal was accepted. A rejected call gets its retry first.
+      stopWhen: pdfMode ? [isStepCount(STEP_LIMIT), proposalAccepted] : isStepCount(STEP_LIMIT),
       prepareStep: ({ stepNumber }) =>
         pdfMode && stepNumber === 0
           ? { toolChoice: { type: "tool", toolName: "propose_transactions" } }
           : { toolChoice: "auto" },
       repairToolCall: async ({ toolCall, error }) => {
         if (!InvalidToolInputError.isInstance(error)) return null;
+        if (toolCall.toolName === "propose_transactions") {
+          const normalized = normalizeProposeInput(toolCall.input);
+          if (normalized) return { ...toolCall, input: normalized };
+        }
         const wrong = resolved.validateToolArgs
           ? argumentsLookWrong(toolCall.toolName, toolCall.input)
           : unparsable(toolCall.input);

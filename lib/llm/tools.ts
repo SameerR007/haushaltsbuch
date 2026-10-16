@@ -33,6 +33,41 @@ function proposeShape(value: unknown): boolean {
   return proposedArgsValid(value);
 }
 
+const ROW_KEYS = ["date", "description", "category", "bank", "amount", "uncertain"] as const;
+
+/**
+ * A model sometimes writes a row key in the wrong case ("Date" for "date"). Rename such keys so
+ * one capital letter does not throw away the whole proposal. Returns null when nothing changed
+ * or the input is still not a valid proposal.
+ */
+export function normalizeProposeInput(input: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || !Array.isArray((parsed as { rows?: unknown }).rows)) return null;
+  let changed = false;
+  const rows = (parsed as { rows: unknown[] }).rows.map((row) => {
+    if (typeof row !== "object" || row === null) return row;
+    const fixed: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row)) {
+      const known = ROW_KEYS.find((name) => name === key.toLowerCase());
+      if (known && known !== key && !(known in row)) {
+        fixed[known] = value;
+        changed = true;
+      } else {
+        fixed[key] = value;
+      }
+    }
+    return fixed;
+  });
+  if (!changed) return null;
+  const next = { ...(parsed as object), rows };
+  return proposedArgsValid(next) ? JSON.stringify(next) : null;
+}
+
 /** True when the tool input should be repaired. Valid JSON of the right shape is fine. */
 export function argumentsLookWrong(name: string, input: string): boolean {
   let parsed: unknown;

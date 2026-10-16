@@ -552,6 +552,50 @@ test("the read step returns pages, and the propose step takes them back without 
   });
 });
 
+test("a row key in the wrong case is repaired, and a rejected proposal gets its retry", async () => {
+  const pages = [{ page: 1, kind: "text" as const, text: TEXT_PAGE }];
+  const base = {
+    pages,
+    baseUrl: "http://127.0.0.1:11434/v1",
+    model: "gemma4:12b-mlx",
+    ocrModel: null,
+    instruction: "Add everything",
+    messages: [],
+    household,
+  };
+
+  // "Date" instead of "date" on one row: renamed, nothing thrown away, one request.
+  let calls = 0;
+  const [salary, rent] = PASS_ROWS;
+  const { date, ...rentWithoutDate } = rent as Record<string, unknown>;
+  const cased = await proposeFromPages({
+    ...base,
+    fetchImpl: async () => {
+      calls += 1;
+      return toolRows([salary as Record<string, unknown>, { ...rentWithoutDate, Date: date }]);
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(cased.rows.length, 2);
+  assert.equal(cased.rows[1]?.date, "2026-09-01");
+
+  // A first call that cannot be repaired (no amount) is retried instead of ending the import.
+  calls = 0;
+  const retried = await proposeFromPages({
+    ...base,
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        const { amount: _amount, ...noAmount } = salary as Record<string, unknown>;
+        return toolRows([noAmount]);
+      }
+      return toolRows(PASS_ROWS);
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(retried.rows.length, 2);
+});
+
 test("a saved local assistant keeps the OCR model on the home label", () => {
   const withOcr = parseConnection(
     JSON.stringify({
