@@ -495,6 +495,8 @@ test("a saved local assistant keeps the OCR model on the home label", () => {
   const ui = readFileSync(new URL("../../components/assistant/assistant-ui.tsx", import.meta.url), "utf8");
   assert.equal(ui.includes("<select"), false);
   assert.match(ui, /id="ocr-model"/);
+  // None must not lock the field: typing a model name is how you leave None.
+  assert.match(ui, /disabled=\{pending \|\| ocrPending\}\s*data-testid="ocr-model"/);
   assert.match(ui, /disabled=\{pending \|\| ocrPending\}[\s\S]{0,80}data-testid="assistant-continue"/);
   assert.match(ui, /OCR_NONE_NOTE/);
 });

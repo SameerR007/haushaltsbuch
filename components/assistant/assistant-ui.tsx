@@ -256,7 +256,7 @@ export function LocalConnectionCard({
           placeholder={OCR_PLACEHOLDER}
           autoComplete="off"
           spellCheck={false}
-          disabled={pending || ocrPending || ocrNone}
+          disabled={pending || ocrPending}
           data-testid="ocr-model"
           onChange={(event) => editOcr(event.target.value)}
         />
