@@ -19,7 +19,7 @@ import {
   type AssistantKind,
   type AssistantTarget,
 } from "./assistant/target";
-import { clearStoredChat } from "./chat/persist";
+import { requestNewChat } from "./chat/persist";
 import { clearSummaryView } from "./data/summary-state";
 import { looksLikeOpenAiKey } from "./setup/guards";
 
@@ -280,7 +280,8 @@ export function clearConnection(): void {
   const storage = globalThis.localStorage;
   if (storage) storage.removeItem(CONNECTION_STORAGE_KEY);
   clearPdfDisclosureAck();
-  clearStoredChat();
+  // Also empties a chat still held in memory from earlier in this visit.
+  requestNewChat();
   clearSummaryView();
   const root = globalThis.document?.documentElement;
   if (root?.dataset) delete root.dataset.visit;

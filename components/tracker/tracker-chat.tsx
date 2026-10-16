@@ -137,6 +137,33 @@ chat.subscribe(() => {
   else writeStoredChat(stored);
 });
 
+/**
+ * New chat and Set up completely new. Listens at module level so a reset from another page
+ * (the chat is not mounted during /data/reset) still empties the chat kept in memory.
+ */
+function resetChat(): void {
+  chatEpoch.current += 1;
+  abortRef.current?.abort();
+  abortRef.current = null;
+  idRef.current = 1;
+  sendLock.current = false;
+  actionLock.current.clear();
+  for (const [key, value] of Object.entries({
+    reading: null,
+    items: [],
+    draft: "",
+    attachment: null,
+    formError: "",
+    pending: false,
+    promptsUsed: false,
+    ack: false,
+  } satisfies Partial<ChatState>)) {
+    chat.set(key as keyof ChatState, value as never);
+  }
+}
+
+if (typeof window !== "undefined") window.addEventListener(CHAT_RESET_EVENT, resetChat);
+
 export function TrackerChat() {
   const threadRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -180,26 +207,13 @@ export function TrackerChat() {
   }, [setAck, setAttachment, setHydrated, setItems, setPromptsUsed]);
 
   useEffect(() => {
-    function reset() {
-      chatEpoch.current += 1;
-      abortRef.current?.abort();
-      abortRef.current = null;
-      setReading(null);
-      setItems([]);
-      setDraft("");
-      setAttachment(null);
-      setFormError("");
-      setPending(false);
-      setPromptsUsed(false);
-      setAck(false);
-      idRef.current = 1;
-      sendLock.current = false;
-      actionLock.current.clear();
+    // The chat itself is cleared by resetChat below; this only empties the file picker on screen.
+    function clearPicker() {
       if (fileRef.current) fileRef.current.value = "";
     }
-    window.addEventListener(CHAT_RESET_EVENT, reset);
-    return () => window.removeEventListener(CHAT_RESET_EVENT, reset);
-  }, [setAck, setAttachment, setDraft, setFormError, setItems, setPending, setPromptsUsed, setReading]);
+    window.addEventListener(CHAT_RESET_EVENT, clearPicker);
+    return () => window.removeEventListener(CHAT_RESET_EVENT, clearPicker);
+  }, []);
 
   useEffect(() => {
     const existing = readConnection();
