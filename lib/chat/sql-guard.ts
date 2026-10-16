@@ -93,8 +93,9 @@ export function guardReadQuery(database: Database.Database, sql: string): QueryR
   try {
     const statement = database.prepare(trimmed);
     if (!statement.reader) return { ok: false, error: READ_ERROR };
-  } catch {
-    return { ok: false, error: READ_ERROR };
+  } catch (error) {
+    // SQLite's own message ("no such column: description") lets the model fix its query.
+    return { ok: false, error: error instanceof Error && error.message ? error.message.slice(0, 300) : READ_ERROR };
   }
   return { ok: true };
 }

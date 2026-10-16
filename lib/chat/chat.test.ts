@@ -129,6 +129,9 @@ test("guard allows one SELECT or WITH and rejects writes", () => {
   assert.equal(guardReadQuery(database, "SELECT 1; SELECT 2").ok, false);
   assert.equal(guardReadQuery(database, "EXPLAIN SELECT 1").ok, false);
   assert.equal(guardReadQuery(database, "DELETE FROM t").ok, false);
+  const missing = guardReadQuery(database, "SELECT description FROM t");
+  assert.equal(missing.ok, false);
+  assert.match(missing.ok ? "" : missing.error, /no such column: description/);
   database.close();
 });
 

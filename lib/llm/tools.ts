@@ -1,6 +1,10 @@
 import { jsonSchema, tool } from "ai";
 import { proposedArgsValid } from "./rows-schema";
 
+/** How the household database is laid out. Sent with run_sql so the model does not guess column names. */
+export const SQL_SCHEMA_NOTE =
+  "Tables: transactions(id, date TEXT as YYYY-MM-DD, category TEXT, amount REAL signed with expenses negative and income positive, bank TEXT, notes TEXT holding the payee or description, batch_id TEXT); categories(name); banks(name, initials, active 1 or 0, removed_at). There is no description column; use notes.";
+
 /** Tool results sent back to the model are cut at this many JSON characters. */
 export const TOOL_OUTPUT_CAP = 80_000;
 
@@ -123,7 +127,7 @@ export function createChatTools(options: {
   return {
     run_sql: tool({
       description:
-        "Run one read-only SELECT or WITH query against the household SQLite database. Call this before stating any amount, total, balance, or count. Results are capped at about 200 rows.",
+        `Run one read-only SELECT or WITH query against the household SQLite database. Call this before stating any amount, total, balance, or count. Results are capped at about 200 rows. ${SQL_SCHEMA_NOTE}`,
       inputSchema: jsonSchema(SQL_PARAMETERS, schemaOptions(options.validateShape ? sqlShape : undefined)),
       strict: true,
       execute: async (input) => run("run_sql", input),
