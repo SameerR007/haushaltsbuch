@@ -52,6 +52,8 @@ The model page used for the id is [GPT-5.6 Luna](https://developers.openai.com/a
 
 `messages` is the recent conversation. The app sends at most the last 20 turns; older turns stay in this browser and are not sent again. The last turn is the user. The key is not part of `messages`.
 
+`sessionId` is optional: a random id the browser keeps per conversation (stored in `haushaltsbuch.chat`, replaced by **New chat**). It is used only to group turns into one Langfuse session when [tracing](tracing.md) is on, and is ignored otherwise.
+
 ```json
 {
   "ok": true,
@@ -105,6 +107,7 @@ Multipart form fields:
 | `messages` | Optional JSON array of earlier chat turns. |
 | `step` | Local assistant only. `read` reads the PDF and returns its pages. `propose` takes `pages` (and `filename`) back with an instruction and returns rows. Omitted, the local route does both in one request. |
 | `pages` | With `step=propose`: the `read.pages` array from the read step, `[{ "page", "kind", "text" }]`. |
+| `sessionId` | Optional. Same conversation id as the chat request; used only for tracing. A local import is traced as `pdf-read`, `pdf-propose`, or `pdf-import`. |
 
 OpenAI and an OpenAI-compatible endpoint receive the PDF bytes as a file part. The server does not extract that statement locally and does not fall back to the local pipeline. The first PDF step forces `propose_transactions`, and the turn stops once that proposal comes back. The model may answer only through `propose_transactions`. By default every row is proposed, expenses as negative amounts and income (salary, refunds, and other incoming money) as positive amounts, even when the user says “add the expenses”. Rows are left out only when the instruction clearly narrows them: a date range, a payee, a category, or only money in or out. The app does not drop positive amounts. Salary uses the `salary` category. The review card shows a plus sign on income rows.
 

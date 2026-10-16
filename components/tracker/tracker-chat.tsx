@@ -97,6 +97,8 @@ type ChatState = {
   promptsUsed: boolean;
   hydrated: boolean;
   reading: Reading | null;
+  /** Groups this conversation's turns when Langfuse tracing is on. Reset by New chat. */
+  sessionId: string;
 };
 
 // The chat lives outside the component so a read or an answer keeps running while another page is
@@ -111,6 +113,7 @@ const chat = createChatStore<ChatState>({
   promptsUsed: false,
   hydrated: false,
   reading: null,
+  sessionId: "",
 });
 const idRef = { current: 1 };
 const sendLock = { current: false };
@@ -120,7 +123,7 @@ const abortRef: { current: AbortController | null } = { current: null };
 const chatEpoch = { current: 0 };
 
 // Saved on every change, including while the user is on another page.
-let lastSaved: Pick<ChatState, "items" | "promptsUsed" | "attachment"> | null = null;
+let lastSaved: Pick<ChatState, "items" | "promptsUsed" | "attachment" | "sessionId"> | null = null;
 chat.subscribe(() => {
   const state = chat.get();
   if (!state.hydrated) return;
@@ -128,12 +131,23 @@ chat.subscribe(() => {
     lastSaved &&
     lastSaved.items === state.items &&
     lastSaved.promptsUsed === state.promptsUsed &&
-    lastSaved.attachment === state.attachment
+    lastSaved.attachment === state.attachment &&
+    lastSaved.sessionId === state.sessionId
   ) {
     return;
   }
-  lastSaved = { items: state.items, promptsUsed: state.promptsUsed, attachment: state.attachment };
-  const stored = buildStoredChat({ promptsUsed: state.promptsUsed, items: state.items, attachment: state.attachment });
+  lastSaved = {
+    items: state.items,
+    promptsUsed: state.promptsUsed,
+    attachment: state.attachment,
+    sessionId: state.sessionId,
+  };
+  const stored = buildStoredChat({
+    promptsUsed: state.promptsUsed,
+    items: state.items,
+    attachment: state.attachment,
+    sessionId: state.sessionId,
+  });
   if (!showNewChatButton(stored)) clearStoredChat();
   else writeStoredChat(stored);
 });
@@ -158,12 +172,23 @@ function resetChat(): void {
     pending: false,
     promptsUsed: false,
     ack: false,
+    sessionId: "",
   } satisfies Partial<ChatState>)) {
     chat.set(key as keyof ChatState, value as never);
   }
 }
 
 if (typeof window !== "undefined") window.addEventListener(CHAT_RESET_EVENT, resetChat);
+
+/** This conversation's trace session, created on its first request. */
+function chatSession(): string {
+  let id = chat.get().sessionId;
+  if (!id) {
+    id = newSessionId();
+    chat.set("sessionId", id);
+  }
+  return id;
+}
 
 export function TrackerChat() {
   const threadRef = useRef<HTMLDivElement>(null);
@@ -197,6 +222,7 @@ export function TrackerChat() {
     const stored = readStoredChat();
     if (stored) {
       setPromptsUsed(stored.promptsUsed);
+      chat.set("sessionId", stored.sessionId ?? "");
       setItems(
         stored.items.map((item) => (item.kind === "proposal" ? { ...item, busy: false } : item)),
       );
@@ -401,7 +427,7 @@ export function TrackerChat() {
       ]);
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: instruction }]);
       const local = saved.assistant.type === "local";
-      const data = await postPdf(assistantRequestFields(saved.assistant), file, {
+      const data = await postPdf({ ...assistantRequestFields(saved.assistant), sessionId: chatSession() }, file, {
         instruction,
         messages: turns.slice(0, -1),
         step: local && file.read ? "propose" : undefined,
@@ -489,7 +515,7 @@ export function TrackerChat() {
         scannedPages: 0,
         startedAt: Date.now(),
       });
-      const data = await postPdf(assistantRequestFields(saved.assistant), file, {
+      const data = await postPdf({ ...assistantRequestFields(saved.assistant), sessionId: chatSession() }, file, {
         step: "read",
         signal: controller.signal,
         onProgress: (event) => {
@@ -571,7 +597,7 @@ export function TrackerChat() {
         { id: statusId, kind: "status", text: "Working…" },
       ]);
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: text }]);
-      const data = await postChat(assistantRequestFields(saved.assistant), turns);
+      const data = await postChat({ ...assistantRequestFields(saved.assistant), sessionId: chatSession() }, turns);
       if (epoch !== chatEpoch.current) return;
       const sentAs = typeof data?.sentAs === "string" && data.sentAs !== text ? data.sentAs : null;
       setItems((current) => {
@@ -938,8 +964,17 @@ async function postJson(path: string, body: object): Promise<Record<string, unkn
   }
 }
 
+/** Only used to group a conversation's turns when Langfuse tracing is on. */
+function newSessionId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 async function postChat(
-  fields: { apiKey?: string; assistant?: object },
+  fields: { apiKey?: string; assistant?: object; sessionId?: string },
   messages: ChatTurn[],
 ): Promise<Record<string, unknown> | null> {
   return postJson("/api/chat", { ...fields, messages });
@@ -1013,7 +1048,7 @@ function formatElapsed(ms: number): string {
 }
 
 async function postPdf(
-  fields: { apiKey?: string; assistant?: object },
+  fields: { apiKey?: string; assistant?: object; sessionId?: string },
   attachment: Attachment,
   options: {
     instruction?: string;
@@ -1028,6 +1063,7 @@ async function postPdf(
     const form = new FormData();
     if (fields.apiKey) form.set("apiKey", fields.apiKey);
     if (fields.assistant) form.set("assistant", JSON.stringify(fields.assistant));
+    if (fields.sessionId) form.set("sessionId", fields.sessionId);
     if (options.instruction) form.set("instruction", options.instruction);
     form.set("messages", JSON.stringify(options.messages ?? []));
     if (options.step) form.set("step", options.step);

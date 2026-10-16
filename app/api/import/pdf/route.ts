@@ -23,6 +23,7 @@ import {
   type ScanProgress,
 } from "@/lib/llm/local-statement";
 import { guardSameOrigin, jsonResult } from "@/lib/setup/http";
+import { traceSessionId, withSpan, withTrace } from "@/lib/tracing/langfuse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,24 +95,41 @@ export async function POST(request: Request) {
     const prior = parseMessages(typeof form.get("messages") === "string" ? String(form.get("messages")) : null);
     const instructionOk = typeof instruction === "string" && instruction.trim() && instruction.length <= 8000;
 
+    // A local import is traced like the cloud one: pdf-read (Import), pdf-propose (the user's note), or pdf-import (both).
+    const localTrace = (name: string, input: unknown) => ({
+      name,
+      sessionId: traceSessionId(form.get("sessionId")),
+      tags: ["pdf", "local"],
+      input,
+      metadata: {
+        assistant: "local",
+        model: assistant.type === "local" ? assistant.model : undefined,
+        ocrModel: assistant.type === "local" ? assistant.ocrModel?.trim() || null : undefined,
+      },
+    });
+
     if (assistant.type === "local" && step === "propose") {
       if (!instructionOk) return invalid("Say what to add from this statement.");
       const pages = parsePages(form.get("pages"));
       if (!pages) return invalid("Import the statement again.");
       const filename = safePdfName(typeof form.get("filename") === "string" ? String(form.get("filename")) : "statement.pdf");
-      return streamLocal(request, async () => {
-        const result = await proposeFromPages({
-          pages,
-          baseUrl: assistant.baseUrl,
-          model: assistant.model,
-          ocrModel: assistant.ocrModel?.trim() || null,
-          instruction: String(instruction).trim(),
-          messages: prior,
-          household,
-          signal: request.signal,
-        });
-        return proposalEvent(result, filename, household);
-      });
+      const note = String(instruction).trim();
+      return streamLocal(request, () =>
+        withTrace(localTrace("pdf-propose", { instruction: note, filename, pages: pages.length }), async (root) => {
+          const result = await proposeFromPages({
+            pages,
+            baseUrl: assistant.baseUrl,
+            model: assistant.model,
+            ocrModel: assistant.ocrModel?.trim() || null,
+            instruction: note,
+            messages: prior,
+            household,
+            signal: request.signal,
+          });
+          root.update({ output: { proposedRows: result.rows.length } });
+          return proposalEvent(result, filename, household);
+        }),
+      );
     }
 
     if (!instructionOk && !(assistant.type === "local" && step === "read")) {
@@ -133,60 +151,87 @@ export async function POST(request: Request) {
         signal: request.signal,
       };
       if (step === "read") {
-        return streamLocal(request, async (send) => {
-          const pages = await readStatementPages({ ...reading, onProgress: progressSender(send, filename) });
-          if (!combinedPageText(pages).trim()) {
-            const failed = pages.find((page) => page.kind === "failed");
-            return {
-              type: "result",
-              ok: false,
-              code: "rejected",
-              error: failed ? `Couldn't read page ${failed.page}. Nothing was saved.` : "No text could be read from that statement.",
-            };
-          }
-          return { type: "result", ok: true, read: { pages } };
-        });
+        return streamLocal(request, (send) =>
+          withTrace(localTrace("pdf-read", { filename, bytes: bytes.length }), async (root) => {
+            const pages = await readStatementPages({ ...reading, onProgress: progressSender(send, filename) });
+            root.update({ output: pages.map((page) => ({ page: page.page, kind: page.kind, chars: page.text.length })) });
+            if (!combinedPageText(pages).trim()) {
+              const failed = pages.find((page) => page.kind === "failed");
+              return {
+                type: "result",
+                ok: false,
+                code: "rejected",
+                error: failed
+                  ? `Couldn't read page ${failed.page}. Nothing was saved.`
+                  : "No text could be read from that statement.",
+              };
+            }
+            return { type: "result", ok: true, read: { pages } };
+          }),
+        );
       }
-      return streamLocal(request, async (send) => {
-        const result = await readLocalStatement({
-          ...reading,
-          filename,
-          instruction: String(instruction).trim(),
-          messages: prior,
-          household,
-          onProgress: progressSender(send, filename),
-        });
-        return proposalEvent(result, filename, household);
-      });
+      const note = String(instruction).trim();
+      return streamLocal(request, (send) =>
+        withTrace(localTrace("pdf-import", { instruction: note, filename, bytes: bytes.length }), async (root) => {
+          const result = await readLocalStatement({
+            ...reading,
+            filename,
+            instruction: note,
+            messages: prior,
+            household,
+            onProgress: progressSender(send, filename),
+          });
+          root.update({ output: { proposedRows: result.rows.length } });
+          return proposalEvent(result, filename, household);
+        }),
+      );
     }
 
     const apiKey = assistant.apiKey;
     const messages: ChatTurn[] = recentModelTurns([...prior, { role: "user", content: String(instruction).trim() }]);
-    let proposalArgs: unknown = null;
-    await runChatTurn({
-      apiKey,
-      assistant,
-      instructions: withPdfInstructions(
-        householdInstructions({
-          currency: household.currency,
-          categories: household.categories,
-          banks: household.banks,
-          today: todayIso(),
-        }),
-      ),
-      messages,
-      mode: "pdf",
-      pdf: { filename, data: Buffer.from(bytes) },
-      executeTool: (name, args) => {
-        if (name === "propose_transactions") {
-          proposalArgs = args;
-          return { ok: true, saved: false, count: rowsOf(args).length };
-        }
-        return { ok: false, error: "Only propose_transactions is available for a statement." };
+    const rows = await withTrace(
+      {
+        name: "pdf-import",
+        sessionId: traceSessionId(form.get("sessionId")),
+        tags: ["pdf", assistant.type],
+        input: { messages, statement: { filename, bytes: bytes.length } },
+        metadata: { assistant: assistant.type, model: assistant.type === "openai" ? undefined : assistant.model },
       },
-    });
-
-    const rows = proposalArgs ? reviewProposedRows(rowsOf(proposalArgs), household) : [];
+      async (root) => {
+        let proposalArgs: unknown = null;
+        await runChatTurn({
+          apiKey,
+          assistant,
+          instructions: withPdfInstructions(
+            householdInstructions({
+              currency: household.currency,
+              categories: household.categories,
+              banks: household.banks,
+              today: todayIso(),
+            }),
+          ),
+          messages,
+          mode: "pdf",
+          pdf: { filename, data: Buffer.from(bytes) },
+          executeTool: (name, args) => {
+            if (name === "propose_transactions") {
+              proposalArgs = args;
+              return { ok: true, saved: false, count: rowsOf(args).length };
+            }
+            return { ok: false, error: "Only propose_transactions is available for a statement." };
+          },
+        });
+        const reviewed = proposalArgs
+          ? await withSpan("review-rows", "span", proposalArgs, (span) => {
+              const result = reviewProposedRows(rowsOf(proposalArgs), household);
+              span.update({ output: result });
+              return result;
+            })
+          : [];
+        root.update({ output: { proposedRows: reviewed.length } });
+        return reviewed;
+      },
+    );
     if (!rows.length) {
       return jsonResult(
         { ok: false, code: "rejected", error: "No transactions were read from that statement." },
