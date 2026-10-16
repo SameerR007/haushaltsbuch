@@ -692,11 +692,6 @@ export function TrackerChat() {
                 <p key={item.id} className="tracker-user">
                   {item.text}
                   {item.statementName ? <span className="tracker-statement">{item.statementName}</span> : null}
-                  {item.sentAs ? (
-                    <span className="tracker-sent-as" data-testid="sent-as">
-                      Sent as: {item.sentAs}
-                    </span>
-                  ) : null}
                 </p>
               );
             }

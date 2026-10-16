@@ -62,7 +62,7 @@ The model page used for the id is [GPT-5.6 Luna](https://developers.openai.com/a
 }
 ```
 
-Before the last user message goes to the model, the route reads this computer's clock and rewrites it (`lib/chat/reframe.ts`). If the message has no year, every month in it gets the current year ("in August" → "in August 2026"). A message with a year is left as it is. Then the line `Today is Friday, 16 October 2026 (2026-10-16).` is added. The system instructions carry no date for chat. When the question changed, the response has `sentAs` with the rewritten question, and the chat shows it under the user's message.
+Before the last user message goes to the model, the route reads this computer's clock and rewrites it (`lib/chat/reframe.ts`). If the message has no year, every month in it gets the current year ("in August" → "in August 2026"). A message with a year is left as it is. Then the line `Today is Friday, 16 October 2026 (2026-10-16).` is added. The system instructions carry no date for chat. When the question changed, the response has `sentAs` with the rewritten question. The chat keeps it with the message and sends it as that turn's history; it is not shown on screen (Langfuse traces show what the model received).
 
 When the model proposes rows, `proposal` is a review card and `reply` may be empty. `proposal.rows` are validated. They are not saved.
 
