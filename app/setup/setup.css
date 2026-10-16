@@ -178,10 +178,11 @@
   color: var(--ink);
 }
 
+.setup-chip.primary:disabled,
 .setup-chip.primary:disabled:hover {
-  background: var(--teal);
+  background: #cfc9c1;
   color: #fff;
-  border-color: var(--teal);
+  border-color: #cfc9c1;
 }
 
 .setup-chip.is-selected {

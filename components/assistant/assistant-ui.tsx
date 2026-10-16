@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   DEFAULT_LOCAL_ADDRESS,
   DEFAULT_LOCAL_MODEL,
@@ -145,19 +145,22 @@ export function LocalConnectionCard({
   const [ocrCopied, setOcrCopied] = useState(false);
   const ready = probe?.ok === true;
   const chosenOcr = ocrNone ? null : ocrModel.trim() || null;
+  // Ready to save: the chat model passed its test, and the OCR model passed too or None is chosen.
+  const ocrSettled = chosenOcr === null || ocrProbe?.ok === true;
+  const onReadyRef = useRef(onReadyChange);
+  onReadyRef.current = onReadyChange;
 
-  function publish(nextProbe: ProbeView | null, ocr: string | null) {
-    if (nextProbe?.ok !== true) {
-      onReadyChange?.(null);
-      return;
-    }
-    onReadyChange?.({ address: address.trim(), model: model.trim(), ocrModel: ocr });
-  }
+  useEffect(() => {
+    onReadyRef.current?.(
+      ready && ocrSettled ? { address: address.trim(), model: model.trim(), ocrModel: chosenOcr } : null,
+    );
+  }, [ready, ocrSettled, address, model, chosenOcr]);
 
   function edit(nextAddress: string, nextModel: string) {
     setAddress(nextAddress);
     setModel(nextModel);
     setProbe(null);
+    if (nextAddress !== address) setOcrProbe(null);
     setHelpOpen(false);
     onReadyChange?.(null);
   }
@@ -172,7 +175,6 @@ export function LocalConnectionCard({
     const result = await postProbe({ type: "local", address: address.trim(), model: model.trim() });
     setProbe(result);
     setHelpOpen(false);
-    publish(result, chosenOcr);
     setPending(false);
   }
 
@@ -190,14 +192,12 @@ export function LocalConnectionCard({
     setOcrNone(true);
     setOcrModel("");
     setOcrProbe(null);
-    publish(probe, null);
   }
 
   function editOcr(value: string) {
     setOcrModel(value);
     setOcrNone(false);
     setOcrProbe(null);
-    publish(probe, value.trim() || null);
   }
 
   return (
