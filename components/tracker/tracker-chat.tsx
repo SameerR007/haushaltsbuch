@@ -2,6 +2,7 @@
 
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { createChatStore } from "@/components/tracker/chat-store";
+import { ReplyText } from "@/components/tracker/reply-text";
 import { ReviewCard } from "@/components/tracker/review-card";
 import {
   endpointHostname,
@@ -676,14 +677,12 @@ export function TrackerChat() {
             if (item.kind === "assistant") {
               return (
                 <div key={item.id} className={item.changeAssistant ? "tracker-assistant is-import-error" : "tracker-assistant"}>
-                  <p>
-                    {item.text}{" "}
-                    {item.changeAssistant ? (
-                      <a className="tracker-setup-link" href="/data/assistant">
-                        Change assistant
-                      </a>
-                    ) : null}
-                  </p>
+                  <ReplyText text={item.text} />
+                  {item.changeAssistant ? (
+                    <a className="tracker-setup-link" href="/data/assistant">
+                      Change assistant
+                    </a>
+                  ) : null}
                   {item.detail ? <p className="tracker-import-detail">{item.detail}</p> : null}
                   {item.setupLink && (
                     <a className="tracker-setup-link" href="/setup">

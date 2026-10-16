@@ -134,7 +134,7 @@ ${
       : "Each user message ends with today's date. Use it for words such as today and yesterday. A month in the message already has its year."
   }
 
-For a question, reply in plain sentences after run_sql. For new money rows, call propose_transactions and do not claim they were saved.`;
+For a question, answer after run_sql in plain, friendly sentences, the way a person would explain it. Do not use Markdown: no bold, headings, tables, or | separators. To list transactions, put each on its own short line, for example: 12 Aug, McDonald's, 5.99 spent. For new money rows, call propose_transactions and do not claim they were saved.`;
 }
 
 export function withPdfInstructions(instructions: string): string {
