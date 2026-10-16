@@ -15,7 +15,7 @@ import {
   statementSubtitle,
   statementTitle,
 } from "@/lib/chat/statement";
-import type { Proposal, ReviewRow } from "@/lib/chat/types";
+import type { Proposal, ReviewRow, RowFlag } from "@/lib/chat/types";
 import { parseAmount, parseIsoDate, rowBlocksSave, rowsToSave } from "@/lib/chat/validate-rows";
 import { formatSignedAmount } from "@/lib/chat/statement";
 
@@ -57,7 +57,7 @@ export function StatementReview({
     const row = rows[index];
     if (!row) return;
     const amount = parseAmount(value);
-    const flags = row.flags.filter((flag) => flag !== "invalid_amount");
+    const flags: RowFlag[] = row.flags.filter((flag) => flag !== "invalid_amount");
     if (amount === null) flags.push("invalid_amount");
     update(index, { amountInput: value, amount, flags });
   }
@@ -66,7 +66,7 @@ export function StatementReview({
     const row = rows[index];
     if (!row) return;
     const date = parseIsoDate(value);
-    const flags = row.flags.filter((flag) => flag !== "invalid_date");
+    const flags: RowFlag[] = row.flags.filter((flag) => flag !== "invalid_date");
     if (!date) flags.push("invalid_date");
     update(index, { dateInput: value, date, flags });
   }

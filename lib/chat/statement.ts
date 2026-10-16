@@ -86,7 +86,7 @@ function dottedToIso(value: string): string | null {
 
 function matchLabeledAmount(text: string, labels: readonly string[]): number | null {
   for (const label of labels) {
-    const pattern = new RegExp(`(?:^|\\n)\\s*${label}\\s*[:\\-]?\\s*([+-]?\\d[\\d.,\\s]*)`, "i");
+    const pattern = new RegExp(`(?:^|\\n)\\s*${label}\\s*[:\\-]?\\s*([+-]?\\d[\\d.,\\t \\u00a0]*)`, "i");
     const match = pattern.exec(text);
     if (!match?.[1]) continue;
     const amount = parseLooseAmount(match[1]);

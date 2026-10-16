@@ -44,8 +44,9 @@ export type ProbeOutcome = ProbeSuccess | ProbeFailure;
 
 const PROBE_TIMEOUT_MS = 45_000;
 
+/** The OCR check is answered by `checkImageCapability`, not here. */
 export async function probeAssistant(
-  request: ProbeRequest,
+  request: Exclude<ProbeRequest, { kind: "ocr" }>,
   options?: { fetchImpl?: typeof fetch; now?: () => number },
 ): Promise<ProbeOutcome> {
   const fetchImpl = options?.fetchImpl ?? fetch;

@@ -282,7 +282,8 @@ test("an unreadable scanned page stops later pages and offers no balance", async
     instruction: "Add the transactions",
     messages: [],
     household,
-    fetchImpl: async () => textReply("???"),
+    fetchImpl: async (_input, init) =>
+      bodyText(init).includes("Transcribe this bank statement") ? textReply("???") : toolRows(PASS_ROWS),
     extractTexts: async () => [TEXT_PAGE, "", ""],
     renderPage: async () => {
       renders += 1;

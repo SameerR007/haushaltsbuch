@@ -691,7 +691,7 @@ export function TrackerChat() {
               </button>
             </span>
           </div>
-        )}
+        ) : null}
         <div className="tracker-compose">
           <button
             type="button"

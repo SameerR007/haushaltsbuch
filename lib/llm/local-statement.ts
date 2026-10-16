@@ -2,7 +2,7 @@ import { FALLBACK_ROW_NOTE } from "@/lib/assistant/copy";
 import type { Household } from "@/lib/chat/household";
 import { householdInstructions, todayIso, withLocalStatementInstructions } from "@/lib/chat/prompts";
 import { parseStatementFacts, textLooksUseful, type StatementReview } from "@/lib/chat/statement";
-import type { ChatTurn, ReviewRow, StatementPage, StatementPageStatus } from "@/lib/chat/types";
+import type { ChatTurn, ReviewRow, RowFlag, StatementPage, StatementPageStatus } from "@/lib/chat/types";
 import { reviewProposedRows } from "@/lib/chat/validate-rows";
 import { checkImageCapability, type ImageCapability } from "./capabilities";
 import { classifyPageText, extractPageTexts, renderStatementPage } from "./pdf-text";
@@ -276,7 +276,7 @@ function markFallback(rows: ReviewRow[], fallbackText: string): ReviewRow[] {
   return rows.map((row) => {
     const needle = row.description.trim().toLowerCase();
     if (needle.length < 4 || !haystack.includes(needle)) return row;
-    const flags = row.flags.includes("uncertain") ? row.flags : [...row.flags, "uncertain"];
+    const flags: RowFlag[] = row.flags.includes("uncertain") ? row.flags : [...row.flags, "uncertain"];
     return { ...row, flags, note: FALLBACK_ROW_NOTE };
   });
 }

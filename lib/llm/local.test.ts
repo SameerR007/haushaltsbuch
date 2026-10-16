@@ -21,7 +21,7 @@ function withTempDb(fn: () => Promise<void>): Promise<void> {
   });
 }
 
-function tinyPdfBytes(): Uint8Array {
+function tinyPdfBytes(): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(`%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj

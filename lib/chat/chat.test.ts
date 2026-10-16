@@ -1188,9 +1188,9 @@ test("a leftover PDF acknowledgement is removed and not stored again", () => {
 
   const chat = readFileSync("components/tracker/tracker-chat.tsx", "utf8");
   assert.match(chat, /clearPdfDisclosureAck\(\)/);
-  assert.match(chat, /setAck\(false\);\s*setAttachment\(/);
+  assert.match(chat, /setAck\(localAssistant\);\s*setAttachment\(/);
   assert.match(chat, /attachment\?\.file\) && !ack/);
-  assert.match(chat, /if \(attachment && !ack\) return/);
+  assert.match(chat, /if \(attachment && !ack && !localAssistant\) return/);
   assert.match(chat, /function cancelDisclosure\(\)/);
   assert.match(chat, /onDrop=\{onDropPdf\}/);
   assert.match(chat, />\s*Continue\s*</);

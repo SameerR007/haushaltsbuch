@@ -4,7 +4,7 @@ function pdfEscape(text: string): string {
   return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
-export function buildStatementPdf(pages: readonly string[]): Uint8Array {
+export function buildStatementPdf(pages: readonly string[]): Uint8Array<ArrayBuffer> {
   const chunks: string[] = [];
   let length = 0;
   const push = (text: string) => {
