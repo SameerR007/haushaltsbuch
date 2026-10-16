@@ -635,6 +635,8 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.match(text, /Do not use numbers from memory/);
   assert.match(text, /Do every sum, difference, and comparison in SQL/);
   assert.match(text, /never add or change numbers yourself/);
+  assert.match(text, /use GROUP BY category and take each total, and the combined total, from SQL/);
+  assert.match(text, /use category names exactly as listed/);
   assert.match(text, /When only one bank is saved, that bank is the default/);
   assert.match(text, /ING \(IN\)/);
   assert.equal(text.includes("€"), false);
