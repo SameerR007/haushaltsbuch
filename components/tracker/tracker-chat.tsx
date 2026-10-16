@@ -5,9 +5,12 @@ import { ReviewCard } from "@/components/tracker/review-card";
 import {
   DEFAULT_STATEMENT_INSTRUCTION,
   endpointHostname,
+  FINISH_REVIEW_FIRST,
+  IMPORT_BUTTON,
   IMPORT_STATEMENT,
-  IMPORT_THIS_STATEMENT,
+  LOCAL_READ_HINT,
   LOCAL_STATEMENT_NOTE,
+  PLACEHOLDER_ATTACHED,
   readingScannedPage,
   scannedPageMix,
 } from "@/lib/assistant/copy";
@@ -30,7 +33,7 @@ import {
   type SavedConnection,
 } from "@/lib/connection";
 import { parseHousehold } from "@/lib/data/parse";
-import { attachmentLabel, countPdfPages, isPdfBytes, MAX_PDF_BYTES, PDF_NOT_PDF, PDF_TOO_LARGE } from "@/lib/chat/pdf-meta";
+import { countPdfPages, formatFileSize, isPdfBytes, MAX_PDF_BYTES, PDF_NOT_PDF, PDF_TOO_LARGE } from "@/lib/chat/pdf-meta";
 import {
   buildStoredChat,
   CHAT_RESET_EVENT,
@@ -94,6 +97,8 @@ export function TrackerChat() {
   const [hydrated, setHydrated] = useState(false);
   const [reading, setReading] = useState<Reading | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [now, setNow] = useState(0);
+  const readingSince = reading?.startedAt ?? null;
 
   function nextId() {
     idRef.current += 1;
@@ -164,6 +169,13 @@ export function TrackerChat() {
   }, []);
 
   useEffect(() => {
+    if (readingSince === null) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [readingSince]);
+
+  useEffect(() => {
     const node = threadRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
@@ -192,7 +204,7 @@ export function TrackerChat() {
   const reviewingStatement = items.some(
     (item) => item.kind === "proposal" && item.phase === "review" && Boolean(item.proposal.statement),
   );
-  const showImport = Boolean(attachment?.file) && !reading && (localAssistant || (endpointAssistant && ack));
+  const canImport = Boolean(attachment?.file) && !reading && !showDisclosure && !reviewingStatement;
 
   function patchProposal(id: number, patch: Partial<Extract<Item, { kind: "proposal" }>>) {
     setItems((current) =>
@@ -268,7 +280,7 @@ export function TrackerChat() {
     };
   }
 
-  async function runImport(instruction: string, file: Attachment, quiet: boolean) {
+  async function runImport(instruction: string, file: Attachment) {
     const saved = connection ?? readConnection();
     if (!saved?.assistant) {
       setPromptsUsed(true);
@@ -292,87 +304,75 @@ export function TrackerChat() {
     const prior = history();
     const controller = new AbortController();
     abortRef.current = controller;
-    const local = saved.assistant.type === "local";
+    const filename = file.name || "statement.pdf";
     try {
       setDraft("");
       setFormError("");
       setPending(true);
       setPromptsUsed(true);
-      const statusId = nextId();
-      if (local) {
-        setReading({
-          filename: file.name || "statement.pdf",
-          phase: "text",
-          page: 0,
-          total: 0,
-          model: "",
-          textPages: 0,
-          scannedPages: 0,
-        });
-      } else {
-        setItems((current) => [
-          ...current.filter((item) => item.kind !== "status"),
-          ...(quiet
-            ? []
-            : [{ id: nextId(), kind: "user" as const, text: instruction, statementName: file.name || "statement.pdf" }]),
-          { id: statusId, kind: "status" as const, text: READING_STATEMENT },
-        ]);
-      }
+      setReading({
+        filename,
+        phase: "text",
+        page: 0,
+        total: 0,
+        model: "",
+        textPages: 0,
+        scannedPages: 0,
+        startedAt: Date.now(),
+      });
+      setItems((current) => [
+        ...current.filter((item) => item.kind !== "status"),
+        { id: nextId(), kind: "user", text: instruction, statementName: filename },
+      ]);
       const turns = recentModelTurns<ChatTurn>([...prior, { role: "user", content: instruction }]);
       const data = await postPdf(assistantRequestFields(saved.assistant), instruction, file, turns.slice(0, -1), {
         signal: controller.signal,
         onProgress: (event) => {
-          setReading({
-            filename: file.name || "statement.pdf",
-            phase: "scan",
-            page: event.page,
-            total: event.total,
-            model: event.model,
-            textPages: event.textPages,
-            scannedPages: event.scannedPages,
-          });
+          setReading((current) =>
+            current
+              ? {
+                  ...current,
+                  phase: "scan",
+                  page: event.page,
+                  total: event.total,
+                  model: event.model,
+                  textPages: event.textPages,
+                  scannedPages: event.scannedPages,
+                }
+              : current,
+          );
         },
       });
       if (controller.signal.aborted || data?.cancelled === true) {
-        setItems((current) => [
-          ...current.filter((item) => item.id !== statusId),
-          { id: nextId(), kind: "assistant", text: "Cancelled. Nothing was saved." },
-        ]);
+        setItems((current) => [...current, { id: nextId(), kind: "assistant", text: "Cancelled. Nothing was saved." }]);
         return;
       }
       const proposal = data?.ok === true ? data.proposal : null;
       const accepted = isProposal(proposal) && proposal.rows.length > 0;
-      if (accepted && !local) {
+      if (accepted) {
         setAttachment(null);
         setAck(false);
         if (fileRef.current) fileRef.current.value = "";
       }
       setItems((current) => {
-        const lead = current.filter((item) => item.id !== statusId && item.kind !== "status");
         if (!data) {
-          return [...lead, { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." }];
+          return [...current, { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." }];
         }
-        if (data.ok !== true) return [...lead, assistantFrom(data, "Could not read that statement.")];
+        if (data.ok !== true) return [...current, assistantFrom(data, "Could not read that statement.")];
         if (accepted && isProposal(proposal)) {
           return [
-            ...lead,
+            ...current,
             { id: nextId(), kind: "proposal", phase: "review", proposal, error: "", busy: false },
           ];
         }
-        return [...lead, { id: nextId(), kind: "assistant", text: "No transactions were read from that statement." }];
+        return [...current, { id: nextId(), kind: "assistant", text: "No transactions were read from that statement." }];
       });
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        setItems((current) => [
-          ...current.filter((item) => item.kind !== "status"),
-          { id: nextId(), kind: "assistant", text: "Cancelled. Nothing was saved." },
-        ]);
-        return;
-      }
-      setItems((current) => [
-        ...current.filter((item) => item.kind !== "status"),
-        { id: nextId(), kind: "assistant", text: "Could not reach the tracker. Try again." },
-      ]);
+      const text =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Cancelled. Nothing was saved."
+          : "Could not reach the tracker. Try again.";
+      setItems((current) => [...current, { id: nextId(), kind: "assistant", text }]);
     } finally {
       abortRef.current = null;
       setReading(null);
@@ -384,16 +384,17 @@ export function TrackerChat() {
   async function onSend(event: FormEvent) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text || pending || sendLock.current) return;
+    if (pending || sendLock.current) return;
     if (attachment && !attachment.file) {
       setFormError(REATTACH_PDF);
       return;
     }
     if (attachment && !ack && !localAssistant) return;
     if (attachment?.file && !reviewingStatement) {
-      await runImport(text, attachment, false);
+      await runImport(text || DEFAULT_STATEMENT_INSTRUCTION, attachment);
       return;
     }
+    if (!text) return;
     const saved = connection ?? readConnection();
     if (!saved?.assistant) {
       setPromptsUsed(true);
@@ -503,54 +504,6 @@ export function TrackerChat() {
 
   return (
     <main className="tracker-main" onDragOver={(event) => event.preventDefault()} onDrop={onDropPdf}>
-      {reading ? (
-        <div className="tracker-reading">
-          {attachment ? <ImportLaunch attachment={attachment} disabled /> : null}
-          <section className="tracker-card import-progress" aria-live="polite">
-            <h2>
-              {reading.phase === "scan"
-                ? readingScannedPage(reading.page, reading.total, reading.model)
-                : "Reading statement…"}
-            </h2>
-            <p>
-              {reading.phase === "scan"
-                ? scannedPageMix(reading.filename, reading.textPages, reading.scannedPages)
-                : reading.filename}
-            </p>
-            <div className="import-bar" aria-hidden="true">
-              <span
-                style={{
-                  width:
-                    reading.phase === "scan" && reading.total > 0
-                      ? `${Math.min(95, 20 + (reading.page / reading.total) * 75)}%`
-                      : "35%",
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              className="import-cancel"
-              onClick={() => abortRef.current?.abort()}
-            >
-              Cancel
-            </button>
-          </section>
-        </div>
-      ) : (
-        <>
-      {showImport && attachment ? (
-        <div className="tracker-reading is-ready">
-          <ImportLaunch
-            attachment={attachment}
-            disabled={reviewingStatement}
-            onImport={
-              reviewingStatement
-                ? undefined
-                : () => void runImport(draft.trim() || DEFAULT_STATEMENT_INSTRUCTION, attachment, !draft.trim())
-            }
-          />
-        </div>
-      ) : null}
       {hydrated && hasThread ? (
         <div className="tracker-thread" ref={threadRef} aria-live="polite">
           {items.map((item) => {
@@ -643,8 +596,6 @@ export function TrackerChat() {
       ) : (
         <div className="tracker-empty" />
       )}
-        </>
-      )}
 
       <form className="tracker-form" onSubmit={(event) => void onSend(event)}>
         {showDisclosure && (
@@ -660,7 +611,7 @@ export function TrackerChat() {
             </div>
           </div>
         )}
-        {localAssistant && (
+        {localAssistant && !attachment && !reading && (
           <p className="tracker-privacy" data-testid="local-statement-note">
             <span aria-hidden="true">🔒 </span>
             {LOCAL_STATEMENT_NOTE}
@@ -672,24 +623,65 @@ export function TrackerChat() {
             {disclosure}
           </p>
         ) : null}
-        {attachment && !showImport ? (
-          <div className="tracker-chip-row">
-            <span className="tracker-chip">
-              {attachmentLabel(attachment.name, attachment.pages, attachment.size)}
-              {!attachment.file ? <span className="tracker-chip-note">Reattach to send</span> : null}
-              <button
-                type="button"
-                className="tracker-chip-remove"
-                aria-label="Remove file"
-                onClick={() => {
-                  setAttachment(null);
-                  setAck(false);
-                  if (fileRef.current) fileRef.current.value = "";
-                }}
+        {reading ? (
+          <div className="tracker-tray is-reading" aria-live="polite" data-testid="import-tray">
+            <FileBadge />
+            <div className="tracker-tray-body">
+              <p className="tracker-tray-title">
+                {reading.phase === "scan"
+                  ? readingScannedPage(reading.page, reading.total, reading.model)
+                  : READING_STATEMENT}
+              </p>
+              <p className="tracker-tray-meta">
+                {reading.phase === "scan"
+                  ? scannedPageMix(reading.filename, reading.textPages, reading.scannedPages)
+                  : reading.filename}
+                {localAssistant ? ` · ${LOCAL_READ_HINT}` : ""}
+              </p>
+              <div
+                className={reading.phase === "scan" && reading.total > 0 ? "import-bar" : "import-bar is-indeterminate"}
+                aria-hidden="true"
               >
-                ×
+                <span
+                  style={
+                    reading.phase === "scan" && reading.total > 0
+                      ? { width: `${Math.min(95, 10 + (reading.page / reading.total) * 85)}%` }
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
+            <div className="tracker-tray-side">
+              <span className="tracker-tray-time">{formatElapsed(now - reading.startedAt)}</span>
+              <button type="button" className="tracker-tray-cancel" onClick={() => abortRef.current?.abort()}>
+                Cancel
               </button>
-            </span>
+            </div>
+          </div>
+        ) : attachment ? (
+          <div className="tracker-tray" data-testid="import-tray">
+            <FileBadge />
+            <div className="tracker-tray-body">
+              <p className="tracker-tray-title">{attachment.name}</p>
+              <p className={attachment.file ? "tracker-tray-meta" : "tracker-tray-meta is-warn"}>
+                {attachmentMeta(attachment, {
+                  reviewing: reviewingStatement,
+                  local: localAssistant,
+                })}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="tracker-chip-remove"
+              aria-label="Remove file"
+              onClick={() => {
+                setAttachment(null);
+                setAck(false);
+                if (fileRef.current) fileRef.current.value = "";
+              }}
+            >
+              ×
+            </button>
           </div>
         ) : null}
         <div className="tracker-compose">
@@ -697,6 +689,7 @@ export function TrackerChat() {
             type="button"
             className="tracker-clip"
             aria-label="Attach a bank statement PDF"
+            disabled={Boolean(reading)}
             onClick={() => fileRef.current?.click()}
           >
             <PaperclipIcon />
@@ -706,12 +699,24 @@ export function TrackerChat() {
             className={draft ? "has-value" : undefined}
             value={draft}
             aria-label="Expense or instruction"
-            placeholder={started ? PLACEHOLDER_FOLLOWUP : localAssistant ? PLACEHOLDER_TYPED : PLACEHOLDER_EMPTY}
+            placeholder={
+              canImport
+                ? PLACEHOLDER_ATTACHED
+                : started
+                  ? PLACEHOLDER_FOLLOWUP
+                  : localAssistant
+                    ? PLACEHOLDER_TYPED
+                    : PLACEHOLDER_EMPTY
+            }
             onChange={(event) => setDraft(event.target.value)}
             autoComplete="off"
           />
-          <button className="tracker-send" type="submit" disabled={pending || !draft.trim() || showDisclosure}>
-            Send
+          <button
+            className="tracker-send"
+            type="submit"
+            disabled={pending || showDisclosure || !(draft.trim() || canImport)}
+          >
+            {canImport ? IMPORT_BUTTON : "Send"}
           </button>
         </div>
         {formError && <p className="tracker-form-error tracker-form-error-pad">{formError}</p>}
@@ -769,30 +774,33 @@ type Reading = {
   model: string;
   textPages: number;
   scannedPages: number;
+  startedAt: number;
 };
 
-function ImportLaunch({
-  attachment,
-  disabled = false,
-  onImport,
-}: {
-  attachment: Attachment;
-  disabled?: boolean;
-  onImport?: () => void;
-}) {
-  const pages = attachment.pages && attachment.pages > 0 ? `${attachment.pages} ${attachment.pages === 1 ? "page" : "pages"}` : "";
+function FileBadge() {
   return (
-    <div className="import-launch">
-      <p>
-        <span aria-hidden="true">📄 </span>
-        {attachment.name}
-        {pages ? ` · ${pages}` : ""}
-      </p>
-      <button type="button" disabled={disabled || !onImport} onClick={onImport}>
-        {IMPORT_THIS_STATEMENT}
-      </button>
-    </div>
+    <span className="tracker-file-badge" aria-hidden="true">
+      PDF
+    </span>
   );
+}
+
+function attachmentMeta(attachment: Attachment, state: { reviewing: boolean; local: boolean }): string {
+  if (!attachment.file) return "Reattach to send";
+  if (state.reviewing) return FINISH_REVIEW_FIRST;
+  const parts: string[] = [];
+  if (attachment.pages && attachment.pages > 0) {
+    parts.push(`${attachment.pages} ${attachment.pages === 1 ? "page" : "pages"}`);
+  }
+  const size = formatFileSize(attachment.size);
+  if (size) parts.push(size);
+  parts.push(state.local ? "read on this computer" : "ready to import");
+  return parts.join(" · ");
+}
+
+function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 async function postPdf(

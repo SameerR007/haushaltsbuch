@@ -49,7 +49,10 @@ export const ENDPOINT_IMPORT_NOTE =
 export const NOTHING_SAVED_TYPE = "Nothing was saved. You can still type expenses.";
 export const FALLBACK_ROW_NOTE = "Read by fallback (chat model)";
 export const IMPORT_STATEMENT = "Import a bank statement";
-export const IMPORT_THIS_STATEMENT = "Import this statement";
+export const IMPORT_BUTTON = "Import";
+export const LOCAL_READ_HINT = "A model on this computer can take a minute or two.";
+export const PLACEHOLDER_ATTACHED = "Add a note if you like, then Import";
+export const FINISH_REVIEW_FIRST = "Confirm or cancel the statement above first.";
 export const DEFAULT_STATEMENT_INSTRUCTION = "Add the transactions from this bank statement";
 
 export function ocrReadyTitle(model: string): string {
