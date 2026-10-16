@@ -219,7 +219,9 @@ export function LocalConnectionCard({
           onChange={(event) => edit(event.target.value, model)}
         />
       </div>
-      <p className="setup-hint">Ollama uses this address. For LM Studio use {LM_STUDIO_ADDRESS}.</p>
+      <p className="setup-hint">
+        Ollama: {DEFAULT_LOCAL_ADDRESS} · LM Studio: {LM_STUDIO_ADDRESS}
+      </p>
       <div className="setup-field">
         <label htmlFor="local-model">Model</label>
         <input

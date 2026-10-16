@@ -293,6 +293,14 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   useEffect(() => {
     const thread = threadRef.current;
     if (!thread) return;
+    // A step taller than the view (the assistant forms) opens at its top, not at its last line.
+    const steps = thread.querySelectorAll<HTMLElement>(".setup-msg");
+    const last = steps[steps.length - 1];
+    if (last && last.offsetHeight > thread.clientHeight) {
+      const top = last.getBoundingClientRect().top - thread.getBoundingClientRect().top + thread.scrollTop;
+      thread.scrollTop = Math.max(0, top - 8);
+      return;
+    }
     thread.scrollTop = thread.scrollHeight;
   }, [messages, phase, formError]);
 
