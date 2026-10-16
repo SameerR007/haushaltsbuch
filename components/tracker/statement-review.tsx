@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import {
   LOCAL_REVIEW_NOTE,
   missingPageBalanceNote,
@@ -16,6 +17,7 @@ import {
   statementSubtitle,
   statementTitle,
 } from "@/lib/chat/statement";
+import { formatReviewAmount } from "@/lib/chat/money";
 import type { Proposal, ReviewRow, RowFlag } from "@/lib/chat/types";
 import { parseAmount, parseIsoDate, rowBlocksSave, rowsToSave } from "@/lib/chat/validate-rows";
 
@@ -34,6 +36,7 @@ export function StatementReview({
   onPhase: (phase: "cancelled") => void;
   onConfirm: () => void;
 }) {
+  const [editing, setEditing] = useState<number | null>(null);
   const statement = proposal.statement;
   if (!statement) return null;
   const rows = proposal.rows;
@@ -60,6 +63,23 @@ export function StatementReview({
     const flags: RowFlag[] = row.flags.filter((flag) => flag !== "invalid_amount");
     if (amount === null) flags.push("invalid_amount");
     update(index, { amountInput: value, amount, flags });
+  }
+
+  function editCategory(index: number, value: string) {
+    const flags: RowFlag[] = (rows[index]?.flags ?? []).filter((flag) => flag !== "unknown_category");
+    update(index, { category: value, flags });
+  }
+
+  function editBank(index: number, value: string) {
+    const bank = proposal.banks.find((entry) => entry.name === value);
+    if (!bank) return;
+    const flags: RowFlag[] = (rows[index]?.flags ?? []).filter((flag) => flag !== "unknown_bank");
+    update(index, { bank: bank.name, bankInitials: bank.initials, flags });
+  }
+
+  function removeRow(index: number) {
+    setEditing(null);
+    onRows(rows.filter((_, rowIndex) => rowIndex !== index));
   }
 
   function editDate(index: number, value: string) {
@@ -119,50 +139,125 @@ export function StatementReview({
               <th className="is-num">Amount</th>
               <th>In/out</th>
               <th>Category</th>
+              {proposal.banks.length > 1 ? <th>Bank</th> : null}
+              <th aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => {
-              const uncertain = row.flags.includes("uncertain") || row.draft === true;
+              const open = editing === index || row.draft === true;
+              const uncertain = row.flags.includes("uncertain");
+              const needsFix = rowBlocksSave(row);
               const amount = row.amount;
-              return (
-                <tr key={`${row.dateInput}-${row.description}-${index}`} className={uncertain ? "is-uncertain" : undefined}>
-                  <td>
-                    {row.draft ? (
+              const rowClass = [open ? "is-editing" : "", uncertain ? "is-uncertain" : "", needsFix ? "is-flagged" : ""]
+                .filter(Boolean)
+                .join(" ");
+              if (open) {
+                return (
+                  <tr key={`${index}-edit`} className={rowClass}>
+                    <td>
                       <input
+                        type="date"
                         aria-label="Date"
-                        value={row.dateInput}
-                        placeholder="YYYY-MM-DD"
+                        className="statement-date"
+                        value={row.date ?? ""}
                         onChange={(event) => editDate(index, event.target.value)}
                       />
-                    ) : row.date ? (
-                      shortStatementDate(row.date)
-                    ) : (
-                      row.dateInput || "—"
-                    )}
-                  </td>
-                  <td>
-                    {row.draft ? (
+                    </td>
+                    <td>
                       <input
                         aria-label="Description"
                         value={row.description}
                         onChange={(event) => update(index, { description: event.target.value })}
                       />
-                    ) : (
-                      <span className="tracker-desc">
-                        {row.description || "—"}
-                        {uncertain ? <span className="statement-badge">Uncertain</span> : null}
-                        {row.note ? <span className="statement-note">{row.note}</span> : null}
-                      </span>
-                    )}
+                    </td>
+                    <td className="is-num">
+                      <input
+                        aria-label="Amount"
+                        className="statement-amount"
+                        inputMode="decimal"
+                        value={row.amountInput}
+                        onChange={(event) => editAmount(index, event.target.value)}
+                      />
+                    </td>
+                    <td>
+                      {amount === null ? (
+                        "—"
+                      ) : (
+                        <span className={amount >= 0 ? "statement-in" : "statement-out"}>{amount >= 0 ? "In" : "Out"}</span>
+                      )}
+                    </td>
+                    <td>
+                      <select
+                        aria-label="Category"
+                        value={proposal.categories.includes(row.category) ? row.category : ""}
+                        onChange={(event) => editCategory(index, event.target.value)}
+                      >
+                        {proposal.categories.includes(row.category) ? null : (
+                          <option value="" disabled>
+                            Pick one
+                          </option>
+                        )}
+                        {proposal.categories.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    {proposal.banks.length > 1 ? (
+                      <td>
+                        <select
+                          aria-label="Bank"
+                          value={proposal.banks.some((bank) => bank.name === row.bank) ? row.bank : ""}
+                          onChange={(event) => editBank(index, event.target.value)}
+                        >
+                          {proposal.banks.some((bank) => bank.name === row.bank) ? null : (
+                            <option value="" disabled>
+                              Pick one
+                            </option>
+                          )}
+                          {proposal.banks.map((bank) => (
+                            <option key={bank.name} value={bank.name}>
+                              {bank.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    ) : null}
+                    <td className="statement-row-actions">
+                      <button
+                        type="button"
+                        className="statement-row-button is-done"
+                        onClick={() => {
+                          if (row.draft) {
+                            update(index, { draft: false, flags: row.flags.filter((flag) => flag !== "uncertain") });
+                          }
+                          setEditing(null);
+                        }}
+                      >
+                        Done
+                      </button>
+                      <button type="button" className="statement-row-button" onClick={() => removeRow(index)}>
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={`${index}-view`} className={rowClass || undefined}>
+                  <td className="statement-date-cell">{row.date ? shortStatementDate(row.date) : row.dateInput || "—"}</td>
+                  <td>
+                    <span className="tracker-desc">
+                      {row.description || "—"}
+                      {needsFix ? <span className="statement-badge is-bad">Needs a fix</span> : null}
+                      {uncertain ? <span className="statement-badge">Uncertain</span> : null}
+                    </span>
+                    {row.note ? <span className="statement-note">{row.note}</span> : null}
                   </td>
-                  <td className="is-num">
-                    <input
-                      aria-label="Amount"
-                      className="statement-amount"
-                      value={row.amountInput}
-                      onChange={(event) => editAmount(index, event.target.value)}
-                    />
+                  <td className="is-num statement-amount-cell">
+                    {amount === null ? row.amountInput || "—" : formatReviewAmount(amount, proposal.currency)}
                   </td>
                   <td>
                     {amount === null ? (
@@ -172,21 +267,21 @@ export function StatementReview({
                     )}
                   </td>
                   <td>
-                    {row.draft ? (
-                      <select
-                        aria-label="Category"
-                        value={row.category}
-                        onChange={(event) => update(index, { category: event.target.value })}
-                      >
-                        {proposal.categories.map((category) => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="tracker-cat">{row.category || "—"}</span>
-                    )}
+                    <span className={row.flags.includes("unknown_category") ? "tracker-cat is-bad" : "tracker-cat"}>
+                      {row.category || "—"}
+                    </span>
+                  </td>
+                  {proposal.banks.length > 1 ? <td>{row.bankInitials ?? (row.bank || "—")}</td> : null}
+                  <td className="statement-row-actions">
+                    <button
+                      type="button"
+                      className="statement-row-button"
+                      aria-label={`Edit ${row.description || "row"}`}
+                      disabled={busy}
+                      onClick={() => setEditing(index)}
+                    >
+                      Edit
+                    </button>
                   </td>
                 </tr>
               );
