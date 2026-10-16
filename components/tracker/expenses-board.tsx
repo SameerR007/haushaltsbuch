@@ -214,6 +214,7 @@ export function ExpensesBoard({ focusId = null }: { focusId?: string | null }) {
                       categories={categories}
                       currency={currency ?? "EUR"}
                       focused={focusId === String(row.id)}
+                      onRemoved={() => setRows((current) => current.filter((item) => item.id !== row.id))}
                     />
                 ))}
               </tbody>
@@ -232,12 +233,14 @@ function ExpenseRow({
   categories,
   currency,
   focused,
+  onRemoved,
 }: {
   transaction: TransactionView;
   banks: BankView[];
   categories: string[];
   currency: string;
   focused: boolean;
+  onRemoved: () => void;
 }) {
   const [saved, setSaved] = useState(transaction);
   const savedRef = useRef(saved);
@@ -248,6 +251,7 @@ function ExpenseRow({
   const [failed, setFailed] = useState<Field | null>(null);
   const failedRef = useRef<Field | null>(null);
   const savingFields = useRef(new Set<Field>());
+  const [removal, setRemoval] = useState<"idle" | "confirm" | "removing" | "failed">("idle");
 
   function updateDraft(next: Draft) {
     draftRef.current = next;
@@ -337,6 +341,26 @@ function ExpenseRow({
     setStatus("idle");
     setEditing(null);
     setFailed(null);
+  }
+
+  function askRemove() {
+    undo();
+    setRemoval("confirm");
+  }
+
+  async function remove() {
+    setRemoval("removing");
+    try {
+      const response = await fetch(`/api/transactions/${savedRef.current.id}`, { method: "DELETE" });
+      const data: unknown = await response.json();
+      if (!response.ok || (data as { ok?: unknown } | null)?.ok !== true) {
+        setRemoval("failed");
+        return;
+      }
+      onRemoved();
+    } catch {
+      setRemoval("failed");
+    }
   }
 
   const rowClass = [status === "saved" ? "is-saved" : "", focused ? "is-focus" : ""].filter(Boolean).join(" ");
@@ -471,9 +495,33 @@ function ExpenseRow({
         )}
       </td>
       <td className="expenses-status">
-        {status === "editing" ? "Editing…" : null}
-        {status === "saved" ? "✓ Saved" : null}
-        {status === "error" ? (
+        {removal !== "idle" ? (
+          <span className="expenses-remove">
+            {removal === "failed" ? "⚠ Couldn't remove. " : "Remove this expense? "}
+            <span className="expenses-fail-actions">
+              <button type="button" className="is-danger" disabled={removal === "removing"} onClick={() => void remove()}>
+                {removal === "removing" ? "Removing…" : removal === "failed" ? "Try again" : "Remove"}
+              </button>
+              <span aria-hidden="true"> · </span>
+              <button type="button" disabled={removal === "removing"} onClick={() => setRemoval("idle")}>
+                Keep
+              </button>
+            </span>
+          </span>
+        ) : null}
+        {removal === "idle" && editing !== null && status !== "error" ? (
+          <button
+            type="button"
+            className="expenses-remove-button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={askRemove}
+          >
+            Remove
+          </button>
+        ) : null}
+        {removal === "idle" && status === "editing" && editing === null ? "Editing…" : null}
+        {removal === "idle" && status === "saved" ? "✓ Saved" : null}
+        {removal === "idle" && status === "error" ? (
           <span className="expenses-fail">
             ⚠ Couldn&apos;t save
             <span className="expenses-fail-actions">

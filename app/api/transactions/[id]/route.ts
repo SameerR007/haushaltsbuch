@@ -1,5 +1,5 @@
-import { updateTransaction } from "@/lib/data/ledger";
-import { jsonResult, readJsonBody, statusFor } from "@/lib/setup/http";
+import { deleteTransaction, updateTransaction } from "@/lib/data/ledger";
+import { guardSameOrigin, jsonResult, readJsonBody, statusFor } from "@/lib/setup/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,5 +28,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     return jsonResult(result, statusFor(result));
   } catch {
     return jsonResult({ ok: false, code: "rejected", error: "Could not save that change." }, 422);
+  }
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  const blocked = guardSameOrigin(request);
+  if (blocked) return blocked;
+  const { id } = await context.params;
+  try {
+    const result = deleteTransaction(id);
+    return jsonResult(result, statusFor(result));
+  } catch {
+    return jsonResult({ ok: false, code: "rejected", error: "Could not remove that expense." }, 422);
   }
 }

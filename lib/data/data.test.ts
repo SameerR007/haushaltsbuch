@@ -12,7 +12,7 @@ import { GET as getSqlite } from "../../app/api/export/sqlite/route";
 import { GET as getXlsx } from "../../app/api/export/xlsx/route";
 import { GET as getHousehold } from "../../app/api/household/route";
 import { POST as postReset } from "../../app/api/setup/reset/route";
-import { PATCH as patchTransaction } from "../../app/api/transactions/[id]/route";
+import { DELETE as deleteTransactionRoute, PATCH as patchTransaction } from "../../app/api/transactions/[id]/route";
 import { GET as getTransactions } from "../../app/api/transactions/route";
 import { amountKeepingSign } from "../chat/money";
 import { parseAmount } from "../chat/validate-rows";
@@ -433,6 +433,34 @@ test("transactions list newest first and patch validates without touching batch_
     assert.equal(row.bank, "Sparkasse");
     assert.equal(row.batch_id, batch.batch_id);
     assert.equal(row.batch_id, second.batchId);
+  });
+});
+
+test("delete removes one expense and leaves the rest of its batch", async () => {
+  await withTempDb(async () => {
+    seed();
+    const saved = confirmTransactions([expense(-1, "2026-09-01", "Keep"), expense(-2, "2026-09-02", "Drop")]);
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    const id = String(saved.ids[1]);
+    const removed = await deleteTransactionRoute(new Request(`http://local/api/transactions/${id}`, { method: "DELETE" }), {
+      params: Promise.resolve({ id }),
+    });
+    assert.equal(removed.status, 200);
+    const again = await deleteTransactionRoute(new Request(`http://local/api/transactions/${id}`, { method: "DELETE" }), {
+      params: Promise.resolve({ id }),
+    });
+    assert.equal(again.status, 400);
+    const crossSite = await deleteTransactionRoute(
+      new Request(`http://local/api/transactions/${saved.ids[0]}`, {
+        method: "DELETE",
+        headers: { "sec-fetch-site": "cross-site" },
+      }),
+      { params: Promise.resolve({ id: String(saved.ids[0]) }) },
+    );
+    assert.equal(crossSite.status, 403);
+    const body = await jsonBody(await getTransactions());
+    assert.deepEqual((body.transactions as { notes: string }[]).map((row) => row.notes), ["Keep"]);
   });
 });
 

@@ -1094,6 +1094,42 @@
   font-weight: 650;
 }
 
+.expenses-remove {
+  display: inline-block;
+  max-width: 9.5rem;
+  white-space: normal;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.expenses-remove .expenses-fail-actions {
+  display: block;
+}
+
+.expenses-remove button,
+.expenses-remove-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.expenses-remove button.is-danger,
+.expenses-remove-button:hover {
+  color: #9f2d22;
+}
+
+.expenses-remove button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .expenses-fail button {
   appearance: none;
   border: none;

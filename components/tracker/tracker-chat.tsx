@@ -271,11 +271,13 @@ export function TrackerChat() {
     return () => window.clearInterval(timer);
   }, [readingSince]);
 
+  // Follow new messages only. Editing a review card changes items too, and must not jump the thread.
+  const itemCount = items.length;
   useEffect(() => {
     const node = threadRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [items, pending]);
+  }, [itemCount, pending]);
 
   const hasThread = items.some(
     (item) => item.kind === "user" || item.kind === "assistant" || item.kind === "proposal",
