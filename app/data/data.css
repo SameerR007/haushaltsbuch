@@ -508,3 +508,7 @@
   outline: 2px solid var(--teal);
   outline-offset: 3px;
 }
+
+.data-line {
+  display: block;
+}

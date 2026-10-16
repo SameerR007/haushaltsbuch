@@ -19,7 +19,7 @@ import { parseAmount } from "../chat/validate-rows";
 import { confirmTransactions } from "../chat/transactions";
 import { loadHousehold } from "../chat/household";
 import { CHAT_STORAGE_KEY } from "../chat/persist";
-import { PDF_DISCLOSURE_KEY, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
+import { PDF_DISCLOSURE_KEY, assistantLines, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
 import { SUMMARY_STORAGE_KEY } from "../data/summary-state";
 import { closeDb, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "../setup/categories";
@@ -84,6 +84,17 @@ function seed(): void {
 function expense(amount: number, date: string, description: string, bank = "Sparkasse") {
   return { date, description, category: "grocery", bank, amount };
 }
+
+test("a local assistant shows where it runs once, then each model on its own line", () => {
+  const local = { type: "local" as const, address: "http://localhost:11434", model: "gemma4:12b-mlx" };
+  assert.deepEqual(assistantLines({ ...local, ocrModel: "glm-ocr" }), [
+    "on this computer",
+    "Model: gemma4:12b-mlx",
+    "OCR: glm-ocr",
+  ]);
+  assert.deepEqual(assistantLines(local), ["on this computer", "Model: gemma4:12b-mlx"]);
+  assert.deepEqual(assistantLines({ type: "openai", apiKey: "sk-test" }), ["on OpenAI"]);
+});
 
 test("date and bank copy", () => {
   assert.equal(transactionCountLabel(0), "no transactions");

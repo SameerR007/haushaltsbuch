@@ -92,6 +92,14 @@ export function localAssistantLabel(model: string, ocrModel?: string | null): st
   return ocr ? `${base} · OCR: ${ocr}` : base;
 }
 
+/** The assistant as separate lines. Both local models run here, so "on this computer" is said once. */
+export function assistantLines(assistant: AssistantSettings): string[] {
+  if (assistant.type !== "local") return [assistantSummary(assistant)];
+  const ocr = assistant.ocrModel?.trim() ?? "";
+  const lines = ["on this computer", `Model: ${assistant.model}`];
+  return ocr ? [...lines, `OCR: ${ocr}`] : lines;
+}
+
 /** Review-the-data and the landing line. The endpoint key is never included. */
 export function assistantSummary(assistant: AssistantSettings): string {
   if (assistant.type === "local") return localAssistantLabel(assistant.model, assistant.ocrModel);
