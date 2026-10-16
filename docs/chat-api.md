@@ -52,6 +52,8 @@ The model page used for the id is [GPT-5.6 Luna](https://developers.openai.com/a
 
 `messages` is the recent conversation. The app sends at most the last 20 turns; older turns stay in this browser and are not sent again. The last turn is the user. The key is not part of `messages`.
 
+`sessionId` is optional: a random id the browser keeps per conversation (stored in `haushaltsbuch.chat`, replaced by **New chat**). It is used only to group turns into one Langfuse session when [tracing](tracing.md) is on, and is ignored otherwise.
+
 ```json
 {
   "ok": true,
@@ -101,6 +103,7 @@ Multipart form fields:
 | `instruction` | What to do with the statement. |
 | `file` | The PDF. About 25 MB maximum. |
 | `messages` | Optional JSON array of earlier chat turns. |
+| `sessionId` | Optional. Same conversation id as the chat request; used only for tracing. |
 
 The server sends the PDF bytes to the Responses API as an `input_file` with base64 `file_data`. It does not extract the statement text locally. The first PDF step forces `propose_transactions`, and the turn stops once that proposal comes back. The model may answer only through `propose_transactions`. A statement is a ledger: every row is proposed, expenses as negative amounts and income (salary, refunds, and other incoming money) as positive amounts, even when the user says “add the expenses”. The app does not drop positive amounts. Salary uses the `salary` category. The review card shows a plus sign on income rows.
 

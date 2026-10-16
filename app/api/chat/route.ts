@@ -6,6 +6,7 @@ import type { ChatTurn, Proposal } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
 import { parseAssistantTarget } from "@/lib/assistant/target";
 import { guardSameOrigin, jsonResult } from "@/lib/setup/http";
+import { traceSessionId, withSpan, withTrace } from "@/lib/tracing/langfuse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,47 +60,66 @@ export async function POST(request: Request) {
       banks: household.banks,
       today: todayIso(),
     });
-    let proposalArgs: unknown = null;
-    const result = await runChatTurn({
-      apiKey,
-      assistant,
-      instructions,
-      messages,
-      mode: "chat",
-      executeTool: (name, args) => {
-        if (name === "run_sql") {
-          const query =
-            typeof args === "object" &&
-            args !== null &&
-            "query" in args &&
-            typeof (args as { query: unknown }).query === "string"
-              ? (args as { query: string }).query
-              : "";
-          return executeReadOnlyQuery(query);
-        }
-        if (name === "propose_transactions") {
-          proposalArgs = args;
-          return {
-            ok: true,
-            saved: false,
-            count: reviewProposedRows(rowsOf(args), household).length,
-          };
-        }
-        return { ok: false, error: "Unknown tool." };
+    const { reply, proposal } = await withTrace(
+      {
+        name: "chat-turn",
+        sessionId: traceSessionId(record.sessionId),
+        tags: ["chat", assistant.type],
+        input: messages,
+        metadata: { assistant: assistant.type, model: assistant.type === "openai" ? undefined : assistant.model },
       },
-    });
+      async (root) => {
+        let proposalArgs: unknown = null;
+        const result = await runChatTurn({
+          apiKey,
+          assistant,
+          instructions,
+          messages,
+          mode: "chat",
+          executeTool: (name, args) => {
+            if (name === "run_sql") {
+              const query =
+                typeof args === "object" &&
+                args !== null &&
+                "query" in args &&
+                typeof (args as { query: unknown }).query === "string"
+                  ? (args as { query: string }).query
+                  : "";
+              return executeReadOnlyQuery(query);
+            }
+            if (name === "propose_transactions") {
+              proposalArgs = args;
+              return {
+                ok: true,
+                saved: false,
+                count: reviewProposedRows(rowsOf(args), household).length,
+              };
+            }
+            return { ok: false, error: "Unknown tool." };
+          },
+        });
 
-    const rows = proposalArgs ? reviewProposedRows(rowsOf(proposalArgs), household) : [];
-    const proposal: Proposal | null = rows.length
-      ? {
-          sourceName: null,
-          currency: household.currency,
-          categories: household.categories,
-          banks: household.banks,
-          rows,
-        }
-      : null;
-    return jsonResult({ ok: true, reply: result.reply, proposal }, 200);
+        const rows = proposalArgs
+          ? await withSpan("review-rows", "span", proposalArgs, (span) => {
+              const reviewed = reviewProposedRows(rowsOf(proposalArgs), household);
+              span.update({ output: reviewed });
+              return reviewed;
+            })
+          : [];
+        const proposal: Proposal | null = rows.length
+          ? {
+              sourceName: null,
+              currency: household.currency,
+              categories: household.categories,
+              banks: household.banks,
+              rows,
+            }
+          : null;
+        root.update({ output: { reply: result.reply, proposedRows: rows.length } });
+        return { reply: result.reply, proposal };
+      },
+    );
+    return jsonResult({ ok: true, reply, proposal }, 200);
   } catch (error) {
     const message = error instanceof OpenAiError ? error.message : "Could not answer that.";
     return jsonResult({ ok: false, code: "rejected", error: message }, 422);

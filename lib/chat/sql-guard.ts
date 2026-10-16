@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { resolveDbPath } from "../db";
+import { withSpan } from "../tracing/langfuse";
 
 export const SQL_ROW_CAP = 200;
 export const SQL_TIMEOUT_MS = 1500;
@@ -182,12 +183,36 @@ export async function executeReadOnlyQuery(
   const timeoutMs = options?.timeoutMs ?? SQL_TIMEOUT_MS;
   const trimmed = sql.replace(/^\uFEFF/, "").trim();
   const dbPath = resolveDbPath();
+  const rejected = await withSpan("sql-guard", "guardrail", { query: trimmed }, (span) => {
+    const verdict = guardQuery(dbPath, trimmed);
+    span.update({ output: verdict ?? { ok: true }, level: verdict ? "WARNING" : "DEFAULT" });
+    return verdict;
+  });
+  if (rejected) return rejected;
+  return withSpan("sql-execute", "span", { query: trimmed, cap, timeoutMs }, async (span) => {
+    const started = Date.now();
+    const result = await runQueryProcess(dbPath, trimmed, cap, timeoutMs);
+    span.update({
+      output: result,
+      level: result.ok ? "DEFAULT" : "WARNING",
+      metadata: {
+        durationMs: Date.now() - started,
+        rowCount: result.ok ? result.rows.length : 0,
+        truncated: result.ok ? result.truncated : false,
+      },
+    });
+    return result;
+  });
+}
+
+/** Null when the query may run, otherwise the error sent back to the model. */
+function guardQuery(dbPath: string, trimmed: string): { ok: false; error: string } | null {
   let database: Database.Database | null = null;
   try {
     database = new Database(dbPath, { readonly: true, fileMustExist: true });
     database.pragma("query_only = ON");
     const guarded = guardReadQuery(database, trimmed);
-    if (!guarded.ok) return guarded;
+    return guarded.ok ? null : guarded;
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (/unable to open|no such file/i.test(message)) {
@@ -197,5 +222,4 @@ export async function executeReadOnlyQuery(
   } finally {
     database?.close();
   }
-  return runQueryProcess(dbPath, trimmed, cap, timeoutMs);
 }

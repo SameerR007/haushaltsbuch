@@ -7,11 +7,21 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test --test-concurrency=1 lib/setup/setup.test.ts lib/assistant/assistant.test.ts lib/llm/local.test.ts lib/chat/chat.test.ts lib/data/data.test.ts lib/data/summary.test.ts"
+    "test": "node --import tsx --test --test-concurrency=1 lib/setup/setup.test.ts lib/assistant/assistant.test.ts lib/llm/local.test.ts lib/chat/chat.test.ts lib/data/data.test.ts lib/data/summary.test.ts lib/tracing/tracing.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.91",
     "@ai-sdk/openai-compatible": "3.0.67",
+    "@ai-sdk/otel": "1.0.137",
+    "@langfuse/otel": "^6.0.0",
+    "@langfuse/tracing": "^6.0.0",
+    "@langfuse/vercel-ai-sdk": "^6.0.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/core": "^2.12.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+    "@opentelemetry/otlp-exporter-base": "^0.223.0",
+    "@opentelemetry/sdk-trace-base": "^2.12.0",
+    "@opentelemetry/sdk-trace-node": "^2.12.0",
     "ai": "7.0.137",
     "better-sqlite3": "^13.0.3",
     "exceljs": "^4.4.0",

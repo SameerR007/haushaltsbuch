@@ -56,6 +56,8 @@ export type StoredChat = {
   promptsUsed: boolean;
   items: StoredItem[];
   attachment: StoredAttachment | null;
+  /** Groups this conversation's turns when Langfuse tracing is on. Reset by New chat. */
+  sessionId?: string;
 };
 
 type LiveItem =
@@ -194,6 +196,10 @@ function parseItem(value: unknown): StoredItem | null {
   return null;
 }
 
+function parseSessionId(value: unknown): string {
+  return typeof value === "string" && /^[A-Za-z0-9-]{8,64}$/.test(value) ? value : "";
+}
+
 function parseAttachment(value: unknown): StoredAttachment | null {
   if (!isRecord(value) || typeof value.name !== "string") return null;
   const name = clip(value.name).slice(0, 120);
@@ -211,6 +217,7 @@ export function buildStoredChat(input: {
   promptsUsed: boolean;
   items: readonly LiveItem[];
   attachment: (StoredAttachment & { file?: unknown }) | null;
+  sessionId?: string;
 }): StoredChat {
   const items: StoredItem[] = [];
   for (const item of input.items) {
@@ -223,7 +230,13 @@ export function buildStoredChat(input: {
     promptsUsed: input.promptsUsed || items.some((item) => item.kind === "user"),
     items: items.slice(-MAX_ITEMS),
     attachment: input.attachment ? parseAttachment(input.attachment) : null,
+    ...withSessionId(input.sessionId),
   };
+}
+
+function withSessionId(value: unknown): { sessionId?: string } {
+  const sessionId = parseSessionId(value);
+  return sessionId ? { sessionId } : {};
 }
 
 export function parseStoredChat(raw: string | null): StoredChat | null {
@@ -245,6 +258,7 @@ export function parseStoredChat(raw: string | null): StoredChat | null {
     promptsUsed: value.promptsUsed === true || items.some((item) => item.kind === "user"),
     items: items.slice(-MAX_ITEMS),
     attachment: parseAttachment(value.attachment),
+    ...withSessionId(value.sessionId),
   };
 }
 

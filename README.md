@@ -2,7 +2,7 @@
 
 Local expense tracker. The welcome page, setup chat, money chat, and Summary are in this repo. Insights is a placeholder page.
 
-Money data stays in one SQLite file on this computer. The app does not use a cloud database. During setup the only network calls are an OpenAI key check, or a Test connection to an address you enter.
+Money data stays in one SQLite file on this computer. The app does not use a cloud database. During setup the only network calls are an OpenAI key check, or a Test connection to an address you enter. Optional [Langfuse tracing](#tracing-with-langfuse) is off unless you add its keys.
 
 ## Run
 
@@ -14,6 +14,21 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000).
 
 `npm test` checks the local schema, setup helpers, connection JSON, the SELECT-only SQL guard, confirm/undo, signed amounts, review-row validation, bank soft-remove, reset, exports, and expense edits.
+
+## Tracing with Langfuse
+
+Optional, for auditing what the assistant does. Off unless both keys are set; without them nothing is traced or sent.
+
+```bash
+# .env.local (gitignored)
+LANGFUSE_PUBLIC_KEY="pk-lf-..."
+LANGFUSE_SECRET_KEY="sk-lf-..."
+LANGFUSE_BASE_URL="https://cloud.langfuse.com"   # or https://us.cloud.langfuse.com, or a self-hosted URL
+```
+
+Restart the app. Each chat message becomes a `chat-turn` trace and each statement a `pdf-import` trace, grouped into one Langfuse session per conversation. A trace shows the system prompt and messages sent to the model, every model call with tokens, each `run_sql` query with the SQL guard verdict and the rows it returned, and the proposed rows before and after validation.
+
+With tracing on, that content (including SQL result rows and attached PDFs) is sent to the Langfuse server you configured. API keys are masked. To keep money data on this machine, self-host Langfuse locally. Details, the span tree, and the files involved are in [docs/tracing.md](docs/tracing.md).
 
 ## Local database
 
