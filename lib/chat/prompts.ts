@@ -1,7 +1,7 @@
 import type { BankRef } from "./types";
 
 export const RUN_SQL_RULE =
-  "Call run_sql before you answer with any amount, total, balance, count, or other figure from this household's money. Do not use numbers from memory.";
+  "Call run_sql before you answer with any amount, total, balance, count, or other figure from this household's money. Do not use numbers from memory. Do every sum, difference, and comparison in SQL. Report the number run_sql returns as it is; never add or change numbers yourself.";
 
 export const SIGNED_AMOUNT_RULE =
   "Amounts are signed: expenses are negative, income (salary and other incoming money) is positive. A balance is a plain SUM of amount.";
