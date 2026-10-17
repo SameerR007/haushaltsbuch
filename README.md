@@ -2,9 +2,7 @@
 
 A household expense tracker that runs on your own computer. You add expenses by chatting or by dropping in a bank statement PDF. You ask questions like *"How much did we spend on groceries in March?"* in plain language.
 
-<a href="promo/haushaltsbuch-promo.mp4?raw=true"><img src="promo/preview.webp" alt="A 55-second tour: add expenses by chatting or from a statement PDF, confirm them, see them in the Expenses table, ask a question, and open the monthly summary." width="100%"></a>
-
-*A 55-second tour of the app. [Download the full video with sound](promo/haushaltsbuch-promo.mp4?raw=true) (MP4, 12 MB).*
+![The Haushaltsbuch chat: a typed message about groceries and Netflix becomes a review card with two rows, a total, and a Confirm button. Nothing is saved yet.](docs/screenshot.png)
 
 - **Your money data stays local.** Everything is saved in one SQLite file on your computer. There is no cloud database.
 - **You pick the AI.** Use OpenAI, a model on your computer (Ollama), or any OpenAI-compatible endpoint.
