@@ -1,6 +1,6 @@
 # Setup API contracts
 
-The setup chat calls these routes. Money stays in one SQLite file on this machine. The requests that leave the machine are the OpenAI key check, a Test connection to an address the user entered, and later chat or statement turns to that same assistant.
+The setup chat calls these routes. Money stays in one SQLite file on your computer. The requests that leave your computer are the OpenAI key check, a Test connection to an address the user entered, and later chat or statement turns to that same assistant.
 
 The server does not store the OpenAI key and never logs it. Responses never include a key or an absolute database path.
 

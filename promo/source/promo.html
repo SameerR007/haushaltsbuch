@@ -1,0 +1,810 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Haushaltsbuch promo</title>
+<style>
+:root{--bg:#f3efe6;--ink:#1a1714;--muted:#6f6860;--card:#fffcf8;--line:#e2dbd0;--teal:#0b6e63;--teal-deep:#08574f;--soft:#f7f1e8;--mint:#d7efe9;--peach:#f6e2c4;--red:#9f2d22}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1200px;overflow:hidden;background:var(--bg)}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+.serif{font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif}
+.mono{font-family:Menlo,monospace}
+#stage{position:absolute;inset:0;overflow:hidden;background:var(--bg)}
+.layer{position:absolute;inset:0;will-change:transform,opacity}
+.bg{position:absolute;border-radius:50%;pointer-events:none}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- S1 ---------- */
+.chip{position:absolute;left:0;top:0;display:flex;align-items:center;gap:16px;padding:18px 26px;background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:0 18px 40px rgba(26,23,20,.10),0 4px 10px rgba(26,23,20,.05);font-size:30px;font-weight:600;white-space:nowrap}
+.chip i{width:14px;height:14px;border-radius:50%;display:block}
+.chip b{font-weight:650;color:var(--red)}
+#word{position:absolute;left:0;right:0;top:600px;text-align:center;font-size:190px;font-weight:700;letter-spacing:-.045em;line-height:1;white-space:nowrap;text-shadow:0 0 40px var(--bg),0 0 80px var(--bg)}
+#word.q{font-style:italic;color:var(--teal-deep);font-size:132px;letter-spacing:-.035em}
+
+/* ---------- lockups ---------- */
+.lockwrap{position:absolute;left:0;right:0;display:flex;flex-direction:column;align-items:center}
+.eyebrow{font-size:26px;font-weight:650;letter-spacing:.2em;text-transform:uppercase;color:var(--teal)}
+.lockup{display:flex;align-items:center;gap:44px}
+.mark{width:150px;height:150px;border-radius:38px;background:linear-gradient(150deg,#14897b 0%,#0b6e63 45%,#08574f 100%);box-shadow:0 24px 50px rgba(11,110,99,.32),inset 0 2px 0 rgba(255,255,255,.18)}
+.wm{font-size:168px;font-weight:700;letter-spacing:-.045em;line-height:1;display:flex}
+.wm span{display:inline-block}
+.tag{font-size:56px;font-style:italic;color:var(--teal-deep);line-height:1.2}
+#ring{position:absolute;left:960px;top:600px;width:10px;height:10px;border-radius:50%;border:5px solid var(--teal)}
+
+/* ---------- app ---------- */
+.cap{position:absolute;left:200px;top:62px}
+.cap .eyb{font-size:24px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--teal)}
+.cap .h{font-size:86px;font-weight:700;letter-spacing:-.04em;line-height:1.05;margin-top:10px}
+#steps{position:absolute;right:200px;top:52px;display:flex;gap:14px}
+#steps span{font-size:24px;font-weight:650;padding:12px 24px;border-radius:999px;border:1.5px solid var(--line);color:var(--muted);background:rgba(255,252,248,.7)}
+#steps span.on{background:var(--teal);border-color:var(--teal);color:#fff}
+#win{position:absolute;left:200px;top:262px;width:1520px;height:900px;border-radius:28px;overflow:hidden;border:1px solid var(--line);
+  background:radial-gradient(ellipse 80% 42% at 50% -12%,#e4f3ee 0%,transparent 62%),var(--bg);
+  box-shadow:0 50px 110px rgba(26,23,20,.16),0 12px 30px rgba(26,23,20,.07);transform-origin:50% 40%}
+.hdr{position:absolute;left:0;right:0;top:0;height:96px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:rgba(255,252,248,.94);border-bottom:1px solid var(--line)}
+.brand{font-size:36px;font-weight:700;letter-spacing:-.03em}
+.tabs{position:relative;display:flex;gap:8px}
+.tab{position:relative;z-index:1;font-size:26px;font-weight:650;color:var(--muted);padding:12px 26px;border-radius:999px}
+.tab.on{color:var(--teal)}
+#tabPill{position:absolute;top:0;height:100%;border-radius:999px;background:#e4f3ee;z-index:0}
+.wbody{position:absolute;left:0;right:0;top:96px;bottom:0}
+.view{position:absolute;left:0;right:0;top:0;bottom:150px}
+#composer{position:absolute;left:160px;right:160px;bottom:34px;height:100px;background:#fff;border:1.5px solid var(--line);border-radius:30px;display:flex;align-items:center;gap:20px;padding:0 18px 0 30px;box-shadow:0 10px 26px rgba(26,23,20,.05)}
+#composer svg.clip{width:36px;height:36px;flex:none}
+#ctext{flex:1;font-size:31px;white-space:nowrap;overflow:hidden}
+#ctext .ph{color:#a39c92}
+.caret{display:inline-block;width:3px;height:36px;background:var(--teal);vertical-align:-6px;margin-left:2px}
+#send{width:66px;height:66px;border-radius:50%;background:var(--teal);display:grid;place-items:center;flex:none}
+.empty{position:absolute;left:0;right:0;top:190px;text-align:center}
+.empty h2{font-size:72px;font-weight:700;letter-spacing:-.035em}
+.empty p{font-size:30px;color:var(--muted);margin-top:16px}
+.ububble{position:absolute;right:160px;top:34px;background:var(--teal);color:#fff;font-size:31px;line-height:1.35;padding:22px 32px;border-radius:32px 32px 10px 32px;max-width:1000px;box-shadow:0 10px 24px rgba(11,110,99,.22)}
+.dots{position:absolute;left:160px;display:flex;gap:12px;align-items:center}
+.dots i{width:16px;height:16px;border-radius:50%;background:#a39c92;display:block}
+.tcard{position:absolute;background:#fff;border:1px solid var(--line);border-radius:26px;padding:30px 36px;box-shadow:0 22px 50px rgba(26,23,20,.09)}
+.tcard .intro{font-size:30px;font-weight:600}
+.tcard .intro em{font-style:normal;color:var(--muted);font-weight:500}
+table{border-collapse:collapse;width:100%;margin-top:18px}
+th{font-size:19px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1.5px solid var(--line)}
+td{font-size:28px;padding:0 12px;height:66px;border-bottom:1px solid #efe9df;white-space:nowrap}
+.r{text-align:right}
+.cat{display:inline-block;font-size:22px;font-weight:650;padding:6px 16px;border-radius:999px;background:#e4f3ee;color:var(--teal-deep)}
+.cat.salary{background:#f8f1dc;color:#6b5420}
+.inc{color:var(--teal);font-weight:650}
+tfoot td{font-weight:700;border-bottom:none}
+.actions{display:flex;align-items:center;gap:30px;margin-top:24px;height:72px;position:relative}
+.btn{background:var(--teal);color:#fff;font-size:28px;font-weight:650;padding:18px 34px;border-radius:16px;box-shadow:0 10px 22px rgba(11,110,99,.25);white-space:nowrap}
+.link{font-size:26px;color:var(--muted);text-decoration:underline;text-underline-offset:5px}
+.saved{position:absolute;left:0;top:0;height:72px;display:flex;align-items:center;gap:18px;font-size:28px;font-weight:650;color:var(--teal-deep)}
+.saved .ok{width:52px;height:52px;border-radius:50%;background:var(--teal);display:grid;place-items:center}
+.spark{position:absolute;width:14px;height:14px;border-radius:50%}
+
+/* S4 */
+#pdf{position:absolute;left:0;top:0;width:420px;height:560px;background:#fff;border-radius:10px;box-shadow:0 30px 60px rgba(26,23,20,.18),0 4px 12px rgba(26,23,20,.08);padding:30px 30px;transform-origin:0 0;overflow:hidden}
+#pdf .ph1{display:flex;align-items:center;gap:12px}
+#pdf .logo{width:40px;height:40px;border-radius:10px;background:#cfc5b6}
+#pdf .bn{font-size:20px;font-weight:700}
+#pdf .bs{font-size:14px;color:var(--muted)}
+#pdf .meta{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin:18px 0 10px;padding-bottom:10px;border-bottom:2px solid #e9e3d9}
+.pl{display:flex;justify-content:space-between;font-size:14.5px;padding:9px 8px;border-radius:6px;color:#4a443d;white-space:nowrap}
+.pl span:nth-child(2){flex:1;margin-left:14px}
+#pdf .foot{margin-top:12px;font-size:13px;color:var(--muted);display:flex;justify-content:space-between;border-top:2px solid #e9e3d9;padding-top:10px}
+#pdfTag{position:absolute;right:16px;top:16px;background:#b8392b;color:#fff;font-size:15px;font-weight:800;padding:5px 10px;border-radius:6px;letter-spacing:.06em}
+#scan{position:absolute;left:0;right:0;height:120px;background:linear-gradient(180deg,rgba(11,110,99,0) 0%,rgba(11,110,99,.16) 85%,rgba(11,110,99,.0) 100%)}
+#scan::after{content:"";position:absolute;left:0;right:0;bottom:12px;height:4px;background:#14a08f;box-shadow:0 0 18px 4px rgba(20,160,143,.6)}
+#pdfSlot{position:absolute;left:70px;top:44px;width:420px;height:560px}
+#status{position:absolute;left:70px;top:626px;width:420px;display:flex;align-items:center;gap:14px;font-size:24px;font-weight:600;color:var(--teal-deep)}
+#status .bar{position:absolute;left:0;top:44px;height:6px;border-radius:3px;background:var(--teal)}
+#status .barbg{position:absolute;left:0;top:44px;height:6px;width:420px;border-radius:3px;background:#e2dbd0}
+.spin{width:28px;height:28px;border-radius:50%;border:4px solid #cfe6e1;border-top-color:var(--teal)}
+#card4 td{font-size:24px;height:50px}
+#card4 th{font-size:17px;padding:8px 12px}
+#card4 .cat{font-size:19px;padding:4px 13px}
+#bal{display:flex;align-items:center;gap:16px;margin-top:20px;font-size:25px;font-weight:650;color:var(--teal-deep);background:#e4f3ee;border-radius:16px;padding:14px 20px;width:max-content}
+#bal .ok{width:40px;height:40px;border-radius:50%;background:var(--teal);display:grid;place-items:center}
+#bal .num{color:var(--ink);font-weight:600}
+
+/* S5 */
+.sql{position:absolute;left:160px;font-size:22px;color:#8a837a;white-space:nowrap}
+.sql b{color:var(--teal);font-weight:600}
+.answer{position:absolute;left:160px;font-size:44px;line-height:1.3;letter-spacing:-.01em}
+.answer strong{color:var(--teal);font-weight:750;margin:0 .26em}
+.sumhead{position:absolute;left:90px;top:40px;right:90px;display:flex;justify-content:space-between;align-items:center}
+.sumhead h3{font-size:50px;font-weight:700;letter-spacing:-.03em}
+.seg{display:flex;background:#ece6db;border-radius:999px;padding:6px}
+.seg span{font-size:22px;font-weight:650;padding:10px 24px;border-radius:999px;color:var(--muted)}
+.seg span.on{background:#fff;color:var(--ink);box-shadow:0 2px 6px rgba(0,0,0,.06)}
+.scards{position:absolute;left:90px;right:90px;top:150px;display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.scard{background:#fff;border:1px solid var(--line);border-radius:24px;padding:26px 32px;box-shadow:0 12px 30px rgba(26,23,20,.06)}
+.scard .l{font-size:20px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.scard .a{font-size:56px;font-weight:700;letter-spacing:-.03em;margin-top:8px}
+.donutwrap{position:absolute;left:90px;right:90px;top:378px;height:360px;background:#fff;border:1px solid var(--line);border-radius:24px;box-shadow:0 12px 30px rgba(26,23,20,.06);display:flex;align-items:center;gap:70px;padding:0 60px}
+.dcenter{position:absolute;left:60px;top:30px;width:300px;height:300px;display:grid;place-content:center;text-align:center}
+.dcenter b{font-size:31px;letter-spacing:-.02em}
+.dcenter span{font-size:20px;color:var(--muted);font-weight:600;letter-spacing:.1em;text-transform:uppercase}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:18px 70px;margin-left:330px}
+.lg{display:flex;align-items:center;gap:16px;font-size:28px;white-space:nowrap}
+.lg i{width:20px;height:20px;border-radius:6px;display:block;flex:none}
+.lg span{flex:1;min-width:150px}
+.lg b{font-weight:650}
+
+/* S6 */
+.bigh{position:absolute;left:0;right:0;text-align:center;font-size:104px;font-weight:700;letter-spacing:-.045em;line-height:1.05}
+.subh{position:absolute;left:0;right:0;text-align:center;font-size:38px;color:var(--muted)}
+#vault{position:absolute;left:820px;top:170px;width:280px;height:280px;border-radius:64px;background:#fff;border:1px solid var(--line);box-shadow:0 30px 70px rgba(26,23,20,.12);display:grid;place-items:center}
+#lockb{position:absolute;right:-26px;bottom:-26px;width:116px;height:116px;border-radius:50%;background:var(--teal);display:grid;place-items:center;box-shadow:0 12px 26px rgba(11,110,99,.35)}
+#shackle{transform-origin:50% 100%}
+.aichips{position:absolute;left:0;right:0;top:620px;display:flex;justify-content:center;gap:28px}
+.aichip{display:flex;align-items:center;gap:16px;font-size:36px;font-weight:650;background:#fff;border:1.5px solid var(--line);border-radius:999px;padding:24px 40px;box-shadow:0 16px 36px rgba(26,23,20,.08)}
+.aichip i{width:18px;height:18px;border-radius:50%;display:block}
+.aichip em{font-style:normal;color:var(--muted);font-weight:500}
+.aichip.local{border-color:var(--teal);box-shadow:0 16px 36px rgba(11,110,99,.16)}
+
+/* S7 */
+.cta{position:relative;overflow:hidden;background:var(--teal);color:#fff;font-size:40px;font-weight:650;padding:30px 70px;border-radius:24px;box-shadow:0 18px 40px rgba(11,110,99,.30)}
+.glint{position:absolute;top:-20%;width:90px;height:140%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg)}
+.small{font-size:28px;color:var(--muted)}
+
+#cursor{position:absolute;left:0;top:0;width:54px;height:54px;z-index:50;filter:drop-shadow(0 6px 10px rgba(0,0,0,.25))}
+#ripple{position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;border:4px solid var(--teal);z-index:49}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bg" id="bgA" style="width:1500px;height:1100px;background:radial-gradient(closest-side,#d7efe9 0%,rgba(215,239,233,0) 100%)"></div>
+  <div class="bg" id="bgB" style="width:1200px;height:1000px;background:radial-gradient(closest-side,#f6e2c4 0%,rgba(246,226,196,0) 100%)"></div>
+
+  <!-- S1 hook -->
+  <div class="layer" id="s1">
+    <div id="chips"></div>
+    <div id="word" class="serif"></div>
+  </div>
+
+  <!-- S2 logo -->
+  <div class="layer" id="s2">
+    <div id="ring"></div>
+    <div class="lockwrap" style="top:388px">
+      <div class="eyebrow" id="eb2">Local · Private</div>
+      <div class="lockup" id="lock2" style="margin-top:40px"><div class="mark" id="mark2"></div><div class="wm serif" id="wm2"></div></div>
+      <div class="tag serif" id="tag2" style="margin-top:44px">Your household budget, in plain language.</div>
+    </div>
+  </div>
+
+  <!-- S3–S5 app -->
+  <div class="layer" id="app">
+    <div class="cap" id="cap1"><div class="eyb">01 · Add</div><div class="h serif">Just type it.</div></div>
+    <div class="cap" id="cap2"><div class="eyb">02 · Import</div><div class="h serif">Drop in a bank statement.</div></div>
+    <div class="cap" id="cap3"><div class="eyb">03 · Ask</div><div class="h serif">Chat with your money.</div></div>
+    <div id="steps"><span id="st1">Add</span><span id="st2">Import</span><span id="st3">Ask</span></div>
+    <div id="win">
+      <div class="hdr">
+        <div class="brand serif">Haushaltsbuch</div>
+        <div class="tabs" id="tabs"><div id="tabPill"></div><span class="tab" id="tabChat">Chat</span><span class="tab">Expenses</span><span class="tab" id="tabSum">Summary</span><span class="tab">Your data</span></div>
+      </div>
+      <div class="wbody">
+        <!-- S3 -->
+        <div class="view" id="v3">
+          <div class="empty serif" id="empty3"><h2>What did you spend?</h2><p style="font-family:-apple-system,sans-serif">Type it in plain language, or attach a bank statement PDF.</p></div>
+          <div class="ububble" id="ub3">Groceries 42.80 at Rewe yesterday, Netflix 12.99</div>
+          <div class="dots" id="dots3" style="top:170px"><i></i><i></i><i></i></div>
+          <div class="tcard" id="card3" style="left:160px;right:160px;top:150px">
+            <div class="intro">I found 2 transactions. <em>Nothing is saved yet.</em></div>
+            <table>
+              <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Bank</th><th class="r">Amount</th></tr></thead>
+              <tbody>
+                <tr id="r3a"><td>16 Oct 2026</td><td>Rewe</td><td><span class="cat">grocery</span></td><td>SP</td><td class="r num">−€42.80</td></tr>
+                <tr id="r3b"><td>17 Oct 2026</td><td>Netflix</td><td><span class="cat">bill</span></td><td>SP</td><td class="r num">−€12.99</td></tr>
+              </tbody>
+              <tfoot><tr id="r3t"><td colspan="4">Total</td><td class="r num">−€55.79</td></tr></tfoot>
+            </table>
+            <div class="actions">
+              <div id="act3" style="display:flex;align-items:center;gap:30px"><div class="btn" id="confirm3">Confirm 2 transactions</div><div class="link">Cancel</div></div>
+              <div class="saved" id="saved3"><div class="ok"><svg width="28" height="28" viewBox="0 0 16 16"><path d="M3.5 8.4l2.9 2.9 6-6.2" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>Saved 2 transactions<span class="link" style="margin-left:14px">Undo</span></div>
+              <div id="sparks"></div>
+            </div>
+          </div>
+        </div>
+        <!-- S4 -->
+        <div class="view" id="v4" style="bottom:0">
+          <div id="pdfSlot"></div>
+          <div id="status"><div class="spin" id="spin"></div><svg id="okS" width="30" height="30" viewBox="0 0 16 16" style="display:none"><circle cx="8" cy="8" r="8" fill="#0b6e63"/><path d="M4.4 8.3l2.3 2.3 4.8-4.9" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="statusTxt">Reading on your computer…</span><div class="barbg"></div><div class="bar" id="bar"></div></div>
+          <div class="tcard" id="card4" style="left:540px;right:60px;top:44px;padding:26px 32px">
+            <div class="intro" style="font-size:27px">I found 8 transactions in statement-sep.pdf. <em>Nothing is saved yet.</em></div>
+            <table>
+              <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="r">Amount</th></tr></thead>
+              <tbody id="rows4"></tbody>
+            </table>
+            <div id="bal"><div class="ok"><svg width="22" height="22" viewBox="0 0 16 16"><path d="M3.5 8.4l2.9 2.9 6-6.2" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>Balances match <span class="num">€2,140.32 → €4,209.91</span></div>
+          </div>
+        </div>
+        <!-- S5 chat -->
+        <div class="view" id="v5">
+          <div class="ububble" id="ub5">How much did we spend on groceries in March?</div>
+          <div class="dots" id="dots5" style="top:166px"><i></i><i></i><i></i></div>
+          <div class="sql mono" id="sql5" style="top:214px"></div>
+          <div class="answer" id="ans5" style="top:176px">You spent<strong class="num" id="ansNum">€184.20</strong>on groceries in March.</div>
+        </div>
+        <!-- S5 summary -->
+        <div class="view" id="v5s" style="bottom:0">
+          <div class="sumhead"><h3 class="serif">Summary · March 2026</h3><div class="seg"><span class="on">One period</span><span>Compare</span></div></div>
+          <div class="scards">
+            <div class="scard" id="sc1"><div class="l">Income</div><div class="a num" style="color:var(--teal)" id="scA1">€3,200.00</div></div>
+            <div class="scard" id="sc2"><div class="l">Expenses</div><div class="a num" style="color:var(--red)" id="scA2">€1,412.35</div></div>
+            <div class="scard" id="sc3"><div class="l">Net</div><div class="a num" id="scA3">+€1,787.65</div></div>
+          </div>
+          <div class="donutwrap" id="dwrap">
+            <svg width="300" height="300" viewBox="0 0 300 300" style="position:absolute;left:60px;top:30px;transform:rotate(-90deg)" id="donut"></svg>
+            <div class="dcenter"><b class="num" id="dTotal">€1,412.35</b><span>spent</span></div>
+            <div class="legend" id="legend"></div>
+          </div>
+        </div>
+        <div id="composer">
+          <svg class="clip" viewBox="0 0 24 24" fill="none" stroke="#8a837a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg>
+          <div id="ctext"></div>
+          <div id="send"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- flying statement (stage level, follows #pdfSlot) -->
+  <div id="pdf">
+    <div id="pdfTag">PDF</div>
+    <div class="ph1"><div class="logo"></div><div><div class="bn">Girokonto</div><div class="bs">Account statement · September 2026</div></div></div>
+    <div class="meta"><span>Opening balance</span><span class="num">€2,140.32</span></div>
+    <div id="plines"></div>
+    <div class="foot"><span>Closing balance</span><span class="num">€4,209.91</span></div>
+    <div id="scan"></div>
+  </div>
+
+  <!-- S6 -->
+  <div class="layer" id="s6">
+    <div id="s6a">
+      <div id="vault">
+        <svg width="150" height="170" viewBox="0 0 60 68" fill="none" stroke="#0b6e63" stroke-width="4.2" stroke-linecap="round">
+          <ellipse cx="30" cy="12" rx="24" ry="8"/><path d="M6 12v44c0 4.4 10.7 8 24 8s24-3.6 24-8V12"/><path d="M6 34c0 4.4 10.7 8 24 8s24-3.6 24-8"/>
+        </svg>
+        <div id="lockb"><svg width="62" height="70" viewBox="0 0 24 28"><path id="shackle" d="M6.5 13V8.5a5.5 5.5 0 0 1 11 0V13" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/><rect x="3" y="12" width="18" height="14" rx="3.5" fill="#fff"/><circle cx="12" cy="19" r="2.2" fill="#0b6e63"/></svg></div>
+      </div>
+      <div class="bigh serif" id="h6a" style="top:540px">Your money stays on your computer.</div>
+      <div class="subh" id="sub6a" style="top:690px">One SQLite file on your computer. No cloud database.</div>
+    </div>
+    <div id="s6b">
+      <div class="bigh serif" id="h6b" style="top:390px">You pick the AI.</div>
+      <div class="aichips">
+        <div class="aichip local" id="ai1"><i style="background:#0b6e63"></i>Ollama <em>· on your computer</em></div>
+        <div class="aichip" id="ai2"><i style="background:#1a1714"></i>OpenAI</div>
+        <div class="aichip" id="ai3"><i style="background:#e2a65a"></i>Any compatible endpoint</div>
+      </div>
+      <div class="subh" id="sub6b" style="top:830px"><svg width="34" height="34" viewBox="0 0 16 16" style="vertical-align:-7px;margin-right:12px"><circle cx="8" cy="8" r="8" fill="#0b6e63"/><path d="M4.4 8.3l2.3 2.3 4.8-4.9" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Nothing is saved until you press <b style="color:var(--ink)">Confirm</b>.</div>
+    </div>
+  </div>
+
+  <!-- S7 end -->
+  <div class="layer" id="s7">
+    <div class="lockwrap" style="top:300px">
+      <div class="eyebrow" id="eb7">Local · Private</div>
+      <div class="lockup" id="lock7" style="margin-top:40px"><div class="mark" id="mark7"></div><div class="wm serif" id="wm7"></div></div>
+      <div class="tag serif" id="tag7" style="margin-top:44px">Your household budget, in plain language.</div>
+      <div class="cta" id="cta7" style="margin-top:64px">Get started<div class="glint" id="glint7"></div></div>
+      <div class="small" id="small7" style="margin-top:34px">Runs on your computer · Works with Ollama or OpenAI</div>
+    </div>
+  </div>
+
+  <svg id="cursor" viewBox="0 0 24 24"><path d="M5 2.5v17.2l4.6-4.3 3 6.8 3-1.3-3-6.7h6.3z" fill="#1a1714" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  <div id="ripple"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const P = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, x) => a + (b - a) * x;
+const E = {
+  out: (x) => 1 - Math.pow(1 - x, 3),
+  out5: (x) => 1 - Math.pow(1 - x, 5),
+  in: (x) => x * x * x,
+  inOut: (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2),
+  back: (x) => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
+};
+function vis(el, o, tf) {
+  el.style.opacity = o;
+  el.style.visibility = o <= 0.002 ? "hidden" : "visible";
+  if (tf !== undefined) el.style.transform = tf;
+}
+const eur = (n, sign = false) => {
+  const s = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (n < 0 ? "−€" : sign ? "+€" : "€") + s;
+};
+function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+/* ---------------- pacing: scene time t (designed on a 30 s grid) -> output time T ---------------- */
+// Each entry: [scene time where the segment ends, output seconds it gets]. Holds get more time, cuts stay quick.
+const SEG = [
+  [2.5, 3.6], [3.5, 1.6],                                   // hook
+  [4.5, 1.4], [5.4, 2.0], [6.3, 1.0],                       // logo
+  [6.45, 0.9], [7.9, 2.6], [9.0, 1.5], [9.6, 1.1], [10.2, 1.6], [10.5, 0.45], [11.3, 1.6], [11.75, 0.6], // add
+  [12.1, 0.8], [13.45, 2.2], [14.85, 2.4], [15.4, 0.8], [16.2, 1.8], [16.75, 0.9],                     // import
+  [18.1, 2.4], [19.2, 1.7], [19.85, 0.9], [20.3, 1.6], [21.1, 1.3], [21.68, 2.0], [22.2, 0.7],         // ask
+  [22.9, 1.0], [23.75, 1.8], [24.95, 1.7], [25.75, 2.0], [26.0, 0.4],                                  // local
+  [27.5, 2.0], [29.45, 2.4], [30.0, 0.8],                                                              // end
+];
+const KNOTS = [[0, 0]];
+SEG.forEach(([te, d]) => KNOTS.push([te, KNOTS[KNOTS.length - 1][1] + d]));
+const TOTAL = KNOTS[KNOTS.length - 1][1];
+function mapKnots(x, from, to) {
+  for (let i = 1; i < KNOTS.length; i++) {
+    const a = KNOTS[i - 1], b = KNOTS[i];
+    if (x <= b[from] || i === KNOTS.length - 1) return a[to] + ((x - a[from]) / (b[from] - a[from])) * (b[to] - a[to]);
+  }
+}
+const toScene = (T) => clamp(mapKnots(T, 1, 0), 0, 30);
+const toOut = (t) => mapKnots(t, 0, 1);
+
+/* ---------------- timeline + sound cues ---------------- */
+const CUES = [];
+const cue = (t, type, extra = {}) => CUES.push({ t: +t.toFixed(3), type, ...extra });
+
+// S1
+const WORDS = [[0.5, "Coffee."], [1.0, "Rent."], [1.5, "Groceries."], [2.0, "Netflix."], [2.5, "Where did it all go?"]];
+WORDS.forEach(([t], i) => cue(t, i === 4 ? "impact" : "hit", { i }));
+const CHIPS = [["Coffee", 4.2, "#e2a65a"], ["Rent", 850, "#0b6e63"], ["REWE", 42.8, "#3f9c8f"], ["Netflix", 12.99, "#8cc7bd"], ["Bakery", 3.1, "#e2a65a"], ["Gym", 29.9, "#cfc5b6"], ["Edeka", 51.27, "#3f9c8f"], ["Electricity", 94, "#8cc7bd"], ["Phone", 39.99, "#8cc7bd"], ["dm", 23.15, "#c9824a"], ["Bus ticket", 3.8, "#cfc5b6"], ["Pizza", 18.5, "#e2a65a"], ["Amazon", 34.99, "#cfc5b6"], ["Spotify", 10.99, "#8cc7bd"], ["Lidl", 27.64, "#3f9c8f"], ["Döner", 7.5, "#e2a65a"]];
+const chipT = (i) => 0.1 + i * 0.142;
+CHIPS.forEach((_, i) => cue(chipT(i), "pop", { i }));
+cue(2.55, "riser", { dur: 0.95 });
+cue(2.95, "suck", { dur: 0.5 });
+// S2
+cue(3.5, "boom");
+cue(3.55, "shimmer");
+cue(4.0, "type_reveal", { n: 13, step: 0.03 });
+cue(5.6, "whoosh");
+// S3
+const TYPE3 = "Groceries 42.80 at Rewe yesterday, Netflix 12.99";
+const T3 = { type: 6.45, cps: 34, send: 8.05, bubble: 8.12, dots: 8.45, card: 8.95, row1: 9.25, row2: 9.42, total: 9.6, curIn: 9.55, click: 10.2, saved: 10.3, out: 11.3 };
+for (let i = 0; i < TYPE3.length; i++) cue(T3.type + i / T3.cps, "key", { ch: TYPE3[i] });
+cue(T3.send, "send"); cue(T3.dots, "dots", { dur: 0.45 }); cue(T3.card, "card");
+cue(T3.row1, "tick", { i: 0 }); cue(T3.row2, "tick", { i: 1 }); cue(T3.total, "tick", { i: 2 });
+cue(T3.click, "click"); cue(T3.saved, "success");
+cue(T3.out, "whoosh");
+// S4
+const T4 = { fly: 11.62, land: 12.04, scan: 12.25, scanEnd: 13.45, card: 13.15, row0: 13.4, rowStep: 0.17, bal: 15.0, out: 16.2 };
+const ST = [["01 Sep", "Salary · Acme GmbH", "salary", 3200], ["03 Sep", "Rent", "rent", -850], ["05 Sep", "REWE", "grocery", -63.4], ["08 Sep", "Stadtwerke", "bill", -94], ["12 Sep", "dm-drogerie markt", "household", -23.15], ["14 Sep", "Café Lotte", "food", -8.6], ["19 Sep", "EDEKA", "grocery", -51.27], ["26 Sep", "Vodafone", "bill", -39.99]];
+cue(T4.fly, "fly", { dur: T4.land - T4.fly }); cue(T4.land, "thud");
+cue(T4.scan, "scan", { dur: T4.scanEnd - T4.scan }); cue(T4.card, "card");
+ST.forEach((_, i) => cue(T4.row0 + i * T4.rowStep, "tick", { i: i + 3 }));
+cue(T4.bal, "chime");
+cue(T4.out, "whoosh");
+// S5
+const TYPE5 = "How much did we spend on groceries in March?";
+const SQL5 = "SELECT SUM(amount) FROM transactions WHERE category = 'grocery' AND date LIKE '2026-03%'";
+const T5 = { type: 16.75, cps: 34, send: 18.15, bubble: 18.2, dots: 18.4, sql: 18.5, ans: 19.2, count: 19.25, countEnd: 19.85, curIn: 19.75, click: 20.3, switch: 20.38, cards: 20.5, donut: 20.62, out: 21.68 };
+for (let i = 0; i < TYPE5.length; i++) cue(T5.type + i / T5.cps, "key", { ch: TYPE5[i] });
+cue(T5.send, "send"); cue(T5.dots, "dots", { dur: 0.75 }); cue(T5.sql, "data", { dur: 0.6 });
+cue(T5.ans, "card"); cue(T5.count, "count", { dur: T5.countEnd - T5.count }); cue(T5.countEnd, "ding");
+cue(T5.click, "click"); cue(T5.switch, "swipe");
+const DON = [["rent", 850, "#0b6e63"], ["grocery", 184.2, "#3f9c8f"], ["bill", 133.99, "#8cc7bd"], ["food", 98.4, "#e2a65a"], ["miscellaneous", 74.61, "#cfc5b6"], ["household", 71.15, "#c9824a"]];
+DON.forEach((_, i) => cue(T5.donut + i * 0.12, "seg", { i }));
+cue(T5.cards, "count", { dur: 0.6 });
+cue(T5.out, "whoosh_big");
+// S6
+const T6 = { in: 22.12, lock: 22.65, aOut: 23.75, bIn: 23.9, chip: 24.25, chipStep: 0.2, note: 24.95, out: 25.75 };
+cue(T6.in, "rise"); cue(T6.lock, "lock");
+cue(T6.aOut, "whoosh");
+[0, 1, 2].forEach((i) => cue(T6.chip + i * T6.chipStep, "chip", { i }));
+cue(T6.note, "soft_tick");
+cue(T6.out, "whoosh");
+// S7
+const T7 = { in: 26.0, cta: 26.75, glint: 27.45, small: 27.05, fade: 29.45 };
+cue(T7.in, "sting"); cue(T7.cta, "card"); cue(T7.glint, "glint");
+window.CUES = CUES.map((c) => {
+  const out = { ...c, t: +toOut(c.t).toFixed(3), scene: c.t };
+  if (c.dur) out.dur = +(toOut(c.t + c.dur) - toOut(c.t)).toFixed(3);
+  return out;
+});
+window.TOTAL = TOTAL;
+window.MARKS = { drop: toOut(3.5), breakdown: toOut(T5.out), end: toOut(26.0) };
+
+/* ---------------- build DOM ---------------- */
+const chipsEl = $("chips");
+const R = rng(7);
+const chipData = CHIPS.map(([label, amt, color], i) => {
+  const el = document.createElement("div");
+  el.className = "chip";
+  el.innerHTML = `<i style="background:${color}"></i>${label}<b class="num">−€${amt.toFixed(2)}</b>`;
+  chipsEl.appendChild(el);
+  const a = i * 2.39996 + 0.6;
+  const rx = 600 + R() * 230, ry = 360 + R() * 150;
+  return { el, x: 960 + Math.cos(a) * rx, y: 600 + Math.sin(a) * ry, rot: (R() - 0.5) * 26, ph: R() * 6.28, sc: 0.85 + R() * 0.3 };
+});
+chipData.forEach((c) => { c.w = c.el.offsetWidth; c.h = c.el.offsetHeight; });
+
+function letters(id, text) {
+  const el = $(id);
+  el.innerHTML = [...text].map((ch) => `<span>${ch}</span>`).join("");
+  return [...el.children];
+}
+const L2 = letters("wm2", "Haushaltsbuch");
+const L7 = letters("wm7", "Haushaltsbuch");
+
+const rows4 = $("rows4");
+const plines = $("plines");
+ST.forEach(([d, desc, cat, amt]) => {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${d}</td><td>${desc}</td><td><span class="cat ${cat === "salary" ? "salary" : ""}">${cat}</span></td><td class="r num ${amt > 0 ? "inc" : ""}">${eur(amt, true)}</td>`;
+  rows4.appendChild(tr);
+  const pl = document.createElement("div");
+  pl.className = "pl";
+  pl.innerHTML = `<span>${d}</span><span>${desc.toUpperCase()}</span><span class="num">${amt > 0 ? "+" : "−"}${Math.abs(amt).toFixed(2)}</span>`;
+  plines.appendChild(pl);
+});
+const rowEls4 = [...rows4.children];
+const plEls = [...plines.children];
+
+// donut
+const DT = DON.reduce((s, d) => s + d[1], 0);
+const donut = $("donut");
+const CIRC = 2 * Math.PI * 118;
+let acc = 0;
+const segs = DON.map(([name, v, c]) => {
+  const c1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  c1.setAttribute("cx", 150); c1.setAttribute("cy", 150); c1.setAttribute("r", 118);
+  c1.setAttribute("fill", "none"); c1.setAttribute("stroke", c); c1.setAttribute("stroke-width", 52);
+  donut.appendChild(c1);
+  const s = { el: c1, start: acc / DT, len: v / DT };
+  acc += v;
+  return s;
+});
+$("legend").innerHTML = DON.map(([n, v, c]) => `<div class="lg"><i style="background:${c}"></i><span>${n}</span><b class="num">${eur(v)}</b></div>`).join("");
+const lgEls = [...$("legend").children];
+
+// sparks
+const sparks = [];
+for (let i = 0; i < 14; i++) {
+  const s = document.createElement("div");
+  s.className = "spark";
+  s.style.background = ["#0b6e63", "#3f9c8f", "#e2a65a", "#8cc7bd"][i % 4];
+  $("sparks").appendChild(s);
+  sparks.push({ el: s, a: (i / 14) * Math.PI * 2 + 0.2, d: 90 + (i % 3) * 40 });
+}
+
+// lockup offsets so the mark starts centred
+function measureLock(markId) {
+  const r = $(markId).getBoundingClientRect();
+  return 960 - (r.left + r.width / 2);
+}
+const DX2 = measureLock("mark2");
+const DX7 = measureLock("mark7");
+
+/* ---------------- helpers ---------------- */
+function typed(text, t, start, cps) {
+  const n = Math.floor(clamp((t - start) * cps, 0, text.length));
+  return text.slice(0, n);
+}
+function rel(el) { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; }
+function dotsAnim(el, t, a, b) {
+  const o = P(t, a, a + 0.12) * (1 - P(t, b - 0.08, b));
+  vis(el, o);
+  [...el.children].forEach((d, i) => { d.style.transform = `translateY(${-Math.max(0, Math.sin((t - a) * 12 - i * 0.9)) * 12}px)`; });
+}
+function lockAnim(t, t0, L, markId, dx, ringOn) {
+  const m = $(markId);
+  const k = E.back(P(t, t0, t0 + 0.38));
+  const mv = E.inOut(P(t, t0 + 0.42, t0 + 0.85));
+  m.style.transform = `translateX(${dx * (1 - mv)}px) scale(${k}) rotate(${(1 - P(t, t0, t0 + 0.4)) * -25}deg)`;
+  m.style.opacity = P(t, t0, t0 + 0.08);
+  L.forEach((s, i) => {
+    const q = E.out(P(t, t0 + 0.5 + i * 0.03, t0 + 0.5 + i * 0.03 + 0.4));
+    s.style.opacity = q;
+    s.style.transform = `translateY(${(1 - q) * 70}px) rotate(${(1 - q) * 8}deg)`;
+  });
+}
+
+/* ---------------- render ---------------- */
+function render(T) {
+  const t = toScene(T);
+  // ambient background runs on output time so it never stalls
+  $("bgA").style.transform = `translate(${-300 + Math.sin(T * 0.13) * 220}px, ${-520 + Math.cos(T * 0.11) * 90}px)`;
+  $("bgB").style.transform = `translate(${1150 + Math.cos(T * 0.12) * 200}px, ${-420 + Math.sin(T * 0.14) * 120}px)`;
+
+  /* S1 */
+  const s1 = $("s1");
+  if (t < 3.6) {
+    vis(s1, 1);
+    const suck = E.in(P(t, 2.95, 3.42));
+    chipData.forEach((c, i) => {
+      const t0 = chipT(i);
+      const k = P(t, t0, t0 + 0.3);
+      const sc = E.back(k) * c.sc * lerp(1, 0.1, suck);
+      const fx = c.x + Math.sin(t * 0.9 + c.ph) * 10, fy = c.y + Math.cos(t * 0.8 + c.ph) * 10 - (1 - E.out(k)) * 40;
+      const x = lerp(fx, 960, suck), y = lerp(fy, 600, suck);
+      const rot = c.rot + Math.sin(t * 1.1 + c.ph) * 2 + suck * 140 * (i % 2 ? 1 : -1);
+      vis(c.el, Math.min(P(t, t0, t0 + 0.08), 1 - P(t, 3.3, 3.44)), `translate(${x - c.w / 2}px, ${y - c.h / 2}px) rotate(${rot}deg) scale(${sc})`);
+    });
+    const w = $("word");
+    let idx = -1;
+    WORDS.forEach(([wt], i) => { if (t >= wt) idx = i; });
+    if (idx < 0) vis(w, 0);
+    else {
+      const [wt, txt] = WORDS[idx];
+      if (w.textContent !== txt) w.textContent = txt;
+      w.className = "serif" + (idx === 4 ? " q" : "");
+      const k = E.out5(P(t, wt, wt + (idx === 4 ? 0.22 : 0.16)));
+      const shake = idx === 4 ? Math.sin((t - wt) * 90) * 14 * (1 - P(t, wt, wt + 0.32)) : 0;
+      const exitK = E.in(P(t, 2.95, 3.3));
+      const sc = lerp(idx === 4 ? 1.6 : 1.3, 1, k) * lerp(1, 0.55, exitK);
+      vis(w, k * (1 - exitK), `translate(${shake}px, -50%) scale(${sc})`);
+      w.style.filter = exitK > 0 ? `blur(${exitK * 10}px)` : "none";
+    }
+  } else vis(s1, 0);
+
+  /* S2 */
+  const s2 = $("s2");
+  if (t > 3.4 && t < 6.1) {
+    const out = E.in(P(t, 5.4, 5.75));
+    vis(s2, 1 - out, `translateY(${-80 * out}px) scale(${1 - 0.06 * out})`);
+    lockAnim(t, 3.47, L2, "mark2", DX2);
+    const ring = $("ring"), rk = E.out(P(t, 3.5, 4.25));
+    const rd = 150 + rk * 1500;
+    ring.style.width = ring.style.height = `${rd}px`;
+    vis(ring, (1 - rk) * 0.6 * (t >= 3.5 ? 1 : 0), `translate(-50%,-50%)`);
+    ring.style.borderWidth = `${lerp(6, 1.5, rk)}px`;
+    const tg = E.out(P(t, 4.45, 4.95));
+    vis($("tag2"), tg, `translateY(${(1 - tg) * 30}px)`);
+    const eb = E.out(P(t, 4.75, 5.15));
+    vis($("eb2"), eb, `translateY(${(1 - eb) * 20}px)`);
+    $("eb2").style.letterSpacing = `${lerp(0.6, 0.2, eb)}em`;
+  } else vis(s2, 0);
+
+  /* APP (S3–S5) */
+  const app = $("app");
+  if (t > 5.6 && t < 22.3) {
+    const inK = E.out(P(t, 5.7, 6.3));
+    const outK = E.in(P(t, T5.out, T5.out + 0.42));
+    vis(app, Math.min(1, inK * 1.4) * (1 - outK));
+    const win = $("win");
+    const push = 1 + 0.03 * P(t, 6, 21.7);
+    win.style.transform = `perspective(2200px) translateY(${(1 - inK) * 720 + outK * 60}px) rotateX(${(1 - inK) * 16}deg) scale(${push * (1 - 0.22 * outK)})`;
+
+    // captions
+    const caps = [["cap1", 5.95, T3.out + 0.05], ["cap2", T3.out + 0.25, T4.out + 0.05], ["cap3", T4.out + 0.25, T5.out]];
+    caps.forEach(([id, a, b]) => {
+      const ki = E.out(P(t, a, a + 0.45)), ko = E.in(P(t, b, b + 0.28));
+      vis($(id), ki * (1 - ko), `translateX(${(1 - ki) * -60 + ko * 40}px)`);
+      $(id).style.filter = ko > 0 ? `blur(${ko * 8}px)` : "none";
+    });
+    const step = t < T3.out + 0.2 ? 0 : t < T4.out + 0.2 ? 1 : 2;
+    ["st1", "st2", "st3"].forEach((id, i) => $(id).classList.toggle("on", i === step));
+    const stK = E.out(P(t, 6.1, 6.6));
+    vis($("steps"), stK * (1 - outK), `translateY(${(1 - stK) * -20}px)`);
+
+    // tabs
+    const tabChat = $("tabChat"), tabSum = $("tabSum");
+    const sw = E.inOut(P(t, T5.switch, T5.switch + 0.3));
+    const tabsR = $("tabs").getBoundingClientRect();
+    const scale = tabsR.width / $("tabs").offsetWidth;
+    const a = tabChat.offsetLeft, b = tabSum.offsetLeft, wa = tabChat.offsetWidth, wb = tabSum.offsetWidth;
+    const pill = $("tabPill");
+    pill.style.left = `${lerp(a, b, sw)}px`; pill.style.width = `${lerp(wa, wb, sw)}px`;
+    tabChat.classList.toggle("on", sw < 0.5); tabSum.classList.toggle("on", sw >= 0.5);
+
+    // composer
+    const ct = $("ctext");
+    const caretOn = Math.floor(T * 1.8) % 2 === 0;
+    let html;
+    const s3typing = t >= T3.type && t < T3.send;
+    const s5typing = t >= T5.type && t < T5.send;
+    if (s3typing || s5typing) {
+      const txt = s3typing ? typed(TYPE3, t, T3.type, T3.cps) : typed(TYPE5, t, T5.type, T5.cps);
+      html = txt + '<span class="caret"></span>';
+    } else {
+      const ph = t < T3.send ? "Type an expense, or attach a bank statement (PDF)" : "Ask a follow-up, or attach another statement";
+      html = (caretOn && t > 6.3 && (t < 6.45 || (t > 16.5 && t < 16.75)) ? '<span class="caret" style="margin:0 4px 0 0"></span>' : "") + `<span class="ph">${ph}</span>`;
+    }
+    if (ct.innerHTML !== html) ct.innerHTML = html;
+    const press = (tt) => 1 - 0.14 * Math.sin(Math.PI * P(t, tt, tt + 0.16));
+    $("send").style.transform = `scale(${press(T3.send) * press(T5.send)})`;
+    const compOut = E.inOut(P(t, T5.switch, T5.switch + 0.3));
+    vis($("composer"), 1 - compOut, `translateY(${compOut * 40}px)`);
+
+    /* --- v3 --- */
+    const v3 = $("v3");
+    const v3out = E.in(P(t, T3.out, T3.out + 0.3));
+    vis(v3, 1 - v3out, `translateY(${-80 * v3out}px)`);
+    if (t < T3.out + 0.35) {
+      const eo = E.out(P(t, T3.send + 0.02, T3.send + 0.25));
+      vis($("empty3"), 1 - eo, `translateY(${-30 * eo}px) scale(${1 - 0.05 * eo})`);
+      const ub = E.out(P(t, T3.bubble, T3.bubble + 0.32));
+      vis($("ub3"), ub, `translateY(${(1 - ub) * 520}px) scale(${lerp(0.9, 1, ub)})`);
+      $("ub3").style.transformOrigin = "100% 100%";
+      dotsAnim($("dots3"), t, T3.dots, T3.card);
+      const ck = E.back(P(t, T3.card, T3.card + 0.38));
+      vis($("card3"), P(t, T3.card, T3.card + 0.12), `translateY(${(1 - ck) * 40}px) scale(${lerp(0.94, 1, ck)})`);
+      [["r3a", T3.row1], ["r3b", T3.row2], ["r3t", T3.total]].forEach(([id, rt]) => {
+        const k = E.out(P(t, rt, rt + 0.25));
+        vis($(id), k, `translateX(${(1 - k) * -30}px)`);
+        $(id).style.background = `rgba(215,239,233,${(1 - P(t, rt, rt + 0.6)) * 0.9 * (t >= rt ? 1 : 0)})`;
+      });
+      const pr = 1 - 0.07 * Math.sin(Math.PI * P(t, T3.click, T3.click + 0.14));
+      const sv = E.back(P(t, T3.saved, T3.saved + 0.35));
+      vis($("act3"), 1 - P(t, T3.saved - 0.02, T3.saved + 0.1), `scale(${pr})`);
+      $("act3").style.transformOrigin = "0 50%";
+      vis($("saved3"), P(t, T3.saved, T3.saved + 0.1), `scale(${lerp(0.7, 1, sv)})`);
+      $("saved3").style.transformOrigin = "0 50%";
+      sparks.forEach((s) => {
+        const k = P(t, T3.saved, T3.saved + 0.7);
+        const d = E.out(k) * s.d;
+        vis(s.el, k > 0 && k < 1 ? 1 - k : 0, `translate(${26 + Math.cos(s.a) * d}px, ${36 + Math.sin(s.a) * d}px) scale(${1 - k * 0.6})`);
+      });
+    }
+
+    /* --- v4 + flying pdf --- */
+    const v4 = $("v4"), pdf = $("pdf");
+    const v4in = P(t, T4.fly - 0.1, T4.fly + 0.2), v4out = E.in(P(t, T4.out, T4.out + 0.3));
+    vis(v4, v4in * (1 - v4out), `translateY(${-80 * v4out}px)`);
+    if (t > T4.fly && t < T4.out + 0.35) {
+      const slot = rel($("pdfSlot"));
+      const s = slot.w / 420;
+      const f = P(t, T4.fly, T4.land);
+      const fe = E.in(f);
+      const fx = lerp(1250, 0, fe), fy = lerp(-760, 0, fe) - Math.sin(f * Math.PI) * 120;
+      const rot = lerp(28, -2.5, E.out(f));
+      const land = P(t, T4.land, T4.land + 0.3);
+      const squash = 1 + Math.sin(land * Math.PI) * 0.05 * (1 - land);
+      pdf.style.transform = `translate(${slot.x + fx}px, ${slot.y + fy - 80 * v4out}px) rotate(${rot}deg) scale(${s * lerp(0.7, 1, E.out(f)) * squash}, ${s * lerp(0.7, 1, E.out(f)) / squash})`;
+      vis(pdf, P(t, T4.fly, T4.fly + 0.06) * (1 - v4out));
+      // scan
+      const sk = P(t, T4.scan, T4.scanEnd);
+      vis($("scan"), sk > 0 && sk < 1 ? Math.min(1, sk * 8, (1 - sk) * 8) : 0, `translateY(${lerp(-110, 560, E.inOut(sk))}px)`);
+      plEls.forEach((pl, i) => {
+        const rt = T4.row0 + i * T4.rowStep;
+        const hk = P(t, rt, rt + 0.7);
+        pl.style.background = t >= rt ? `rgba(11,110,99,${0.16 * (1 - hk) + 0.05})` : "transparent";
+      });
+      // status
+      vis($("status"), P(t, T4.land + 0.1, T4.land + 0.3));
+      const done = t >= T4.scanEnd + 0.05;
+      $("spin").style.display = done ? "none" : "block";
+      $("okS").style.display = done ? "block" : "none";
+      $("spin").style.transform = `rotate(${T * 400}deg)`;
+      const stxt = done ? "3 pages read on your computer" : "Reading on your computer…";
+      if ($("statusTxt").textContent !== stxt) $("statusTxt").textContent = stxt;
+      $("bar").style.width = `${420 * E.inOut(P(t, T4.scan, T4.scanEnd))}px`;
+      // card
+      const ck = E.back(P(t, T4.card, T4.card + 0.38));
+      vis($("card4"), P(t, T4.card, T4.card + 0.12), `translateX(${(1 - ck) * 50}px) scale(${lerp(0.95, 1, ck)})`);
+      rowEls4.forEach((tr, i) => {
+        const rt = T4.row0 + i * T4.rowStep;
+        const k = E.out(P(t, rt, rt + 0.25));
+        vis(tr, k, `translateX(${(1 - k) * -40}px)`);
+        tr.style.background = `rgba(215,239,233,${(1 - P(t, rt, rt + 0.6)) * 0.9 * (t >= rt ? 1 : 0)})`;
+      });
+      const bk = E.back(P(t, T4.bal, T4.bal + 0.4));
+      vis($("bal"), P(t, T4.bal, T4.bal + 0.1), `scale(${lerp(0.7, 1, bk)})`);
+      $("bal").style.transformOrigin = "0 50%";
+    } else vis(pdf, 0);
+
+    /* --- v5 chat --- */
+    const v5 = $("v5");
+    const v5in = P(t, T5.type - 0.3, T5.type), v5out = E.inOut(P(t, T5.switch, T5.switch + 0.3));
+    vis(v5, v5in * (1 - P(t, T5.switch, T5.switch + 0.14)), `translateX(${-120 * v5out}px)`);
+    if (t > T5.type - 0.3 && t < T5.switch + 0.35) {
+      const ub = E.out(P(t, T5.bubble, T5.bubble + 0.32));
+      vis($("ub5"), ub, `translateY(${(1 - ub) * 520}px) scale(${lerp(0.9, 1, ub)})`);
+      $("ub5").style.transformOrigin = "100% 100%";
+      dotsAnim($("dots5"), t, T5.dots, T5.ans);
+      const sqlTxt = typed(SQL5, t, T5.sql, 150);
+      const sq = $("sql5");
+      const sqlHtml = `<b>run_sql</b> ${sqlTxt}`;
+      if (sq.innerHTML !== sqlHtml) sq.innerHTML = sqlHtml;
+      vis(sq, P(t, T5.sql, T5.sql + 0.1) * (1 - P(t, T5.ans - 0.1, T5.ans)));
+      const ak = E.out(P(t, T5.ans, T5.ans + 0.35));
+      vis($("ans5"), ak, `translateY(${(1 - ak) * 24}px)`);
+      $("ansNum").textContent = eur(184.2 * E.out(P(t, T5.count, T5.countEnd)));
+      const pop = Math.sin(Math.PI * P(t, T5.countEnd, T5.countEnd + 0.25));
+      $("ansNum").style.display = "inline-block";
+      $("ansNum").style.transform = `scale(${1 + pop * 0.12})`;
+    }
+
+    /* --- v5 summary --- */
+    const v5s = $("v5s");
+    const si = E.inOut(P(t, T5.switch, T5.switch + 0.3));
+    vis(v5s, P(t, T5.switch + 0.1, T5.switch + 0.3), `translateX(${(1 - si) * 140}px)`);
+    if (si > 0) {
+      [["sc1", 3200, false], ["sc2", 1412.35, false], ["sc3", 1787.65, true]].forEach(([id, v, sg], i) => {
+        const a0 = T5.cards + i * 0.08;
+        const k = E.back(P(t, a0, a0 + 0.4));
+        vis($(id), P(t, a0, a0 + 0.1), `translateY(${(1 - k) * 40}px)`);
+        $("scA" + (i + 1)).textContent = eur(v * E.out(P(t, a0, a0 + 0.6)), sg);
+      });
+      const dk = E.out(P(t, T5.donut - 0.1, T5.donut + 0.3));
+      vis($("dwrap"), dk, `translateY(${(1 - dk) * 40}px)`);
+      segs.forEach((s, i) => {
+        const a0 = T5.donut + i * 0.12;
+        const k = E.out(P(t, a0, a0 + 0.35));
+        const len = Math.max(0, s.len * k * CIRC - 4);
+        s.el.setAttribute("stroke-dasharray", `${len} ${CIRC}`);
+        s.el.setAttribute("stroke-dashoffset", `${-s.start * CIRC}`);
+        const lk = E.out(P(t, a0, a0 + 0.3));
+        vis(lgEls[i], lk, `translateX(${(1 - lk) * 30}px)`);
+      });
+      $("dTotal").textContent = eur(DT * E.out(P(t, T5.donut, T5.donut + 0.7)));
+    }
+  } else { vis(app, 0); vis($("pdf"), 0); }
+
+  /* cursor */
+  const cur = $("cursor"), rip = $("ripple");
+  let cOn = 0, cx = 0, cy = 0, clickT = null;
+  if (t > T3.curIn && t < T3.out) {
+    const tg = rel($("confirm3"));
+    const k = E.inOut(P(t, T3.curIn, T3.click - 0.08));
+    cx = lerp(1700, tg.cx + 20, k); cy = lerp(1180, tg.cy + 6, k);
+    cOn = P(t, T3.curIn, T3.curIn + 0.1) * (1 - P(t, T3.out - 0.25, T3.out));
+    clickT = T3.click;
+    if (t > T3.saved + 0.3) { const d = E.inOut(P(t, T3.saved + 0.3, T3.out)); cx += d * 120; cy += d * 90; }
+  } else if (t > T5.curIn && t < T5.out) {
+    const tg = rel($("tabSum"));
+    const k = E.inOut(P(t, T5.curIn, T5.click - 0.08));
+    cx = lerp(1300, tg.cx + 6, k); cy = lerp(900, tg.cy + 8, k);
+    cOn = P(t, T5.curIn, T5.curIn + 0.1) * (1 - P(t, T5.click + 0.4, T5.click + 0.6));
+    clickT = T5.click;
+  }
+  const cp = clickT ? 1 - 0.18 * Math.sin(Math.PI * P(t, clickT, clickT + 0.15)) : 1;
+  vis(cur, cOn, `translate(${cx - 12}px, ${cy - 6}px) scale(${cp})`);
+  if (clickT && t >= clickT && t < clickT + 0.5) {
+    const k = P(t, clickT, clickT + 0.5);
+    vis(rip, (1 - k) * 0.8 * cOn, `translate(${cx - 10}px, ${cy - 10}px) scale(${1 + E.out(k) * 4})`);
+  } else vis(rip, 0);
+
+  /* S6 */
+  const s6 = $("s6");
+  if (t > 21.8 && t < 26.2) {
+    vis(s6, 1);
+    const ai = E.out(P(t, T6.in, T6.in + 0.5)), ao = E.in(P(t, T6.aOut, T6.aOut + 0.3));
+    vis($("s6a"), 1);
+    const vk = E.back(P(t, T6.in, T6.in + 0.5));
+    vis($("vault"), P(t, T6.in, T6.in + 0.15) * (1 - ao), `translateY(${(1 - vk) * 80 - ao * 80}px) scale(${lerp(0.6, 1, vk)})`);
+    const lk = P(t, T6.lock, T6.lock + 0.12);
+    $("shackle").style.transform = `translateY(${lerp(-3.5, 0, E.in(lk))}px)`;
+    const lb = Math.sin(Math.PI * P(t, T6.lock + 0.1, T6.lock + 0.35));
+    $("lockb").style.transform = `scale(${1 + lb * 0.14})`;
+    const hk = E.out(P(t, T6.in + 0.15, T6.in + 0.65));
+    vis($("h6a"), hk * (1 - ao), `translateY(${(1 - hk) * 50 - ao * 60}px)`);
+    const sk = E.out(P(t, T6.in + 0.4, T6.in + 0.9));
+    vis($("sub6a"), sk * (1 - ao), `translateY(${(1 - sk) * 30 - ao * 60}px)`);
+    const bi = E.out(P(t, T6.bIn, T6.bIn + 0.45)), bo = E.in(P(t, T6.out, T6.out + 0.3));
+    vis($("s6b"), 1 - bo, `scale(${1 - bo * 0.05})`);
+    vis($("h6b"), bi, `translateY(${(1 - bi) * 50}px)`);
+    ["ai1", "ai2", "ai3"].forEach((id, i) => {
+      const a0 = T6.chip + i * T6.chipStep;
+      const k = E.back(P(t, a0, a0 + 0.4));
+      vis($(id), P(t, a0, a0 + 0.1), `translateY(${(1 - k) * 60}px) scale(${lerp(0.6, 1, k)})`);
+    });
+    const nk = E.out(P(t, T6.note, T6.note + 0.4));
+    vis($("sub6b"), nk, `translateY(${(1 - nk) * 24}px)`);
+  } else vis(s6, 0);
+
+  /* S7 */
+  const s7 = $("s7");
+  if (t > 25.9) {
+    const fade = E.inOut(P(t, T7.fade, 30));
+    vis(s7, 1 - fade);
+    lockAnim(t, T7.in, L7, "mark7", DX7);
+    const tg = E.out(P(t, T7.in + 0.9, T7.in + 1.35));
+    vis($("tag7"), tg, `translateY(${(1 - tg) * 30}px)`);
+    const eb = E.out(P(t, T7.in + 1.1, T7.in + 1.5));
+    vis($("eb7"), eb, `translateY(${(1 - eb) * 20}px)`);
+    const ck = E.back(P(t, T7.cta, T7.cta + 0.45));
+    const pulse = t > 28 ? 1 + Math.sin((t - 28) * 5) * 0.015 : 1;
+    vis($("cta7"), P(t, T7.cta, T7.cta + 0.12), `translateY(${(1 - ck) * 40}px) scale(${lerp(0.8, 1, ck) * pulse})`);
+    $("glint7").style.left = `${lerp(-150, 520, E.inOut(P(t, T7.glint, T7.glint + 0.6)))}px`;
+    const sm = E.out(P(t, T7.small, T7.small + 0.45));
+    vis($("small7"), sm, `translateY(${(1 - sm) * 20}px)`);
+  } else vis(s7, 0);
+}
+window.render = render;
+const q = new URLSearchParams(location.search);
+render(q.has("t") ? +q.get("t") : 0);
+</script>
+</body>
+</html>

@@ -30,7 +30,7 @@ export default function Home() {
             compare two periods side by side.
           </li>
           <li>
-            <strong>Fully local if you want.</strong> Run the AI on this computer so
+            <strong>Fully local if you want.</strong> Run the AI on your computer so
             nothing leaves it, or connect OpenAI instead.
           </li>
         </ul>

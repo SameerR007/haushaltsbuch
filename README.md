@@ -2,8 +2,8 @@
 
 A household expense tracker that runs on your own computer. You add expenses by chatting or by dropping in a bank statement PDF. You ask questions like *"How much did we spend on groceries in March?"* in plain language.
 
-- **Your money data stays local.** Everything is saved in one SQLite file on this machine. There is no cloud database.
-- **You pick the AI.** Use OpenAI, a model on this computer (Ollama), or any OpenAI-compatible endpoint.
+- **Your money data stays local.** Everything is saved in one SQLite file on your computer. There is no cloud database.
+- **You pick the AI.** Use OpenAI, a model on your computer (Ollama), or any OpenAI-compatible endpoint.
 - **Nothing is saved without you.** The assistant only *proposes* rows. You review them and press **Confirm**, and you can undo.
 - **Optional tracing.** Turn on [Langfuse](#optional-tracing-with-langfuse) to see every prompt, SQL query and model call.
 
@@ -18,7 +18,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) and click **Get started**. A short setup chat asks four things:
 
-1. **Where the assistant runs:** OpenAI (API key), this computer (Ollama), or an OpenAI-compatible endpoint
+1. **Where the assistant runs:** OpenAI (API key), your computer (Ollama), or an OpenAI-compatible endpoint
 2. **Currency:** EUR by default, or INR, USD, or any ISO code
 3. **Your banks:** for example *Sparkasse (SP)*
 4. **Confirm:** the local database is ready and the tracker opens
@@ -74,7 +74,7 @@ flowchart LR
         LS[("localStorage<br/>assistant choice · API key<br/>currency · banks · chat history")]
     end
 
-    subgraph Server["⚙️ Next.js server (on this computer)"]
+    subgraph Server["⚙️ Next.js server (on your computer)"]
         API[API routes]
         LOOP[Assistant turn loop]
         GUARD[SQL guard<br/>SELECT only]
@@ -84,7 +84,7 @@ flowchart LR
 
     subgraph AI["🤖 The assistant you picked"]
         OAI[OpenAI]
-        OLL[Ollama on this computer]
+        OLL[Ollama on your computer]
         EP[OpenAI-compatible endpoint]
     end
 
@@ -138,7 +138,7 @@ flowchart TD
     Q -- "OpenAI / endpoint" --> ASK[You're asked first:<br/>the PDF will be sent to that host]
     ASK --> SEND[Whole PDF sent to the model] --> PROP
 
-    Q -- "This computer" --> TXT[Read the text layer of each page<br/>on this machine]
+    Q -- "Your computer" --> TXT[Read the text layer of each page<br/>on your computer]
     TXT --> K{Page has text?}
     K -- yes --> MERGE
     K -- "no (scanned)" --> OCR[Render the page as an image<br/>→ OCR model, e.g. glm-ocr]
@@ -159,12 +159,12 @@ With a local assistant the PDF never leaves your computer. Without an OCR model,
 
 ## Choosing an assistant
 
-| | On OpenAI | On this computer | OpenAI-compatible endpoint |
+| | On OpenAI | On your computer | OpenAI-compatible endpoint |
 | --- | --- | --- | --- |
 | **You enter** | API key | Address (default `http://localhost:11434`), model, optional OCR model | Base URL, key, model |
 | **Default model** | `gpt-5.6-luna` | `gemma4:12b-mlx` | your choice |
 | **Statement PDFs** | Sent to OpenAI (asks first) | Read locally | Sent to the endpoint (asks first) |
-| **Data leaves the machine?** | Prompts and query results go to OpenAI | No | Prompts and query results go to the endpoint |
+| **Data leaves your computer?** | Prompts and query results go to OpenAI | No | Prompts and query results go to the endpoint |
 
 Switch at any time under **Your data → Change assistant**. Your banks, currency and transactions stay.
 
@@ -273,7 +273,7 @@ chat-turn
 └─ review-rows              proposed rows → validated rows
 ```
 
-> ⚠️ **Privacy:** with tracing on, prompts, SQL results (amounts, payees) and attached PDFs are sent to the Langfuse server you configured. API keys are masked. To keep everything on this machine, self-host Langfuse locally.
+> ⚠️ **Privacy:** with tracing on, prompts, SQL results (amounts, payees) and attached PDFs are sent to the Langfuse server you configured. API keys are masked. To keep everything on your computer, self-host Langfuse locally.
 
 To turn it off, remove the two keys and restart. Full details: [docs/tracing.md](docs/tracing.md).
 
@@ -283,7 +283,7 @@ To turn it off, remove the two keys and restart. Full details: [docs/tracing.md]
 
 | What | Where it's kept |
 | --- | --- |
-| Transactions, banks, categories, currency | SQLite file on this computer (`data/` is gitignored) |
+| Transactions, banks, categories, currency | SQLite file on your computer (`data/` is gitignored) |
 | Assistant choice, API key, chat history | Your browser's `localStorage` |
 | API key on the server | Never stored, logged, or written to the database |
 

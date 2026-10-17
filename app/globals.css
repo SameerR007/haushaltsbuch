@@ -359,6 +359,47 @@ html[data-visit="returning"] .returning-only {
   background: #ece6db;
 }
 
+.home-video-sound {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  appearance: none;
+  border: 1px solid rgba(226, 219, 208, 0.9);
+  border-radius: 999px;
+  padding: 7px 13px 7px 10px;
+  background: rgba(255, 252, 248, 0.92);
+  box-shadow: 0 6px 16px rgba(26, 23, 20, 0.12);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.home-video-sound:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.home-video-sound:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.home-video-sound svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .home-video-placeholder {
   display: grid;
   place-content: center;
