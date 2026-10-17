@@ -190,7 +190,7 @@ Request and response shapes: [setup](docs/setup-api.md) · [chat, import & trans
 
 ## Configuration
 
-Everything is optional. Put variables in `.env.local` (gitignored) or pass them on the command line.
+Everything is optional. Copy `.env.example` to `.env.local` (gitignored) and edit it, or pass variables on the command line.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -210,17 +210,34 @@ HAUSHALTSBUCH_DB_PATH=~/Documents/haushaltsbuch.sqlite npm run dev
 
 Want to see exactly what the assistant did: the prompt, every model call, each SQL query and its rows? Turn on [Langfuse](https://langfuse.com) tracing. **It's off by default**, and without keys nothing is traced or sent.
 
-**1. Get keys.** Create a project on [Langfuse Cloud](https://cloud.langfuse.com), or [self-host it](https://langfuse.com/self-hosting), and create an API key pair.
+Langfuse uses port 3000 by default, the same as this app, so run it on **3040** instead. You need [Docker](https://www.docker.com/products/docker-desktop/).
 
-**2. Add them to `.env.local`:**
+**1. Start Langfuse on your computer** (in a separate folder, not inside `haushaltsbuch`):
 
 ```bash
-LANGFUSE_PUBLIC_KEY="pk-lf-..."
-LANGFUSE_SECRET_KEY="sk-lf-..."
-LANGFUSE_BASE_URL="https://cloud.langfuse.com"   # US: https://us.cloud.langfuse.com · or your self-hosted URL
+git clone https://github.com/langfuse/langfuse.git
+cd langfuse
 ```
 
-**3. Restart** `npm run dev`, send a chat message and open **Tracing** in Langfuse.
+Open `docker-compose.yml`, find the line `- 3000:3000` under `langfuse-web`, and change it to `- 3040:3000`. Then:
+
+```bash
+NEXTAUTH_URL=http://localhost:3040 docker compose up -d
+```
+
+**2. Get keys.** Open [http://localhost:3040](http://localhost:3040), sign up (the account is local), create a project, then **Settings → API Keys → Create new API keys**.
+
+**3. Add the keys.** In the `haushaltsbuch` folder:
+
+```bash
+cp .env.example .env.local
+```
+
+Paste the two keys into `.env.local`. `LANGFUSE_BASE_URL` already points to `http://localhost:3040`.
+
+**4. Restart** `npm run dev`, send a chat message and open **Tracing** in Langfuse.
+
+> Prefer not to run Docker? Use [Langfuse Cloud](https://cloud.langfuse.com) instead: skip step 1, get keys there, and switch `LANGFUSE_BASE_URL` in `.env.local` to the cloud line.
 
 Each chat message and each statement import shows up as one trace. All messages from one conversation are grouped together. In a trace you can see:
 
@@ -228,7 +245,7 @@ Each chat message and each statement import shows up as one trace. All messages 
 - each database query the model asked for, whether it was allowed, and the rows it got back
 - the rows the model suggested, before and after the app checked them
 
-> ⚠️ **Privacy:** with tracing on, prompts, SQL results (amounts, payees) and attached PDFs are sent to the Langfuse server you configured. API keys are masked. To keep everything on your computer, self-host Langfuse locally.
+> ⚠️ **Privacy:** with tracing on, prompts, SQL results (amounts, payees) and attached PDFs are sent to the Langfuse server you configured. API keys are masked. With Langfuse on your computer (steps above), nothing leaves it.
 
 To turn it off, remove the two keys and restart. Full details: [docs/tracing.md](docs/tracing.md).
 
