@@ -53,7 +53,7 @@ Model calls are recorded through the AI SDK telemetry integration (`@langfuse/ve
 
 Confirm, undo, edits, exports, and setup are not traced. They do not call the model.
 
-## What leaves this computer
+## What leaves your computer
 
 With tracing on, the trace content is sent to the Langfuse server you configured:
 
@@ -65,7 +65,7 @@ With tracing on, the trace content is sent to the Langfuse server you configured
 
 API keys are not sent. The OpenAI or endpoint key is never put in a span, and every exported attribute is also passed through a mask that replaces anything shaped like `sk-…` or `Bearer …` with `[redacted]`. The database path is not sent.
 
-If money data must stay on this machine, run Langfuse self-hosted on this machine and point `LANGFUSE_BASE_URL` at it.
+If money data must stay on your computer, run Langfuse self-hosted on your computer and point `LANGFUSE_BASE_URL` at it.
 
 ## Files
 

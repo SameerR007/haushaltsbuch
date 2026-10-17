@@ -1,6 +1,6 @@
 # Chat API contracts
 
-The tracker chat calls these routes. Money stays in the SQLite file on this machine. The browser sends the OpenAI key on each chat or PDF request. The server uses it as a bearer token and does not store it, log it, or return it.
+The tracker chat calls these routes. Money stays in the SQLite file on your computer. The browser sends the OpenAI key on each chat or PDF request. The server uses it as a bearer token and does not store it, log it, or return it.
 
 Amounts are signed. An expense is negative. Income, including salary and other incoming money, is positive. A balance is `SUM(amount)`.
 
@@ -62,7 +62,7 @@ The model page used for the id is [GPT-5.6 Luna](https://developers.openai.com/a
 }
 ```
 
-Before the last user message goes to the model, the route reads this computer's clock and rewrites it (`lib/chat/reframe.ts`). If the message has no year, every month in it gets the current year ("in August" → "in August 2026"). A message with a year is left as it is. Then the line `Today is Friday, 16 October 2026 (2026-10-16).` is added. The system instructions carry no date for chat. When the question changed, the response has `sentAs` with the rewritten question. The chat keeps it with the message and sends it as that turn's history; it is not shown on screen (Langfuse traces show what the model received).
+Before the last user message goes to the model, the route reads your computer's clock and rewrites it (`lib/chat/reframe.ts`). If the message has no year, every month in it gets the current year ("in August" → "in August 2026"). A message with a year is left as it is. Then the line `Today is Friday, 16 October 2026 (2026-10-16).` is added. The system instructions carry no date for chat. When the question changed, the response has `sentAs` with the rewritten question. The chat keeps it with the message and sends it as that turn's history; it is not shown on screen (Langfuse traces show what the model received).
 
 When the model proposes rows, `proposal` is a review card and `reply` may be empty. `proposal.rows` are validated. They are not saved.
 
@@ -125,7 +125,7 @@ An endpoint that rejects the file or the tool call with HTTP 400 comes back as H
 
 The same 400 from OpenAI stays the generic OpenAI failure and does not use that sentence.
 
-A local assistant reads the PDF on this machine. The route answers `application/x-ndjson` with HTTP 200. Text pages are extracted together (`unpdf`, `mergePages: false`) and sent once to the chat model as text. The PDF file is not attached. Pages without a usable text layer are rendered and sent one by one to `ocrModel` through the same OpenAI-compatible provider. Empty or garbled OCR falls back to the chat model when that model can read images. With no OCR model, a vision chat model reads those pages; otherwise they are skipped and the review says so. Progress events look like `{ "type": "progress", "phase": "scan", "page": 2, "total": 2, "model": "glm-ocr", "textPages": 2, "scannedPages": 2 }`. A text-only PDF sends no scan event. The last line is `{ "type": "result", "ok": true, "proposal": { …, "statement": { … } } }`. Cancelling the request returns `{ "type": "result", "ok": false, "cancelled": true, "error": "Cancelled. Nothing was saved." }`. Nothing is written before confirm.
+A local assistant reads the PDF on your computer. The route answers `application/x-ndjson` with HTTP 200. Text pages are extracted together (`unpdf`, `mergePages: false`) and sent once to the chat model as text. The PDF file is not attached. Pages without a usable text layer are rendered and sent one by one to `ocrModel` through the same OpenAI-compatible provider. Empty or garbled OCR falls back to the chat model when that model can read images. With no OCR model, a vision chat model reads those pages; otherwise they are skipped and the review says so. Progress events look like `{ "type": "progress", "phase": "scan", "page": 2, "total": 2, "model": "glm-ocr", "textPages": 2, "scannedPages": 2 }`. A text-only PDF sends no scan event. The last line is `{ "type": "result", "ok": true, "proposal": { …, "statement": { … } } }`. Cancelling the request returns `{ "type": "result", "ok": false, "cancelled": true, "error": "Cancelled. Nothing was saved." }`. Nothing is written before confirm.
 
 The chat uses two steps for a local assistant. **Import** posts `step=read`, which makes no chat model call and ends with `{ "type": "result", "ok": true, "read": { "pages": [ … ] } }`. Then the user's note is posted with `step=propose` and those pages, without the file. A local proposal drops every `uncertain` flag except on rows from a page read after OCR failed, and the review card asks the user to check every row instead.
 
