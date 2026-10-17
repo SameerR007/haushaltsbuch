@@ -14,6 +14,8 @@ node capture.js stills 8.5,29.4     # preview single frames (seconds)
 node capture.js video video.mp4
 python3 synth.py
 zsh mux.sh ../haushaltsbuch-promo.mp4 ../../public/home/demo.mp4
+# README GIF (silent, 800px, 8 fps, about 9 MB)
+ffmpeg -i ../haushaltsbuch-promo.mp4 -vf "fps=8,scale=800:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" ../tour.gif
 ```
 
 `capture.js` points at the Chrome for Testing build in `~/Library/Caches/ms-playwright`. Change `EXE` if yours is somewhere else.

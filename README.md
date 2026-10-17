@@ -4,6 +4,8 @@ Your household's money in a database on your computer that you can **ask questio
 
 Keep the database up to date whenever you like, by chatting (*"Rent 850 on the 3rd"*) or by dropping in a bank statement PDF. It stays saved between visits.
 
+![A 55-second tour: add expenses by chat or statement PDF, confirm them, see them in the Expenses table, ask a question, and open the monthly summary.](promo/tour.gif)
+
 - **Ask your database anything.** Totals, comparisons, biggest expenses, trends: any question your saved data can answer.
 - **Add data any time.** One expense in a chat message or a whole statement PDF. It all goes into the same database.
 - **Your money data stays local.** Everything is saved in one SQLite file on your computer. There is no cloud database.
