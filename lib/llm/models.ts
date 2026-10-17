@@ -5,6 +5,7 @@ import type { LanguageModel } from "ai";
 import { LOCAL_NUM_CTX } from "@/lib/assistant/copy";
 import type { AssistantTarget } from "@/lib/assistant/target";
 import { previousMonthIso } from "@/lib/chat/prompts";
+import { withReasoningOff } from "./reasoning-off";
 
 const OPENAI_FAILURE = {
   timeout: "OpenAI took too long. Try again.",
@@ -104,7 +105,11 @@ function compatibleModel(options: {
     name: options.name,
     baseURL: options.baseURL,
     apiKey: options.apiKey,
-    fetch: withNoStore(options.fetchImpl ?? fetch),
+    fetch: withNoStore(
+      options.name === "endpoint"
+        ? withReasoningOff(options.fetchImpl ?? fetch)
+        : (options.fetchImpl ?? fetch),
+    ),
   });
   return {
     model: provider.chatModel(options.modelId),

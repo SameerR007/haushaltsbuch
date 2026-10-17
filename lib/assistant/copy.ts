@@ -29,6 +29,18 @@ export const ENDPOINT_NO_TOOLS_TITLE = "That model can't use tools.";
 export const ENDPOINT_NO_TOOLS_DETAIL = "Pick a model that can call tools.";
 export const ENDPOINT_KEY_TITLE = "That key was refused.";
 export const ENDPOINT_KEY_DETAIL = "Check it and try again.";
+export const ENDPOINT_ERROR_TITLE = "The endpoint returned an error.";
+export const OLLAMA_ERROR_TITLE = "Ollama returned an error.";
+export const EMPTY_REPLY_TITLE = "Connected, but the model sent an empty reply.";
+export const EMPTY_REPLY_DETAIL = "Try another model, then test again.";
+
+/** The service's own error message, or its HTTP status when it sent none. */
+export function serviceErrorDetail(message: string | null, status: number): string {
+  // Never show anything shaped like a key, even if a service echoes one back.
+  const text = message?.replace(/\b(sk|pk|rk)-[A-Za-z0-9_-]{6,}/g, "[key]").trim();
+  if (!text) return `It answered with HTTP ${status}.`;
+  return text.length > 240 ? `${text.slice(0, 237)}…` : text;
+}
 
 export const LOCAL_MODEL_HINT = "Recommended: bonsai-2:9b · any installed model id works";
 export const SUGGESTED_OCR_MODEL = "glm-ocr";

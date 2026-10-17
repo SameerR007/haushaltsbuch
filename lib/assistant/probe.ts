@@ -1,6 +1,9 @@
 import {
   answeredDetail,
   CONNECTED_TITLE,
+  EMPTY_REPLY_DETAIL,
+  EMPTY_REPLY_TITLE,
+  ENDPOINT_ERROR_TITLE,
   ENDPOINT_KEY_DETAIL,
   ENDPOINT_KEY_TITLE,
   ENDPOINT_MISSING_DETAIL,
@@ -15,14 +18,17 @@ import {
   MODEL_MISSING_TITLE,
   NO_TOOLS_DETAIL,
   NO_TOOLS_TITLE,
+  OLLAMA_ERROR_TITLE,
   OLLAMA_NOT_RUNNING_DETAIL,
   OLLAMA_NOT_RUNNING_TITLE,
   OLLAMA_SERVE_COMMAND,
   pullCommand,
+  serviceErrorDetail,
   SLOW_PROBE_MS,
   SLOW_TITLE,
   slowDetail,
 } from "./copy";
+import { withReasoningOff } from "../llm/reasoning-off";
 import type { ProbeRequest } from "./target";
 
 export type ProbeSuccess = {
@@ -35,7 +41,7 @@ export type ProbeSuccess = {
 
 export type ProbeFailure = {
   ok: false;
-  status: "unreachable" | "missing" | "no-tools" | "refused";
+  status: "unreachable" | "missing" | "no-tools" | "refused" | "error" | "empty";
   title: string;
   detail: string;
   command?: string;
@@ -50,7 +56,9 @@ export async function probeAssistant(
   request: Exclude<ProbeRequest, { kind: "ocr" }>,
   options?: { fetchImpl?: typeof fetch; now?: () => number },
 ): Promise<ProbeOutcome> {
-  const fetchImpl = options?.fetchImpl ?? fetch;
+  const baseFetch = options?.fetchImpl ?? fetch;
+  // Same reasoning-off request the endpoint chat sends, so the test passes exactly when chat would work.
+  const fetchImpl = request.kind === "endpoint" ? withReasoningOff(baseFetch) : baseFetch;
   const now = options?.now ?? Date.now;
   const kind = request.kind;
   const headers = probeHeaders(request);
@@ -58,6 +66,7 @@ export async function probeAssistant(
   const listed = await listModels(request.baseUrl, headers, fetchImpl);
   if (listed === "down") return unreachable(kind);
   if (listed === "refused") return refused(kind);
+  if (isServiceError(listed)) return serviceError(kind, listed);
   if (listed !== "unknown" && !modelListed(listed, request.model)) return missing(kind, request.model);
 
   const started = now();
@@ -66,12 +75,14 @@ export async function probeAssistant(
   if (chat === "down") return unreachable(kind);
   if (chat === "refused") return refused(kind);
   if (chat === "missing") return missing(kind, request.model);
-  if (chat !== "ok") return unreachable(kind);
+  if (isServiceError(chat)) return serviceError(kind, chat);
+  if (chat === "empty") return emptyReply();
 
   const tools = await postChat(request, headers, fetchImpl, true);
   if (tools === "down") return unreachable(kind);
   if (tools === "refused") return refused(kind);
   if (tools === "missing") return missing(kind, request.model);
+  if (isServiceError(tools)) return serviceError(kind, tools);
   if (tools !== "tools") return noTools(kind);
 
   const secondsLabel = formatSeconds(elapsed);
@@ -145,7 +156,39 @@ function noTools(kind: ProbeRequest["kind"]): ProbeFailure {
   return { ok: false, status: "no-tools", title: NO_TOOLS_TITLE, detail: NO_TOOLS_DETAIL };
 }
 
-type ListResult = "down" | "refused" | "unknown" | string[];
+/** The service answered, but with an error. Its own message says more than "couldn't reach". */
+type ServiceError = { error: string | null; status: number };
+
+function isServiceError(value: unknown): value is ServiceError {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && "status" in value;
+}
+
+function serviceError(kind: ProbeRequest["kind"], failure: ServiceError): ProbeFailure {
+  return {
+    ok: false,
+    status: "error",
+    title: kind === "endpoint" ? ENDPOINT_ERROR_TITLE : OLLAMA_ERROR_TITLE,
+    detail: serviceErrorDetail(failure.error, failure.status),
+  };
+}
+
+function emptyReply(): ProbeFailure {
+  return { ok: false, status: "empty", title: EMPTY_REPLY_TITLE, detail: EMPTY_REPLY_DETAIL };
+}
+
+function errorMessage(payload: unknown): string | null {
+  if (typeof payload === "string") return payload;
+  if (typeof payload !== "object" || payload === null) return null;
+  const error = (payload as { error?: unknown; message?: unknown }).error ?? (payload as { message?: unknown }).message;
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return null;
+}
+
+type ListResult = "down" | "refused" | "unknown" | ServiceError | string[];
 
 async function listModels(
   baseUrl: string,
@@ -156,7 +199,7 @@ async function listModels(
   if (response === "down") return "down";
   if (response === "refused") return "refused";
   if (response.status === 404 || response.status === 405) return "unknown";
-  if (!response.ok) return "down";
+  if (!response.ok) return { error: errorMessage(response.json), status: response.status };
   return modelIds(response.json);
 }
 
@@ -189,7 +232,7 @@ async function call(
   }
 }
 
-type ChatMark = "ok" | "tools" | "down" | "refused" | "missing" | "empty";
+type ChatMark = "ok" | "tools" | "down" | "refused" | "missing" | "empty" | ServiceError;
 
 async function postChat(
   request: ProbeRequest,
@@ -205,9 +248,11 @@ async function postChat(
         content: tools ? "Call the ping tool." : "Reply with ok.",
       },
     ],
-    max_tokens: 16,
   };
+  // Hosted models may reject max_tokens (newer OpenAI models want max_completion_tokens),
+  // and a reasoning model can spend a small limit before it answers. Only Ollama gets one.
   if (request.kind === "local") {
+    body.max_tokens = 16;
     body.reasoning_effort = "none";
     body.options = { num_ctx: LOCAL_NUM_CTX };
   }
@@ -232,7 +277,7 @@ async function postChat(
   if (response === "down") return "down";
   if (response === "refused") return "refused";
   if (response.status === 404 || mentionsMissing(response.json)) return "missing";
-  if (!response.ok) return "down";
+  if (!response.ok) return { error: errorMessage(response.json), status: response.status };
   if (tools) return calledPing(response.json) ? "tools" : "empty";
   return hasAnswer(response.json) ? "ok" : "empty";
 }

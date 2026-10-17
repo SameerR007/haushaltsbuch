@@ -159,13 +159,55 @@ test("Test connection reports each plain-language result", async () => {
             choices: [{ message: { tool_calls: [{ function: { name: "ping" } }] } }],
           });
         }
-        assert.equal(body.includes("reasoning_effort"), false);
+        assert.equal((JSON.parse(body) as { reasoning_effort?: string }).reasoning_effort, "none");
+        assert.equal(body.includes("max_tokens"), false);
         return Response.json({ choices: [{ message: { content: "ok" } }] });
       }),
     },
   );
   assert.equal(endpoint.ok, true);
   if (endpoint.ok) assert.match(endpoint.detail, /The model answered in/);
+});
+
+test("Test connection shows the endpoint's own error instead of 'couldn't reach'", async () => {
+  const quota = await probeAssistant(
+    { kind: "endpoint", baseUrl: "https://api.example.com/v1", model: "demo", apiKey: "secret" },
+    {
+      fetchImpl: fakeFetch((url) => {
+        if (url.endsWith("/models")) return Response.json({ data: [{ id: "demo" }] });
+        return Response.json(
+          { error: { message: "You exceeded your current quota. Key sk-abcdef123456 is fine." } },
+          { status: 429 },
+        );
+      }),
+    },
+  );
+  assert.equal(quota.ok, false);
+  if (!quota.ok) {
+    assert.equal(quota.status, "error");
+    assert.equal(quota.title, "The endpoint returned an error.");
+    assert.match(quota.detail, /exceeded your current quota/);
+    assert.equal(quota.detail.includes("sk-abcdef"), false);
+  }
+
+  const bare = await probeAssistant(
+    { kind: "endpoint", baseUrl: "https://api.example.com/v1", model: "demo", apiKey: "secret" },
+    { fetchImpl: fakeFetch(() => new Response("oops", { status: 500 })) },
+  );
+  assert.equal(bare.ok, false);
+  if (!bare.ok) assert.equal(bare.detail, "It answered with HTTP 500.");
+
+  const empty = await probeAssistant(
+    { kind: "endpoint", baseUrl: "https://api.example.com/v1", model: "demo", apiKey: "secret" },
+    {
+      fetchImpl: fakeFetch((url) => {
+        if (url.endsWith("/models")) return Response.json({ data: [{ id: "demo" }] });
+        return Response.json({ choices: [{ message: { content: "" } }] });
+      }),
+    },
+  );
+  assert.equal(empty.ok, false);
+  if (!empty.ok) assert.equal(empty.status, "empty");
 });
 
 test("Test connection route is JSON-only and does not echo a key", async () => {
@@ -192,4 +234,32 @@ test("Test connection route is JSON-only and does not echo a key", async () => {
   assert.equal(refused.status, 400);
   const text = await refused.text();
   assert.equal(text.includes("secret-key"), false);
+});
+
+test("An endpoint gets reasoning off, and the field is dropped if the model refuses it", async () => {
+  const bodies: string[] = [];
+  const result = await probeAssistant(
+    { kind: "endpoint", baseUrl: "https://api.example.com/v1", model: "old-model", apiKey: "secret" },
+    {
+      fetchImpl: fakeFetch((url, body) => {
+        if (url.endsWith("/models")) return Response.json({ data: [{ id: "old-model" }] });
+        bodies.push(body);
+        const parsed = JSON.parse(body) as { tools?: unknown; reasoning_effort?: string };
+        if (parsed.reasoning_effort !== undefined) {
+          return Response.json(
+            { error: { message: "Unsupported parameter: 'reasoning_effort' is not supported with this model." } },
+            { status: 400 },
+          );
+        }
+        if (parsed.tools) {
+          return Response.json({ choices: [{ message: { tool_calls: [{ function: { name: "ping" } }] } }] });
+        }
+        return Response.json({ choices: [{ message: { content: "ok" } }] });
+      }),
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(bodies.length, 4);
+  assert.equal((JSON.parse(bodies[0]) as { reasoning_effort?: string }).reasoning_effort, "none");
+  assert.equal("reasoning_effort" in (JSON.parse(bodies[1]) as object), false);
 });
