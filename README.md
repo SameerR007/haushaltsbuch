@@ -1,11 +1,8 @@
 # Haushaltsbuch
 
-A household expense tracker that runs on your own computer and keeps a lasting record of your money. Add expenses by chatting or by dropping in a bank statement PDF, then come back next week or next month and add more. Every confirmed row is saved in a database on your computer, so your records keep growing, and you can ask questions about all of it in plain language: *"How much did we spend on groceries in March?"* or *"Did we spend more on eating out this year than last year?"*
+A household expense tracker that runs on your computer. Add expenses by chat or bank statement PDF, and they are saved in a database. Come back any time to add more, and ask questions about everything you have saved, such as *"How much did we spend on groceries in March?"*
 
-It is not a one-off "upload a file and ask about it" chat. Your data stays saved between visits, and every question is answered from everything you have added so far.
-
-- **Your data stays saved, and keeps growing.** Close the app, come back later, add the next statement. Nothing is lost between visits.
-- **Ask about everything you've saved.** Questions are answered from your whole database, not just the last file you uploaded.
+- **Saved, not one-off.** Your database keeps growing between visits, and questions cover all of it.
 - **Your money data stays local.** Everything is saved in one SQLite file on your computer. There is no cloud database.
 - **You pick the AI.** Use OpenAI, a model on your computer (Ollama), or any OpenAI-compatible endpoint.
 - **Nothing is saved without you.** The assistant only *proposes* rows. You review them and press **Confirm**, and you can undo.
@@ -15,29 +12,16 @@ It is not a one-off "upload a file and ask about it" chat. Your data stays saved
 
 ## Quick start
 
-You need [Git](https://git-scm.com/downloads) and [Node.js](https://nodejs.org) (version 20 or newer) installed. Then open a terminal and run these commands one at a time.
-
-**1. Download the code** (git clone the repository) and go into its folder:
+You need [Git](https://git-scm.com/downloads) and [Node.js](https://nodejs.org) 20+. In a terminal, git clone the repository and start the app:
 
 ```bash
 git clone https://github.com/SameerR007/haushaltsbuch.git
-```
-
-```bash
 cd haushaltsbuch
-```
-
-**2. Install and start the app:**
-
-```bash
 npm install
-```
-
-```bash
 npm run dev
 ```
 
-**3.** Open [http://localhost:3000](http://localhost:3000) and click **Get started**. A short setup chat asks four things:
+Open [http://localhost:3000](http://localhost:3000) and click **Get started**. A short setup chat asks four things:
 
 1. **Where the assistant runs:** OpenAI (API key), your computer (Ollama), or an OpenAI-compatible endpoint
 2. **Currency:** EUR by default, or INR, USD, or any ISO code
@@ -65,14 +49,10 @@ flowchart LR
     H -->|"answers come from here"| Q2
 ```
 
-After a one-time setup, you do two things, as often as you like:
+- **Add:** *"Rent 850 on the 3rd"* or a statement PDF, check the review card, **Confirm**.
+- **Ask:** *"Compare groceries in June and July"*. Answers come from your whole database.
 
-- **Add.** Write *"Rent 850 on the 3rd"* or drop in this month's statement, check the review card, and press **Confirm**. Next month, add the next one. Everything goes into the same database on your computer, and nothing is lost between visits.
-- **Ask.** Ask the chat anything about your money: *"What did we spend on rent this year?"*, *"Compare groceries in June and July"*, *"What were our five biggest expenses last quarter?"*. The answer comes from everything you have saved so far, not just the last file, so the more you add, the more you can ask.
-
-You can also browse everything on the **Expenses** and **Summary** pages.
-
-To pick up where you left off, run `npm run dev` again in the `haushaltsbuch` folder and open [http://localhost:3000](http://localhost:3000). Your data is still there.
+Next time, just run `npm run dev` in the `haushaltsbuch` folder. Your data is still there.
 
 | Page | What it's for |
 | --- | --- |
