@@ -522,7 +522,7 @@ export function LocalHelp() {
         </li>
         <li>
           Open Terminal and run <code>ollama pull {DEFAULT_LOCAL_MODEL}</code>. This is a one-time download of about
-          10 GB.
+          3 GB.
           For scanned statements also run <code>ollama pull glm-ocr</code> (small).
         </li>
         <li>

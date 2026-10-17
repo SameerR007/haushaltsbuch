@@ -85,7 +85,7 @@ export function assistantComplete(assistant: AssistantSettings): boolean {
   return chatBaseUrl(assistant.baseUrl) !== null && assistant.apiKey.trim().length > 0;
 }
 
-/** “on this computer (gemma4:12b-mlx) · OCR: glm-ocr”. The OCR part is omitted when none is set. */
+/** “on this computer (bonsai-2:9b) · OCR: glm-ocr”. The OCR part is omitted when none is set. */
 export function localAssistantLabel(model: string, ocrModel?: string | null): string {
   const base = `on this computer (${model})`;
   const ocr = ocrModel?.trim() ?? "";

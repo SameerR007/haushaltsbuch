@@ -86,13 +86,13 @@ function expense(amount: number, date: string, description: string, bank = "Spar
 }
 
 test("a local assistant shows where it runs once, then each model on its own line", () => {
-  const local = { type: "local" as const, address: "http://localhost:11434", model: "gemma4:12b-mlx" };
+  const local = { type: "local" as const, address: "http://localhost:11434", model: "bonsai-2:9b" };
   assert.deepEqual(assistantLines({ ...local, ocrModel: "glm-ocr" }), [
     "on this computer",
-    "Model: gemma4:12b-mlx",
+    "Model: bonsai-2:9b",
     "OCR: glm-ocr",
   ]);
-  assert.deepEqual(assistantLines(local), ["on this computer", "Model: gemma4:12b-mlx"]);
+  assert.deepEqual(assistantLines(local), ["on this computer", "Model: bonsai-2:9b"]);
   assert.deepEqual(assistantLines({ type: "openai", apiKey: "sk-test" }), ["on OpenAI"]);
 });
 

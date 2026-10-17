@@ -68,7 +68,7 @@ Checks a local app (Ollama or LM Studio) or an OpenAI-compatible endpoint. The s
 The check lists models, sends a tiny chat, then a forced tool call. A chat slower than 15 seconds is still a success (`status: "slow"`). Continue and Save assistant stay off until `ok` is true. Slow counts.
 
 ```json
-{ "type": "local", "address": "http://localhost:11434", "model": "gemma4:12b-mlx" }
+{ "type": "local", "address": "http://localhost:11434", "model": "bonsai-2:9b" }
 ```
 
 An OCR check is separate and optional. It does not send an image. Ollama is `POST {origin}/api/show` and ready when `capabilities` includes `vision`. LM Studio is `GET {baseUrl}/models` and ready when that model’s `type` is `vlm`. A missing Ollama model also returns `command` (`ollama pull glm-ocr`). **None** is not sent here. Continue does not wait for this check.
@@ -88,7 +88,7 @@ Success is HTTP 200: `{ "ok": true, "status": "connected", "title": "Connected."
 | `status` | Local title |
 | --- | --- |
 | `unreachable` | Ollama isn't running. |
-| `missing` | Connected, but the model isn't downloaded. Also returns `command`, for example `ollama pull gemma4:12b-mlx`. |
+| `missing` | Connected, but the model isn't downloaded. Also returns `command`, for example `ollama pull bonsai-2:9b`. |
 | `no-tools` | That model can't use tools. |
 | `ready` | Ready: glm-ocr can read images. OCR check only. |
 | `blind` | glm-ocr can't read images. OCR check only. |
@@ -144,7 +144,7 @@ The browser writes this after confirm. The server does not.
 }
 ```
 
-A local assistant stores `{ "type": "local", "address": "http://localhost:11434", "model": "gemma4:12b-mlx" }`. An endpoint stores `{ "type": "endpoint", "baseUrl", "model", "apiKey" }`. Review the data and the welcome-back line show an endpoint host, never the key.
+A local assistant stores `{ "type": "local", "address": "http://localhost:11434", "model": "bonsai-2:9b" }`. An endpoint stores `{ "type": "endpoint", "baseUrl", "model", "apiKey" }`. Review the data and the welcome-back line show an endpoint host, never the key.
 
 A connection saved before this feature is version 2 (`openaiApiKey`, no `assistant`). It is read as on OpenAI. The next write stores version 3.
 

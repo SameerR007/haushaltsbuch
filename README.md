@@ -23,7 +23,7 @@ Open [http://localhost:3000](http://localhost:3000) and click **Get started**. A
 3. **Your banks:** for example *Sparkasse (SP)*
 4. **Confirm:** the local database is ready and the tracker opens
 
-> **Running locally?** Install [Ollama](https://ollama.com) and pull a chat model, for example `ollama pull gemma4:12b-mlx` (the `-mlx` build is for Apple silicon). If you want to read **scanned** statements too, also pull an OCR model such as `glm-ocr`.
+> **Running locally?** Install [Ollama](https://ollama.com) and pull a chat model, for example `ollama pull bonsai-2:9b`. If you want to read **scanned** statements too, also pull an OCR model such as `glm-ocr`.
 
 ---
 
@@ -109,7 +109,7 @@ With an assistant on your computer, the PDF never leaves your computer. To read 
 | | On OpenAI | On your computer | OpenAI-compatible endpoint |
 | --- | --- | --- | --- |
 | **You enter** | API key | Address (default `http://localhost:11434`), model, optional OCR model | Base URL, key, model |
-| **Default model** | `gpt-5.6-luna` | `gemma4:12b-mlx` | your choice |
+| **Default model** | `gpt-5.6-luna` | `bonsai-2:9b` | your choice |
 | **Statement PDFs** | Sent to OpenAI (asks first) | Read locally | Sent to the endpoint (asks first) |
 | **Data leaves your computer?** | Prompts and query results go to OpenAI | No | Prompts and query results go to the endpoint |
 
