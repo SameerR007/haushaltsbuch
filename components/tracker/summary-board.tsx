@@ -435,7 +435,9 @@ function OnePeriod({
             </article>
             <article className="summary-card">
               <p className="summary-card-label">Net</p>
-              <p className="summary-card-amount is-net">{signedMoney(summary.net, currency)}</p>
+              <p className={`summary-card-amount ${summary.net < 0 ? "is-down" : "is-net"}`}>
+                {signedMoney(summary.net, currency)}
+              </p>
               <p className="summary-card-delta">{SUMMARY_NET_NOTE}</p>
             </article>
           </section>
