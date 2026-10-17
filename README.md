@@ -1,7 +1,11 @@
 # Haushaltsbuch
 
-A household expense tracker that runs on your own computer. You add expenses by chatting or by dropping in a bank statement PDF. You ask questions like *"How much did we spend on groceries in March?"* in plain language.
+A household expense tracker that runs on your own computer and keeps a lasting record of your money. Add expenses by chatting or by dropping in a bank statement PDF, then come back next week or next month and add more. Every confirmed row is saved, so your history keeps growing, and you can ask questions about all of it in plain language: *"How much did we spend on groceries in March?"* or *"Did we spend more on eating out this year than last year?"*
 
+It is not a one-off "upload a file and ask about it" chat. Your data stays saved between visits, and every question is answered from everything you have added so far.
+
+- **Your data stays saved, and keeps growing.** Close the app, come back later, add the next statement. Nothing is lost between visits.
+- **Ask about everything you've saved.** Questions are answered from your whole history, not just the last file you uploaded.
 - **Your money data stays local.** Everything is saved in one SQLite file on your computer. There is no cloud database.
 - **You pick the AI.** Use OpenAI, a model on your computer (Ollama), or any OpenAI-compatible endpoint.
 - **Nothing is saved without you.** The assistant only *proposes* rows. You review them and press **Confirm**, and you can undo.
@@ -11,12 +15,29 @@ A household expense tracker that runs on your own computer. You add expenses by 
 
 ## Quick start
 
+You need [Git](https://git-scm.com/downloads) and [Node.js](https://nodejs.org) (version 20 or newer) installed. Then open a terminal and run these commands one at a time.
+
+**1. Download the code** (git clone the repository) and go into its folder:
+
+```bash
+git clone https://github.com/SameerR007/haushaltsbuch.git
+```
+
+```bash
+cd haushaltsbuch
+```
+
+**2. Install and start the app:**
+
 ```bash
 npm install
+```
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and click **Get started**. A short setup chat asks four things:
+**3.** Open [http://localhost:3000](http://localhost:3000) and click **Get started**. A short setup chat asks four things:
 
 1. **Where the assistant runs:** OpenAI (API key), your computer (Ollama), or an OpenAI-compatible endpoint
 2. **Currency:** EUR by default, or INR, USD, or any ISO code
@@ -35,9 +56,15 @@ flowchart LR
     B --> C["3. Check the<br/>review card"]
     C --> D["4. Confirm"]
     D --> E["5. See it in<br/>Expenses and Summary"]
+    E -.->|"come back,<br/>add more"| B
+    E --> F["Ask questions about<br/>your whole history"]
 ```
 
-You can also ask the chat questions at any time, such as *"What did we spend on rent this year?"*. It answers from your saved data.
+You only set up once. After that, steps 2 to 5 repeat whenever you like: add this month's statement, next month's, a cash expense from yesterday. Everything you confirm is added to the same saved record.
+
+And at any time, ask the chat questions such as *"What did we spend on rent this year?"* or *"Compare groceries in June and July"*. It answers from everything you have saved so far, so the answers get richer as your history grows.
+
+To pick up where you left off, run `npm run dev` again in the `haushaltsbuch` folder and open [http://localhost:3000](http://localhost:3000). Your data is still there.
 
 | Page | What it's for |
 | --- | --- |
