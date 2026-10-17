@@ -1,8 +1,13 @@
 # Haushaltsbuch
 
-A household expense tracker that runs on your computer. Add expenses by chat or bank statement PDF, and they are saved in a database. Come back any time to add more, and ask questions about everything you have saved, such as *"How much did we spend on groceries in March?"*
+Your household's money in a database on your computer that you can **ask questions in plain language**: *"How much did we spend on groceries in March?"*, *"Which month was the most expensive this year?"*. The answers come straight from your data.
 
-- **Saved, not one-off.** Your database keeps growing between visits, and questions cover all of it.
+Keep the database up to date whenever you like, by chatting (*"Rent 850 on the 3rd"*) or by dropping in a bank statement PDF. It stays saved between visits.
+
+<a href="promo/haushaltsbuch-promo.mp4?raw=true">▶ Watch the 55-second tour</a> (MP4 with sound, 12 MB)
+
+- **Ask your database anything.** Totals, comparisons, biggest expenses, trends: any question your saved data can answer.
+- **Add data any time.** One expense in a chat message or a whole statement PDF. It all goes into the same database.
 - **Your money data stays local.** Everything is saved in one SQLite file on your computer. There is no cloud database.
 - **You pick the AI.** Use OpenAI, a model on your computer (Ollama), or any OpenAI-compatible endpoint.
 - **Nothing is saved without you.** The assistant only *proposes* rows. You review them and press **Confirm**, and you can undo.
@@ -36,23 +41,18 @@ Open [http://localhost:3000](http://localhost:3000) and click **Get started**. A
 
 ```mermaid
 flowchart LR
-    S["Set up once"] --> A1
-    subgraph ADD["Add, whenever you like"]
-        direction TB
-        A1["Chat, or drop in<br/>a statement PDF"] --> A2["Check the<br/>review card"] --> A3["Confirm"]
-    end
-    A3 --> H[("Your database<br/>on your computer,<br/>grows with every visit")]
-    subgraph ASK["Ask, whenever you like"]
-        direction TB
-        Q1["Ask in plain language<br/>What did we spend on<br/>groceries in March?"] --> Q2["Get an answer from<br/>your whole database"]
-    end
-    H -->|"answers come from here"| Q2
+    ADD["Add data<br/>chat or statement PDF"] -->|"you confirm"| DB[("Your database<br/>on your computer")]
+    DB <-->|"question in,<br/>answer out"| ASK["Ask questions<br/>in plain language"]
+    DB --> VIEW["Browse it<br/>Expenses and Summary"]
 ```
 
-- **Add:** *"Rent 850 on the 3rd"* or a statement PDF, check the review card, **Confirm**.
-- **Ask:** *"Compare groceries in June and July"*. Answers come from your whole database.
+After a one-time setup, everything works on the same database, in any order, as often as you like:
 
-Next time, just run `npm run dev` in the `haushaltsbuch` folder. Your data is still there.
+- **Ask** about anything already in it.
+- **Add** more whenever new spending comes in.
+- **Browse** it as a table or a summary.
+
+It stays saved between visits: just run `npm run dev` again.
 
 | Page | What it's for |
 | --- | --- |
