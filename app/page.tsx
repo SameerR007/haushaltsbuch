@@ -14,9 +14,8 @@ export default function Home() {
         <p className="home-desc">
           Haushaltsbuch keeps your household&rsquo;s expenses in a database on your
           own computer that you can chat with. Ask anything about your money, and
-          the answer comes from everything you have saved.{" "}
-          <strong>It stays saved between visits</strong>, so you can add more
-          whenever you like.
+          the answer comes from everything you have saved. It stays saved
+          between visits, so you can add more whenever you like.
         </p>
         <ul className="home-points">
           <li>
