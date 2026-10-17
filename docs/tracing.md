@@ -46,6 +46,8 @@ A statement import is the same shape under a `pdf-import` trace, with `propose_t
 | --- | --- | --- |
 | `chat-turn` | `POST /api/chat` | `chat` plus `openai`, `local`, or `endpoint` |
 | `pdf-import` | `POST /api/import/pdf` | `pdf` plus the assistant type |
+| `pdf-read` | `POST /api/import/pdf` with `step=read` (Import, local only) | `pdf`, `local` |
+| `pdf-propose` | `POST /api/import/pdf` with `step=propose` (the user's note, local only) | `pdf`, `local` |
 
 Model calls are recorded through the AI SDK telemetry integration (`@langfuse/vercel-ai-sdk`), with `functionId` `haushaltsbuch-chat` or `haushaltsbuch-pdf`. The SQL guard, the query process, and row validation are recorded with `@langfuse/tracing`.
 

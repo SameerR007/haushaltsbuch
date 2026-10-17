@@ -1,7 +1,7 @@
 /** Plain-language Test connection copy. The setup screens use these sentences as written. */
 
 export const DEFAULT_LOCAL_ADDRESS = "http://localhost:11434";
-export const DEFAULT_LOCAL_MODEL = "qwen3.5:9b";
+export const DEFAULT_LOCAL_MODEL = "gemma4:12b-mlx";
 export const LM_STUDIO_ADDRESS = "http://localhost:1234";
 export const SMALLER_LOCAL_MODEL = "qwen3.5:4b";
 
@@ -18,7 +18,7 @@ export const OLLAMA_NOT_RUNNING_DETAIL = "Open the Ollama app and try again.";
 export const MODEL_MISSING_TITLE = "Connected, but the model isn't downloaded.";
 export const MODEL_MISSING_DETAIL = "Open Terminal and run this, then test again:";
 export const NO_TOOLS_TITLE = "That model can't use tools.";
-export const NO_TOOLS_DETAIL = "Pick qwen3.5:9b.";
+export const NO_TOOLS_DETAIL = "Pick gemma4:12b-mlx.";
 
 export const ENDPOINT_UNREACHABLE_TITLE = "Couldn't reach that address.";
 export const ENDPOINT_UNREACHABLE_DETAIL = "Check the URL and try again.";
@@ -29,8 +29,97 @@ export const ENDPOINT_NO_TOOLS_DETAIL = "Pick a model that can call tools.";
 export const ENDPOINT_KEY_TITLE = "That key was refused.";
 export const ENDPOINT_KEY_DETAIL = "Check it and try again.";
 
-export const LOCAL_IMPORT_SOON =
-  "Statement import on this computer is coming soon. You can still add expenses by typing.";
+export const LOCAL_MODEL_HINT = "Recommended: gemma4:12b-mlx · any installed model id works";
+export const SUGGESTED_OCR_MODEL = "glm-ocr";
+export const OCR_MODEL_HINT = "Suggested: glm-ocr";
+export const OCR_SECTION_TITLE = "Scanned statements";
+export const OCR_SECTION_BODY =
+  "Most bank PDFs have text inside and need no OCR. For scanned pages, pick a model that can read images.";
+export const OCR_NONE_NOTE =
+  "Without an OCR model, scanned pages may not be read. Text PDFs still work.";
+export const OCR_PLACEHOLDER = "e.g. glm-ocr";
+export const OCR_MISSING_DETAIL = "Run this, then test again:";
+export const OCR_BLIND_DETAIL = "Pick a model that reads images.";
+export const OCR_UNREACHABLE_TITLE = "Couldn't reach that address.";
+export const OCR_UNREACHABLE_DETAIL = "Check that the app is open, then test again.";
+export const LOCAL_STATEMENT_NOTE = "Statements are read on this computer. Nothing leaves it.";
+export const ENDPOINT_IMPORT_TITLE = "For statement import";
+export const ENDPOINT_IMPORT_NOTE =
+  "Pick a model that can read PDF files and call tools. Otherwise import may fail; typing expenses still works.";
+export const NOTHING_SAVED_TYPE = "Nothing was saved. You can still type expenses.";
+export const FALLBACK_ROW_NOTE = "Read by fallback (chat model)";
+export const IMPORT_STATEMENT = "Import a bank statement";
+export const IMPORT_BUTTON = "Import";
+export const LOCAL_READ_HINT = "A model on this computer can take a minute or two.";
+export const PLACEHOLDER_IMPORT_FIRST = "Press Import to read the statement first";
+export const PLACEHOLDER_STATEMENT_READY = "What should I add? e.g. everything, or groceries from 1 to 15 August";
+export const PLACEHOLDER_STATEMENT_SEND = "What should I add from this statement?";
+export const FINDING_ROWS = "Processing…";
+export const ADD_EVERYTHING = "Add everything";
+export const ADD_EVERYTHING_INSTRUCTION = "Add every transaction from this statement, money in and money out.";
+export const FINISH_REVIEW_FIRST = "Confirm or cancel the statement above first.";
+export const DEFAULT_STATEMENT_INSTRUCTION = "Add the transactions from this bank statement";
+
+export function ocrReadyTitle(model: string): string {
+  return `Ready: ${model.trim()} can read images.`;
+}
+
+export function ocrMissingTitle(model: string): string {
+  return `${model.trim()} isn't downloaded.`;
+}
+
+export function ocrBlindTitle(model: string): string {
+  return `${model.trim()} can't read images.`;
+}
+
+export function endpointPdfReadError(model: string): string {
+  return `${model.trim()} couldn't read the PDF. Pick a model that reads PDF files, or use On this computer.`;
+}
+
+export function readingScannedPage(page: number, total: number, model: string): string {
+  return `Reading scanned page ${page} of ${total} with ${model}…`;
+}
+
+export function scannedPageMix(filename: string, textPages: number, scannedPages: number): string {
+  const text = textPages === 1 ? "1 page had text" : `${textPages} pages had text`;
+  const scanned = scannedPages === 1 ? "1 is scanned" : `${scannedPages} are scanned`;
+  return `${filename} · ${text}, ${scanned}`;
+}
+
+export function skippedScansNote(pages: readonly number[]): string {
+  const label = pages.length === 1 ? `Page ${pages[0]} looks` : `Pages ${formatPageList(pages)} look`;
+  return `${label} scanned and no OCR model is set, so they may be missing. Add one in Change assistant.`;
+}
+
+export function unreadablePageNote(page: number): string {
+  return `Couldn't read page ${page}. It may be a photo that's too blurry. Try a sharper PDF, or set an OCR model in Change assistant.`;
+}
+
+export function missingPageBalanceNote(page: number): string {
+  return `No balance check: page ${page} is missing.`;
+}
+
+/** "1–2", "3", or "2 and 4". */
+export function formatPageList(pages: readonly number[]): string {
+  const sorted = [...new Set(pages)].filter((page) => Number.isInteger(page) && page > 0).sort((a, b) => a - b);
+  if (sorted.length === 0) return "";
+  const groups: string[] = [];
+  let start = sorted[0] ?? 0;
+  let previous = start;
+  for (let index = 1; index <= sorted.length; index += 1) {
+    const current = sorted[index];
+    if (current === previous + 1) {
+      previous = current;
+      continue;
+    }
+    groups.push(start === previous ? String(start) : `${start}\u2013${previous}`);
+    start = current ?? 0;
+    previous = start;
+  }
+  if (groups.length === 1) return groups[0] ?? "";
+  if (groups.length === 2) return `${groups[0]} and ${groups[1]}`;
+  return `${groups.slice(0, -1).join(", ")} and ${groups[groups.length - 1]}`;
+}
 
 export function modelAnswerName(model: string): string {
   if (/^qwen3\.5\b/i.test(model.trim())) return "Qwen3.5";

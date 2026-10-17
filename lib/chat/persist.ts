@@ -1,4 +1,4 @@
-import type { BankRef, Proposal, ReviewRow, RowFlag } from "./types";
+import type { BankRef, Proposal, ReviewRow, RowFlag, StatementPage, StatementReview } from "./types";
 
 /** Browser transcript for the Chat tab. The OpenAI key is never written here. */
 export const CHAT_STORAGE_KEY = "haushaltsbuch.chat";
@@ -23,6 +23,8 @@ export type StoredUser = {
   kind: "user";
   text: string;
   statementName?: string;
+  /** The question as the model got it, when the app filled in the year. */
+  sentAs?: string;
 };
 
 export type StoredAssistant = {
@@ -30,6 +32,8 @@ export type StoredAssistant = {
   kind: "assistant";
   text: string;
   setupLink?: boolean;
+  changeAssistant?: boolean;
+  detail?: string;
 };
 
 export type StoredProposal = {
@@ -119,6 +123,8 @@ function parseRow(value: unknown): ReviewRow | null {
     duplicateOf,
     duplicateKey,
     ...(value.includeDuplicate === true ? { includeDuplicate: true } : {}),
+    ...(typeof value.note === "string" && value.note.trim() ? { note: clip(value.note).slice(0, 160) } : {}),
+    ...(value.draft === true ? { draft: true } : {}),
   };
 }
 
@@ -150,12 +156,55 @@ function parseProposal(value: unknown): Proposal | null {
   }
   const categories = value.categories.filter((category): category is string => typeof category === "string").map(clip);
   const sourceName = typeof value.sourceName === "string" ? clip(value.sourceName).slice(0, 120) : null;
+  const statement = parseStatement(value.statement);
   return {
     sourceName: sourceName || null,
     currency: clip(value.currency).slice(0, 8),
     categories,
     banks,
     rows,
+    ...(statement ? { statement } : {}),
+  };
+}
+
+const PAGE_STATUS = ["read", "failed", "unread", "skipped"] as const;
+
+function parseStatement(value: unknown): StatementReview | null {
+  if (!isRecord(value) || !Array.isArray(value.pages) || value.pages.length > 500) return null;
+  const pages: StatementPage[] = [];
+  for (const page of value.pages) {
+    if (!isRecord(page) || typeof page.page !== "number" || !Number.isInteger(page.page)) return null;
+    if (typeof page.status !== "string" || !(PAGE_STATUS as readonly string[]).includes(page.status)) return null;
+    pages.push({ page: page.page, status: page.status as StatementPage["status"] });
+  }
+  const numbers = (input: unknown) =>
+    Array.isArray(input) && input.every((item) => typeof item === "number" && Number.isInteger(item) && item > 0)
+      ? input.slice(0, 500)
+      : null;
+  const textPages = numbers(value.textPages);
+  const scannedPages = numbers(value.scannedPages);
+  const skippedPages = numbers(value.skippedPages);
+  if (!textPages || !scannedPages || !skippedPages) return null;
+  const pageCount = typeof value.pageCount === "number" && Number.isInteger(value.pageCount) ? value.pageCount : pages.length;
+  const failedPage =
+    typeof value.failedPage === "number" && Number.isInteger(value.failedPage) && value.failedPage > 0
+      ? value.failedPage
+      : null;
+  const money = (input: unknown) => (typeof input === "number" && Number.isFinite(input) ? input : null);
+  const account = typeof value.account === "string" ? clip(value.account).slice(0, 80) : "";
+  const period = (input: unknown) => (typeof input === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input) ? input : null);
+  return {
+    account: account || null,
+    periodStart: period(value.periodStart),
+    periodEnd: period(value.periodEnd),
+    pageCount,
+    pages,
+    textPages,
+    scannedPages,
+    skippedPages,
+    failedPage,
+    opening: money(value.opening),
+    closing: money(value.closing),
   };
 }
 
@@ -167,14 +216,27 @@ function parseItem(value: unknown): StoredItem | null {
     const text = clip(value.text);
     if (!text) return null;
     const statementName = typeof value.statementName === "string" ? clip(value.statementName).slice(0, 120) : "";
-    return statementName ? { id, kind: "user", text, statementName } : { id, kind: "user", text };
+    const sentAs = typeof value.sentAs === "string" ? clip(value.sentAs) : "";
+    return {
+      id,
+      kind: "user",
+      text,
+      ...(statementName ? { statementName } : {}),
+      ...(sentAs && sentAs !== text ? { sentAs } : {}),
+    };
   }
   if (value.kind === "assistant" && typeof value.text === "string") {
     const text = clip(value.text);
     if (!text) return null;
-    return value.setupLink === true
-      ? { id, kind: "assistant", text, setupLink: true }
-      : { id, kind: "assistant", text };
+    const detail = typeof value.detail === "string" ? clip(value.detail).slice(0, 300) : "";
+    return {
+      id,
+      kind: "assistant",
+      text,
+      ...(value.setupLink === true ? { setupLink: true } : {}),
+      ...(value.changeAssistant === true ? { changeAssistant: true } : {}),
+      ...(detail ? { detail } : {}),
+    };
   }
   if (value.kind === "proposal" && (PHASES as readonly string[]).includes(String(value.phase))) {
     const proposal = parseProposal(value.proposal);

@@ -1,12 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   DEFAULT_LOCAL_ADDRESS,
   DEFAULT_LOCAL_MODEL,
+  ENDPOINT_IMPORT_NOTE,
+  ENDPOINT_IMPORT_TITLE,
   LM_STUDIO_ADDRESS,
+  LOCAL_MODEL_HINT,
   LOCAL_NUM_CTX,
+  OCR_MODEL_HINT,
+  OCR_NONE_NOTE,
+  OCR_PLACEHOLDER,
+  OCR_SECTION_BODY,
+  OCR_SECTION_TITLE,
+  SUGGESTED_OCR_MODEL,
 } from "@/lib/assistant/copy";
 import type { AssistantKind } from "@/lib/assistant/target";
 
@@ -23,7 +32,7 @@ const CHOICES: { id: AssistantKind; title: string; body: string }[] = [
   {
     id: "openai",
     title: "On OpenAI",
-    body: "Fastest and most accurate. Your questions and statements are sent to OpenAI, which is told not to keep them. Needs an API key.",
+    body: "Fastest and most accurate. Your questions and statements are sent to OpenAI. Needs an API key.",
   },
   {
     id: "local",
@@ -104,6 +113,7 @@ export function AssistantChoice({
 export function LocalConnectionCard({
   initialAddress = DEFAULT_LOCAL_ADDRESS,
   initialModel = DEFAULT_LOCAL_MODEL,
+  initialOcr,
   continueLabel,
   onContinue,
   onReadyChange,
@@ -113,25 +123,44 @@ export function LocalConnectionCard({
 }: {
   initialAddress?: string;
   initialModel?: string;
+  /** Omit to prefill the suggested OCR model. Pass null when none is saved. */
+  initialOcr?: string | null;
   continueLabel?: string;
-  onContinue?: (address: string, model: string) => void;
-  onReadyChange?: (ready: { address: string; model: string } | null) => void;
+  onContinue?: (address: string, model: string, ocrModel: string | null) => void;
+  onReadyChange?: (ready: { address: string; model: string; ocrModel: string | null } | null) => void;
   cancelHref?: string;
   intro?: boolean;
   showHelp?: boolean;
 }) {
   const [address, setAddress] = useState(initialAddress);
   const [model, setModel] = useState(initialModel);
+  const [ocrModel, setOcrModel] = useState(initialOcr === undefined ? SUGGESTED_OCR_MODEL : (initialOcr ?? ""));
+  const [ocrNone, setOcrNone] = useState(initialOcr === null || initialOcr === "");
   const [probe, setProbe] = useState<ProbeView | null>(null);
+  const [ocrProbe, setOcrProbe] = useState<ProbeView | null>(null);
   const [pending, setPending] = useState(false);
+  const [ocrPending, setOcrPending] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [ocrCopied, setOcrCopied] = useState(false);
   const ready = probe?.ok === true;
+  const chosenOcr = ocrNone ? null : ocrModel.trim() || null;
+  // Ready to save: the chat model passed its test, and the OCR model passed too or None is chosen.
+  const ocrSettled = chosenOcr === null || ocrProbe?.ok === true;
+  const onReadyRef = useRef(onReadyChange);
+  onReadyRef.current = onReadyChange;
+
+  useEffect(() => {
+    onReadyRef.current?.(
+      ready && ocrSettled ? { address: address.trim(), model: model.trim(), ocrModel: chosenOcr } : null,
+    );
+  }, [ready, ocrSettled, address, model, chosenOcr]);
 
   function edit(nextAddress: string, nextModel: string) {
     setAddress(nextAddress);
     setModel(nextModel);
     setProbe(null);
+    if (nextAddress !== address) setOcrProbe(null);
     setHelpOpen(false);
     onReadyChange?.(null);
   }
@@ -146,8 +175,29 @@ export function LocalConnectionCard({
     const result = await postProbe({ type: "local", address: address.trim(), model: model.trim() });
     setProbe(result);
     setHelpOpen(false);
-    if (result.ok) onReadyChange?.({ address: address.trim(), model: model.trim() });
     setPending(false);
+  }
+
+  async function onTestOcr() {
+    if (ocrPending || ocrNone || !ocrModel.trim()) return;
+    setOcrPending(true);
+    setOcrCopied(false);
+    setOcrProbe(null);
+    const result = await postProbe({ type: "ocr", address: address.trim(), model: ocrModel.trim() });
+    setOcrProbe(result);
+    setOcrPending(false);
+  }
+
+  function chooseNone() {
+    setOcrNone(true);
+    setOcrModel("");
+    setOcrProbe(null);
+  }
+
+  function editOcr(value: string) {
+    setOcrModel(value);
+    setOcrNone(false);
+    setOcrProbe(null);
   }
 
   return (
@@ -169,7 +219,9 @@ export function LocalConnectionCard({
           onChange={(event) => edit(event.target.value, model)}
         />
       </div>
-      <p className="setup-hint">Ollama uses this address. For LM Studio use {LM_STUDIO_ADDRESS}.</p>
+      <p className="setup-hint">
+        Ollama: {DEFAULT_LOCAL_ADDRESS} · LM Studio: {LM_STUDIO_ADDRESS}
+      </p>
       <div className="setup-field">
         <label htmlFor="local-model">Model</label>
         <input
@@ -181,6 +233,7 @@ export function LocalConnectionCard({
           onChange={(event) => edit(address, event.target.value)}
         />
       </div>
+      <p className="setup-hint">{LOCAL_MODEL_HINT}</p>
       <div className="setup-chips">
         <button className="setup-chip primary" type="submit" disabled={pending} data-testid="test-connection">
           {pending ? "Testing…" : "Test connection"}
@@ -190,19 +243,68 @@ export function LocalConnectionCard({
             Cancel
           </Link>
         ) : null}
-        {continueLabel && onContinue && ready ? (
+      </div>
+      <ProbeBanner probe={probe} copied={copied} onCopy={setCopied} />
+      <hr className="assistant-split" />
+      <p>
+        <strong>{OCR_SECTION_TITLE}</strong> <span className="setup-hint">(optional)</span>
+      </p>
+      <p className="setup-hint">{OCR_SECTION_BODY}</p>
+      <div className="setup-field">
+        <label htmlFor="ocr-model">OCR model</label>
+        <input
+          id="ocr-model"
+          value={ocrNone ? "" : ocrModel}
+          placeholder={OCR_PLACEHOLDER}
+          autoComplete="off"
+          spellCheck={false}
+          disabled={pending || ocrPending}
+          data-testid="ocr-model"
+          onChange={(event) => editOcr(event.target.value)}
+        />
+      </div>
+      <p className="setup-hint">{OCR_MODEL_HINT}</p>
+      <div className="setup-chips">
+        <button
+          className="setup-chip primary"
+          type="button"
+          disabled={pending || ocrPending || ocrNone || !ocrModel.trim()}
+          data-testid="ocr-test"
+          onClick={() => void onTestOcr()}
+        >
+          {ocrPending ? "Testing…" : "Test connection"}
+        </button>
+        <button
+          className={ocrNone ? "setup-chip is-selected" : "setup-chip"}
+          type="button"
+          aria-pressed={ocrNone}
+          data-testid="ocr-none"
+          disabled={pending || ocrPending}
+          onClick={chooseNone}
+        >
+          {ocrNone ? "✓ None" : "None"}
+        </button>
+      </div>
+      {ocrNone ? (
+        <div className="assistant-banner is-warn" role="status" data-testid="ocr-none-note">
+          <p>{OCR_NONE_NOTE}</p>
+        </div>
+      ) : (
+        <ProbeBanner probe={ocrProbe} copied={ocrCopied} onCopy={setOcrCopied} />
+      )}
+      {continueLabel && onContinue && ready ? (
+        <div className="setup-chips">
           <button
             className="setup-chip primary"
             type="button"
-            disabled={pending}
+            disabled={pending || ocrPending}
             data-testid="assistant-continue"
-            onClick={() => onContinue(address.trim(), model.trim())}
+            onClick={() => onContinue(address.trim(), model.trim(), chosenOcr)}
           >
             {continueLabel}
           </button>
-        ) : null}
-      </div>
-      <ProbeBanner probe={probe} copied={copied} onCopy={setCopied} />
+        </div>
+      ) : null}
       {showHelp ? (
         probe ? (
           <HelpToggle open={helpOpen} onToggle={() => setHelpOpen((open) => !open)} />
@@ -323,7 +425,18 @@ export function EndpointConnectionCard({
             Cancel
           </Link>
         ) : null}
-        {continueLabel && onContinue && ready ? (
+      </div>
+      <ProbeBanner probe={probe} />
+      {ready ? (
+        <div className="assistant-banner is-warn" data-testid="endpoint-import-note">
+          <p>
+            <strong>{ENDPOINT_IMPORT_TITLE}</strong>
+          </p>
+          <p>{ENDPOINT_IMPORT_NOTE}</p>
+        </div>
+      ) : null}
+      {continueLabel && onContinue && ready ? (
+        <div className="setup-chips">
           <button
             className="setup-chip primary"
             type="button"
@@ -333,9 +446,8 @@ export function EndpointConnectionCard({
           >
             {continueLabel}
           </button>
-        ) : null}
-      </div>
-      <ProbeBanner probe={probe} />
+        </div>
+      ) : null}
       <p className="setup-hint">
         The key is kept in this browser only. Questions and statements go to the address you enter, so use a
         service you trust.
@@ -409,7 +521,8 @@ export function LocalHelp() {
           Studio also works.)
         </li>
         <li>
-          Open Terminal and run <code>ollama pull qwen3.5:9b</code>. This is a one-time download of about 6–7 GB.
+          Open Terminal and run <code>ollama pull {DEFAULT_LOCAL_MODEL}</code>. This is a one-time download of about
+          10 GB.
           For scanned statements also run <code>ollama pull glm-ocr</code> (small).
         </li>
         <li>
@@ -421,7 +534,8 @@ export function LocalHelp() {
         </li>
       </ol>
       <p>
-        These commands are the same on Mac, Windows, and Linux. The app asks Ollama for a context length of{" "}
+        The -mlx build of the model needs a Mac with Apple silicon. On Windows or Linux, pull a model without -mlx
+        and enter its name above. The app asks Ollama for a context length of{" "}
         {LOCAL_NUM_CTX} tokens. If answers are cut off, raise Ollama’s context length and open the app again.
       </p>
     </div>

@@ -129,7 +129,19 @@ export function ChangeAssistant() {
           cancelHref="/data"
           intro={false}
           showHelp={false}
-          onReadyChange={(value) => setReady(value ? { type: "local", ...value } : null)}
+          initialOcr={saved?.assistant.type === "local" ? (saved.assistant.ocrModel ?? null) : undefined}
+          onReadyChange={(value) =>
+            setReady(
+              value
+                ? {
+                    type: "local",
+                    address: value.address,
+                    model: value.model,
+                    ...(value.ocrModel ? { ocrModel: value.ocrModel } : {}),
+                  }
+                : null,
+            )
+          }
         />
       ) : null}
       {kind === "endpoint" ? (

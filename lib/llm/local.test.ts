@@ -5,7 +5,6 @@ import { join } from "node:path";
 import test from "node:test";
 import { POST as postChat } from "../../app/api/chat/route";
 import { POST as postPdf } from "../../app/api/import/pdf/route";
-import { LOCAL_IMPORT_SOON } from "../assistant/copy";
 import { closeDb } from "../db";
 import { runChatTurn } from "./run-turn";
 
@@ -20,6 +19,15 @@ function withTempDb(fn: () => Promise<void>): Promise<void> {
     else process.env.HAUSHALTSBUCH_DB_PATH = prev;
     rmSync(dir, { recursive: true, force: true });
   });
+}
+
+function tinyPdfBytes(): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(`%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj
+3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj
+trailer<</Root 1 0 R>>
+%%EOF`);
 }
 
 function completion(message: Record<string, unknown>): Response {
@@ -165,10 +173,13 @@ test("chat and PDF routes do not call OpenAI when the assistant is local", async
       const form = new FormData();
       form.set("assistant", JSON.stringify({ type: "local", baseUrl: "http://127.0.0.1:9/v1", model: "qwen3.5:9b" }));
       form.set("instruction", "Add the expenses");
+      form.set("file", new File([tinyPdfBytes()], "statement.pdf", { type: "application/pdf" }));
       const pdf = await postPdf(new Request("http://localhost/api/import/pdf", { method: "POST", body: form }));
-      assert.equal(pdf.status, 400);
-      const body = (await pdf.json()) as { error?: string };
-      assert.equal(body.error, LOCAL_IMPORT_SOON);
+      assert.equal(pdf.status, 200);
+      assert.match(pdf.headers.get("content-type") ?? "", /ndjson/);
+      const text = await pdf.text();
+      assert.equal(text.includes("api.openai.com"), false);
+      assert.match(text, /"type":"result"/);
       assert.equal(urls.some((url) => url.includes("api.openai.com")), false);
     } finally {
       globalThis.fetch = previousFetch;

@@ -1,29 +1,57 @@
 import {
   APICallError,
   generateText,
-  hasToolCall,
   InvalidToolInputError,
   isStepCount,
   ToolChoiceViolationError,
   type ModelMessage,
 } from "ai";
+import { endpointPdfReadError } from "@/lib/assistant/copy";
 import type { AssistantTarget } from "@/lib/assistant/target";
 import { CHAT_REASONING_EFFORT, resolveChatModel } from "@/lib/chat/openai";
 import type { ChatTurn } from "@/lib/chat/types";
 import { resolveModel, stubGroceryRow, stubRentRow, stubSalaryRow } from "./models";
-import { argumentsLookWrong, createChatTools, invalidArgumentsInput, type ToolHandler } from "./tools";
+import {
+  argumentsLookWrong,
+  createChatTools,
+  invalidArgumentsInput,
+  normalizeProposeInput,
+  type ToolHandler,
+} from "./tools";
 
 export { stubGroceryRow, stubRentRow, stubSalaryRow };
 export type { ToolHandler };
 
 const STEP_LIMIT = 4;
+
+/** A statement proposal ran. A rejected call is a tool error, not a result, so it does not stop the turn. */
+function proposalAccepted({ steps }: { steps: ReadonlyArray<{ content: ReadonlyArray<{ type: string }> }> }): boolean {
+  const last = steps[steps.length - 1];
+  return (
+    last?.content.some(
+      (part) => part.type === "tool-result" && (part as { toolName?: string }).toolName === "propose_transactions",
+    ) ?? false
+  );
+}
 const REPLY_CAP = 8_000;
 const STEP_TIMEOUT_MS = 120_000;
+/**
+ * A statement on a model you host writes every row as tool-call JSON. At about 14 tokens a second
+ * (gemma4:12b-mlx on a Mac), 40 rows take around three and a half minutes, so these get four.
+ */
+const HOSTED_STATEMENT_STEP_TIMEOUT_MS = 240_000;
+
+export function stepTimeoutMs(assistant: Pick<AssistantTarget, "type">, mode: "chat" | "pdf"): number {
+  return mode === "pdf" && assistant.type !== "openai" ? HOSTED_STATEMENT_STEP_TIMEOUT_MS : STEP_TIMEOUT_MS;
+}
 
 export class OpenAiError extends Error {
-  constructor(message: string) {
+  readonly fileRejected: boolean;
+
+  constructor(message: string, options?: { fileRejected?: boolean }) {
     super(message);
     this.name = "OpenAiError";
+    this.fileRejected = options?.fileRejected === true;
   }
 }
 
@@ -105,8 +133,17 @@ function isTimeout(error: unknown): boolean {
 function mapFailure(
   error: unknown,
   failure: { timeout: string; failed: string; unreachable: string },
+  context: { pdf: boolean; assistant: AssistantTarget },
 ): OpenAiError {
   if (error instanceof OpenAiError) return error;
+  if (
+    context.pdf &&
+    context.assistant.type === "endpoint" &&
+    APICallError.isInstance(error) &&
+    error.statusCode === 400
+  ) {
+    return new OpenAiError(endpointPdfReadError(context.assistant.model), { fileRejected: true });
+  }
   if (isTimeout(error)) return new OpenAiError(failure.timeout);
   if (APICallError.isInstance(error)) {
     if (isTimeout(error.cause)) return new OpenAiError(failure.timeout);
@@ -133,6 +170,7 @@ export async function runChatTurn(options: {
   mode: "chat" | "pdf";
   pdf?: { filename: string; data: Buffer };
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
   executeTool: ToolHandler;
 }): Promise<{ reply: string; proposalArgs: unknown | null }> {
   const assistant: AssistantTarget = options.assistant ?? { type: "openai", apiKey: options.apiKey };
@@ -163,15 +201,18 @@ export async function runChatTurn(options: {
       tools,
       toolChoice: "auto",
       activeTools: pdfMode ? ["propose_transactions"] : undefined,
-      stopWhen: pdfMode
-        ? [isStepCount(STEP_LIMIT), hasToolCall("propose_transactions")]
-        : isStepCount(STEP_LIMIT),
+      // A statement turn ends once a proposal was accepted. A rejected call gets its retry first.
+      stopWhen: pdfMode ? [isStepCount(STEP_LIMIT), proposalAccepted] : isStepCount(STEP_LIMIT),
       prepareStep: ({ stepNumber }) =>
         pdfMode && stepNumber === 0
           ? { toolChoice: { type: "tool", toolName: "propose_transactions" } }
           : { toolChoice: "auto" },
       repairToolCall: async ({ toolCall, error }) => {
         if (!InvalidToolInputError.isInstance(error)) return null;
+        if (toolCall.toolName === "propose_transactions") {
+          const normalized = normalizeProposeInput(toolCall.input);
+          if (normalized) return { ...toolCall, input: normalized };
+        }
         const wrong = resolved.validateToolArgs
           ? argumentsLookWrong(toolCall.toolName, toolCall.input)
           : unparsable(toolCall.input);
@@ -190,7 +231,8 @@ export async function runChatTurn(options: {
         includeRuntimeContext: { assistant: true, mode: true },
       },
       maxRetries: 0,
-      timeout: { stepMs: STEP_TIMEOUT_MS },
+      abortSignal: options.signal,
+      timeout: { stepMs: stepTimeoutMs(assistant, options.mode) },
     });
 
     let reply = "";
@@ -206,6 +248,11 @@ export async function runChatTurn(options: {
       );
       return finishReply(text, secret, proposalArgs);
     }
-    throw mapFailure(error, resolved.failure);
+    if (options.signal?.aborted) {
+      const cancelled = new Error("Cancelled");
+      cancelled.name = "AbortError";
+      throw cancelled;
+    }
+    throw mapFailure(error, resolved.failure, { pdf: pdfMode, assistant });
   }
 }

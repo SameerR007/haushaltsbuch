@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SiteNav } from "@/components/site-nav";
 import { TRACKER_HOME } from "@/components/tracker/nav";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
@@ -293,6 +294,14 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
   useEffect(() => {
     const thread = threadRef.current;
     if (!thread) return;
+    // A step taller than the view (the assistant forms) opens at its top, not at its last line.
+    const steps = thread.querySelectorAll<HTMLElement>(".setup-msg");
+    const last = steps[steps.length - 1];
+    if (last && last.offsetHeight > thread.clientHeight) {
+      const top = last.getBoundingClientRect().top - thread.getBoundingClientRect().top + thread.scrollTop;
+      thread.scrollTop = Math.max(0, top - 8);
+      return;
+    }
     thread.scrollTop = thread.scrollHeight;
   }, [messages, phase, formError]);
 
@@ -586,14 +595,19 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
         <div>
           <LocalConnectionCard
             continueLabel="Continue"
-            onContinue={(address, model) => {
-              setDraft({ type: "local", address, model });
+            onContinue={(address, model, ocrModel) => {
+              setDraft({
+                type: "local",
+                address,
+                model,
+                ...(ocrModel ? { ocrModel } : {}),
+              });
               showCurrencyStep();
             }}
           />
           <div className="setup-chips">
             <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
-              Choose again
+              Back
             </button>
           </div>
         </div>
@@ -611,7 +625,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
           />
           <div className="setup-chips">
             <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
-              Choose again
+              Back
             </button>
           </div>
         </div>
@@ -642,7 +656,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
               {pending && !locked ? "Checking…" : "Continue"}
             </button>
             <button type="button" className="setup-chip" disabled={pending} onClick={showChoice}>
-              Choose again
+              Back
             </button>
           </div>
         </form>
@@ -821,7 +835,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
     if (message.widget === "done") {
       return (
         <div>
-          <p>You’re set. The welcome screen will show Open tracker.</p>
+          <p>You’re set!</p>
           <div className="setup-chips">
             <Link className="setup-chip primary" href={TRACKER_HOME}>
               Open tracker
@@ -944,6 +958,7 @@ export function SetupChat({ startAtKeys = false }: { startAtKeys?: boolean }) {
           <div className="setup-step" data-testid="setup-step">
             {stepLabel(phase)}
           </div>
+          <SiteNav />
         </div>
       </header>
       <main className="setup-shell">

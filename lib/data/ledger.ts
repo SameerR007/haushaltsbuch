@@ -160,6 +160,17 @@ export function updateTransaction(
   return { ok: true, transaction: updated };
 }
 
+/** Delete one transaction for good. Other rows in its batch stay. */
+export function deleteTransaction(rawId: unknown): SetupResult<{ id: number }> {
+  const id = typeof rawId === "number" ? rawId : typeof rawId === "string" ? Number(rawId) : NaN;
+  const missing = { ok: false as const, code: "invalid" as const, error: "That expense isn't in the database." };
+  if (!Number.isInteger(id) || id <= 0) return missing;
+  if (!existsSync(resolveDbPath())) return missing;
+  const result = ensureMigrated().prepare("DELETE FROM transactions WHERE id = ?").run(id);
+  if (result.changes === 0) return missing;
+  return { ok: true, id };
+}
+
 export function bankChoicesForRow(banks: readonly BankView[], currentBank: string): BankView[] {
   const active = banks.filter((bank) => bank.active);
   if (active.some((bank) => bank.name === currentBank)) return active;

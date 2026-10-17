@@ -6,7 +6,7 @@ export type AssistantKind = "openai" | "local" | "endpoint";
 /** What one chat or PDF turn talks to. The turn loop does not branch on this. */
 export type AssistantTarget =
   | { type: "openai"; apiKey: string }
-  | { type: "local"; baseUrl: string; model: string }
+  | { type: "local"; baseUrl: string; model: string; ocrModel?: string | null }
   | { type: "endpoint"; baseUrl: string; model: string; apiKey: string };
 
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/;
@@ -41,6 +41,15 @@ export function modelNameOk(model: string): boolean {
   return MODEL_PATTERN.test(model.trim());
 }
 
+/** Missing or blank is no OCR model. A non-empty invalid id is rejected. */
+function optionalModel(value: unknown): string | null | "invalid" {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return "invalid";
+  const model = value.trim();
+  if (!model) return null;
+  return modelNameOk(model) ? model : "invalid";
+}
+
 export function localAddressError(address: string): string | null {
   const base = chatBaseUrl(address);
   if (!base) return "Enter an address that starts with http:// or https://.";
@@ -61,6 +70,7 @@ export function endpointAddressError(address: string): string | null {
 
 export type ProbeRequest =
   | { kind: "local"; baseUrl: string; model: string }
+  | { kind: "ocr"; baseUrl: string; model: string }
   | { kind: "endpoint"; baseUrl: string; model: string; apiKey: string };
 
 export function parseProbeRequest(
@@ -68,12 +78,14 @@ export function parseProbeRequest(
 ): { ok: true; value: ProbeRequest } | { ok: false; error: string } {
   const type = body.type;
   const model = typeof body.model === "string" ? body.model.trim() : "";
-  if (!modelNameOk(model)) return { ok: false, error: "Enter a model name such as qwen3.5:9b." };
-  if (type === "local") {
+  if (!modelNameOk(model)) return { ok: false, error: "Enter a model name such as gemma4:12b-mlx." };
+  if (type === "local" || type === "ocr") {
     const address = typeof body.address === "string" ? body.address : "";
     const addressError = localAddressError(address);
     if (addressError) return { ok: false, error: addressError };
-    return { ok: true, value: { kind: "local", baseUrl: chatBaseUrl(address) as string, model } };
+    const baseUrl = chatBaseUrl(address) as string;
+    if (type === "ocr") return { ok: true, value: { kind: "ocr", baseUrl, model } };
+    return { ok: true, value: { kind: "local", baseUrl, model } };
   }
   if (type === "endpoint") {
     const address = typeof body.baseUrl === "string" ? body.baseUrl : "";
@@ -112,8 +124,13 @@ export function parseAssistantTarget(
     const model = typeof row.model === "string" ? row.model.trim() : "";
     const addressError = localAddressError(address);
     if (addressError) return { ok: false, error: addressError };
-    if (!modelNameOk(model)) return { ok: false, error: "Enter a model name such as qwen3.5:9b." };
-    return { ok: true, value: { type: "local", baseUrl: chatBaseUrl(address) as string, model } };
+    if (!modelNameOk(model)) return { ok: false, error: "Enter a model name such as gemma4:12b-mlx." };
+    const ocrModel = optionalModel(row.ocrModel);
+    if (ocrModel === "invalid") return { ok: false, error: "Enter an OCR model name such as glm-ocr." };
+    return {
+      ok: true,
+      value: { type: "local", baseUrl: chatBaseUrl(address) as string, model, ocrModel },
+    };
   }
   if (row.type === "endpoint") {
     const address = typeof row.baseUrl === "string" ? row.baseUrl : "";

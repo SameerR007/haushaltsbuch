@@ -225,3 +225,25 @@ export function revalidateRow(row: ReviewRow, context: ReviewContext): ReviewRow
   }
   return { ...reviewed, duplicateOf: null, duplicateKey: null, includeDuplicate: false };
 }
+
+/**
+ * Apply one cell edit from the review table and re-check the row.
+ * A duplicate stays a duplicate only while its date, amount, bank and description still match.
+ */
+export function editReviewRow(
+  row: ReviewRow,
+  patch: Partial<ReviewRow>,
+  context: Pick<ReviewContext, "categories" | "banks">,
+): ReviewRow {
+  const next: ReviewRow = { ...row, ...patch, draft: false };
+  const flags: RowFlag[] = [];
+  if (!next.date) flags.push("invalid_date");
+  if (next.amount === null) flags.push("invalid_amount");
+  if (!context.categories.includes(next.category)) flags.push("unknown_category");
+  if (!context.banks.some((bank) => bank.name === next.bank)) flags.push("unknown_bank");
+  if (next.duplicateKey && rowDuplicateKey(next) === next.duplicateKey) {
+    flags.push("duplicate");
+    return { ...next, flags };
+  }
+  return { ...next, flags, duplicateOf: null, duplicateKey: null, includeDuplicate: false };
+}

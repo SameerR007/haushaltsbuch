@@ -36,8 +36,9 @@ import {
 import { attachmentLabel, countPdfPages, formatFileSize } from "./pdf-meta";
 import { householdInstructions, MODEL_TURN_LIMIT, previousFullMonth, recentModelTurns, RUN_SQL_RULE, SIGNED_AMOUNT_RULE, STATEMENT_ROWS_RULE, suggestedPrompts, withPdfInstructions } from "./prompts";
 import { executeReadOnlyQuery, guardReadQuery, SQL_ROW_CAP } from "./sql-guard";
+import { addCurrentYear, reframeForModel } from "./reframe";
 import { confirmTransactions, undoTransactions } from "./transactions";
-import { reviewProposedRows, rowsToSave } from "./validate-rows";
+import { editReviewRow, reviewProposedRows, rowsToSave } from "./validate-rows";
 
 const OPENAI_KEY = "sk-openai-example-key";
 
@@ -128,6 +129,9 @@ test("guard allows one SELECT or WITH and rejects writes", () => {
   assert.equal(guardReadQuery(database, "SELECT 1; SELECT 2").ok, false);
   assert.equal(guardReadQuery(database, "EXPLAIN SELECT 1").ok, false);
   assert.equal(guardReadQuery(database, "DELETE FROM t").ok, false);
+  const missing = guardReadQuery(database, "SELECT description FROM t");
+  assert.equal(missing.ok, false);
+  assert.match(missing.ok ? "" : missing.error, /no such column: description/);
   database.close();
 });
 
@@ -368,6 +372,29 @@ test("review flags bad fields, defaults one bank, and marks duplicates", () => {
     },
   );
   assert.equal(manyBanks[0]?.flags.includes("unknown_bank"), true);
+});
+
+test("a cell edit re-checks the row and keeps a duplicate only while it matches", () => {
+  const banks = [{ name: "Sparkasse", initials: "SP" }];
+  const categories = ["grocery", "rent"];
+  const existing = [{ id: 7, date: "2026-09-12", amount: -12.5, bank: "Sparkasse", notes: "Groceries" }];
+  const [bad, duplicate] = reviewProposedRows(
+    [
+      { date: "nope", description: "Bad", category: "fun", bank: "Sparkasse", amount: -3, uncertain: true },
+      { date: "2026-09-12", description: "Groceries", category: "grocery", bank: "Sparkasse", amount: -12.5, uncertain: false },
+    ],
+    { categories, banks, existing },
+  );
+  assert.ok(bad && duplicate);
+  const fixed = editReviewRow(bad, { dateInput: "2026-09-01", date: "2026-09-01", category: "rent" }, { categories, banks });
+  assert.deepEqual(fixed.flags, []);
+  const kept = editReviewRow(duplicate, { category: "rent" }, { categories, banks });
+  assert.deepEqual(kept.flags, ["duplicate"]);
+  assert.equal(kept.duplicateOf, 7);
+  const changed = editReviewRow(duplicate, { amountInput: "-13", amount: -13 }, { categories, banks });
+  assert.deepEqual(changed.flags, []);
+  assert.equal(changed.duplicateOf, null);
+  assert.equal(rowsToSave([changed]).length, 1);
 });
 
 test("a statement fixture keeps salary and other incoming rows", () => {
@@ -629,6 +656,10 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.equal(text.includes(RUN_SQL_RULE), true);
   assert.equal(text.includes(SIGNED_AMOUNT_RULE), true);
   assert.match(text, /Do not use numbers from memory/);
+  assert.match(text, /Do every sum, difference, and comparison in SQL/);
+  assert.match(text, /never add or change numbers yourself/);
+  assert.match(text, /use GROUP BY category and take each total, and the combined total, from SQL/);
+  assert.match(text, /use category names exactly as listed/);
   assert.match(text, /When only one bank is saved, that bank is the default/);
   assert.match(text, /ING \(IN\)/);
   assert.equal(text.includes("€"), false);
@@ -636,8 +667,8 @@ test("system prompt requires SQL, signed amounts, and no guessed bank", () => {
   assert.match(pdf, /Answer only by calling propose_transactions/);
   assert.equal(text.includes(STATEMENT_ROWS_RULE), true);
   assert.equal(pdf.includes(STATEMENT_ROWS_RULE), true);
-  assert.match(text, /never only the negative ones/);
-  assert.match(text, /expenses, spending, transactions, or add this/);
+  assert.match(text, /expenses, spending, transactions, all of it, or add this still mean every row/);
+  assert.match(text, /a date or date range, a payee or shop, a category/);
   assert.match(pdf, /One row per transaction on the statement/);
   assert.equal(formatReviewAmount(2850, "EUR").startsWith("+"), true);
   assert.match(formatReviewAmount(2850, "EUR"), /\+.*2,850\.00/);
@@ -1188,9 +1219,9 @@ test("a leftover PDF acknowledgement is removed and not stored again", () => {
 
   const chat = readFileSync("components/tracker/tracker-chat.tsx", "utf8");
   assert.match(chat, /clearPdfDisclosureAck\(\)/);
-  assert.match(chat, /setAck\(false\);\s*setAttachment\(/);
+  assert.match(chat, /setAck\(localAssistant\);\s*setAttachment\(/);
   assert.match(chat, /attachment\?\.file\) && !ack/);
-  assert.match(chat, /if \(attachment && !ack\) return/);
+  assert.match(chat, /if \(attachment && !ack && !localAssistant\) return/);
   assert.match(chat, /function cancelDisclosure\(\)/);
   assert.match(chat, /onDrop=\{onDropPdf\}/);
   assert.match(chat, />\s*Continue\s*</);
@@ -1519,11 +1550,11 @@ test("stored chat keeps the latest 60 items and replaces an oversized copy", () 
 test("copy matches the tracker and example tags are absent", () => {
   assert.equal(
     PDF_DISCLOSURE,
-    "This PDF goes to OpenAI so it can be read. OpenAI is told not to keep it. Nothing is saved until you confirm.",
+    "This PDF goes to OpenAI so it can be read. Nothing is saved until you confirm.",
   );
-  assert.equal(reviewIntro(4, "statement-november.pdf"), "I found 4 transactions in statement-november.pdf. Nothing is saved yet — check them first.");
+  assert.equal(reviewIntro(4, "statement-november.pdf"), "I found 4 transactions in statement-november.pdf. Nothing is saved yet.");
   assert.equal(confirmLabel(1), "Confirm — save 1 transaction");
-  const roots = ["lib/chat", "app/api/chat", "app/api/import", "app/api/transactions", "components/tracker", "app/app"];
+  const roots = ["lib/chat", "app/api/chat", "app/api/import", "app/api/transactions", "components/tracker", "app/(tracker)"];
   const files = roots.flatMap((dir) => walk(dir));
   assert.ok(files.length > 8);
   for (const file of files) {
@@ -1563,3 +1594,39 @@ function walk(dir: string): string[] {
       : [];
   });
 }
+
+test("a month without a year gets the current year; a year the user gave is kept", () => {
+  const now = new Date(2026, 9, 16);
+  const cases: [string, string][] = [
+    ["how much did i spend in August on Food", "how much did i spend in August 2026 on Food"],
+    ["What is the food expense in 2024?", "What is the food expense in 2024?"],
+    ["food in August 2024", "food in August 2024"],
+    ["Add 12.50 groceries from Tom on 12 September", "Add 12.50 groceries from Tom on 12 September 2026"],
+    ["Add coffee on September 12th", "Add coffee on September 12th 2026"],
+    ["compare aug and sep", "compare aug 2026 and sep 2026"],
+    ["between June and December", "between June 2026 and December 2026"],
+    ["how much in may", "how much in may 2026"],
+    ["May I add a coffee?", "May I add a coffee?"],
+    ["we march on", "we march on"],
+    ["how much did I spend on food?", "how much did I spend on food?"],
+  ];
+  for (const [input, expected] of cases) assert.equal(addCurrentYear(input, now), expected, input);
+
+  const sent = reframeForModel("how much did i spend in August on Food", now);
+  assert.equal(sent.question, "how much did i spend in August 2026 on Food");
+  assert.equal(sent.content.endsWith("Today is Friday, 16 October 2026 (2026-10-16)."), true);
+
+  const chat = householdInstructions({ currency: "EUR", categories: ["food"], banks: [{ name: "ING", initials: "IN" }] });
+  assert.equal(chat.includes("Today's date is"), false);
+  assert.match(chat, /Each user message ends with today's date/);
+
+  const stored = parseStoredChat(
+    JSON.stringify({
+      v: 1,
+      promptsUsed: true,
+      items: [{ id: 2, kind: "user", text: "food in August", sentAs: "food in August 2026" }],
+      attachment: null,
+    }),
+  );
+  assert.deepEqual(stored?.items[0], { id: 2, kind: "user", text: "food in August", sentAs: "food in August 2026" });
+});

@@ -1,6 +1,7 @@
 import { loadHousehold } from "@/lib/chat/household";
 import { OpenAiError, runChatTurn } from "@/lib/chat/openai";
-import { householdInstructions, MODEL_TURN_LIMIT, todayIso } from "@/lib/chat/prompts";
+import { householdInstructions, MODEL_TURN_LIMIT } from "@/lib/chat/prompts";
+import { reframeForModel } from "@/lib/chat/reframe";
 import { executeReadOnlyQuery } from "@/lib/chat/sql-guard";
 import type { ChatTurn, Proposal } from "@/lib/chat/types";
 import { reviewProposedRows, rowsOf } from "@/lib/chat/validate-rows";
@@ -58,8 +59,13 @@ export async function POST(request: Request) {
       currency: household.currency,
       categories: household.categories,
       banks: household.banks,
-      today: todayIso(),
     });
+    // Today's date comes from this computer's clock on every message, and a month without a
+    // year gets the current year, so the model does not guess one.
+    const latest = messages[messages.length - 1] as ChatTurn;
+    const reframed = reframeForModel(latest.content);
+    messages[messages.length - 1] = { role: "user", content: reframed.content };
+    const sentAs = reframed.question !== latest.content ? reframed.question : null;
     const { reply, proposal } = await withTrace(
       {
         name: "chat-turn",
@@ -119,7 +125,7 @@ export async function POST(request: Request) {
         return { reply: result.reply, proposal };
       },
     );
-    return jsonResult({ ok: true, reply, proposal }, 200);
+    return jsonResult({ ok: true, reply, proposal, ...(sentAs ? { sentAs } : {}) }, 200);
   } catch (error) {
     const message = error instanceof OpenAiError ? error.message : "Could not answer that.";
     return jsonResult({ ok: false, code: "rejected", error: message }, 422);

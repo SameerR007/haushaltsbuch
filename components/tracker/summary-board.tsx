@@ -6,6 +6,7 @@ import { formatMoney, formatPlainDate, formatRowDate, formatSummaryMoney } from 
 import {
   SUMMARY_COMPARE,
   SUMMARY_COMPARE_LEAD,
+  SUMMARY_ONE_LEAD,
   SUMMARY_COMPARE_LEGEND,
   SUMMARY_EMPTY,
   SUMMARY_GO_CHAT,
@@ -124,6 +125,7 @@ export function SummaryBoard() {
   const [mode, setMode] = useState<SummaryMode>("one");
   const [one, setOne] = useState<DateRange | null>(null);
   const [compare, setCompare] = useState<CompareRanges | null>(null);
+  const [empty, setEmpty] = useState(false);
 
   useEffect(() => {
     const stored = readSummaryView();
@@ -155,33 +157,33 @@ export function SummaryBoard() {
     <main className="summary">
       <div className="summary-modes">
         <div className="summary-switch" role="radiogroup" aria-label="Summary view">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === "one"}
-          className={mode === "one" ? "summary-mode is-selected" : "summary-mode"}
-          onClick={() => selectMode("one")}
-        >
-          {SUMMARY_ONE}
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === "compare"}
-          className={mode === "compare" ? "summary-mode is-selected" : "summary-mode"}
-          onClick={() => selectMode("compare")}
-        >
-          {SUMMARY_COMPARE}
-        </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === "one"}
+            className={mode === "one" ? "summary-mode is-selected" : "summary-mode"}
+            onClick={() => selectMode("one")}
+          >
+            {SUMMARY_ONE}
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === "compare"}
+            className={mode === "compare" ? "summary-mode is-selected" : "summary-mode"}
+            onClick={() => selectMode("compare")}
+          >
+            {SUMMARY_COMPARE}
+          </button>
         </div>
       </div>
       {hydrated ? (
         <>
           <div className="summary-view" hidden={mode !== "one"}>
-            <OnePeriod range={one} onRange={setOne} />
+            <OnePeriod range={one} onRange={setOne} onEmpty={setEmpty} />
           </div>
           <div className="summary-view" hidden={mode !== "compare"}>
-            <ComparePeriods compare={compare} onCompare={setCompare} />
+            <ComparePeriods compare={compare} onCompare={setCompare} empty={empty} />
           </div>
         </>
       ) : (
@@ -191,10 +193,20 @@ export function SummaryBoard() {
   );
 }
 
-function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (range: DateRange) => void }) {
+function OnePeriod({
+  range,
+  onRange,
+  onEmpty,
+}: {
+  range: DateRange | null;
+  onRange: (range: DateRange) => void;
+  onEmpty: (empty: boolean) => void;
+}) {
   const applied = useRef<string | null>(null);
   const onRangeRef = useRef(onRange);
   onRangeRef.current = onRange;
+  const onEmptyRef = useRef(onEmpty);
+  onEmptyRef.current = onEmpty;
   const [summary, setSummary] = useState<PeriodSummary | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -222,6 +234,7 @@ function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (rang
         }
         setSummary(parsed);
         setError("");
+        onEmptyRef.current(!parsed.from || !parsed.to);
         if (!from && !to && parsed.from && parsed.to) {
           applied.current = `${parsed.from}:${parsed.to}`;
           onRangeRef.current({ from: parsed.from, to: parsed.to });
@@ -273,6 +286,7 @@ function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (rang
 
   const currency = summary?.currency ?? "";
   const hasRange = Boolean(summary?.from && summary?.to);
+  const hasData = Boolean(summary?.latestFrom);
   const active = Boolean(summary && (summary.incomeCount > 0 || summary.expenseCount > 0));
   const months = summary?.latestFrom ? recentMonthRanges(summary.latestFrom) : [];
   const yearSource = summary?.from ?? summary?.latestFrom ?? null;
@@ -282,87 +296,102 @@ function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (rang
 
   return (
     <div aria-busy={loading}>
-      <div className="summary-toolbar">
-        <div className="summary-controls">
-          <DateField
-            kicker="From"
-            value={summary?.from ? formatPlainDate(summary.from) : "—"}
-            open={anchor === "from"}
-            onClick={() => openRange("from", summary?.from ?? summary?.latestFrom ?? "")}
-            calendar={
-              picker && anchor === "from" ? (
-                <RangeCalendar
-                  picker={picker}
-                  preview={preview}
-                  onPicker={setPicker}
-                  onPick={chooseDay}
-                  onClose={() => {
-                    setPicker(null);
-                    setAnchor(null);
-                  }}
-                />
-              ) : null
-            }
-          />
-          <span className="summary-arrow" aria-hidden="true">
-            →
-          </span>
-          <DateField
-            kicker="To"
-            value={summary?.to ? formatPlainDate(summary.to) : "—"}
-            open={anchor === "to"}
-            onClick={() => openRange("to", summary?.to ?? summary?.from ?? "")}
-            calendar={
-              picker && anchor === "to" ? (
-                <RangeCalendar
-                  picker={picker}
-                  preview={preview}
-                  onPicker={setPicker}
-                  onPick={chooseDay}
-                  onClose={() => {
-                    setPicker(null);
-                    setAnchor(null);
-                  }}
-                />
-              ) : null
-            }
-          />
-          <div className="summary-chips">
-            {months.map((month) => {
-              const selected = summary?.from === month.from && summary?.to === month.to;
-              return (
-                <button
-                  key={month.from}
-                  type="button"
-                  className={selected ? "summary-chip is-selected" : "summary-chip"}
-                  onClick={() => commit(month)}
-                >
-                  {monthYearLabel(month.from)}
-                </button>
-              );
-            })}
-            {year ? (
-              <button
-                type="button"
-                className={
-                  summary?.from === year.from && summary?.to === year.to ? "summary-chip is-selected" : "summary-chip"
+      {hasData ? (
+        <>
+          <div className="summary-toolbar">
+            <div className="summary-controls">
+              <DateField
+                kicker="From"
+                value={summary?.from ? formatPlainDate(summary.from) : "—"}
+                open={anchor === "from"}
+                onClick={() => openRange("from", summary?.from ?? summary?.latestFrom ?? "")}
+                calendar={
+                  picker && anchor === "from" ? (
+                    <RangeCalendar
+                      picker={picker}
+                      preview={preview}
+                      onPicker={setPicker}
+                      onPick={chooseDay}
+                      onClose={() => {
+                        setPicker(null);
+                        setAnchor(null);
+                      }}
+                    />
+                  ) : null
                 }
-                onClick={() => commit(year)}
-              >
-                {wholeYearLabel(Number(year.from.slice(0, 4)))}
-              </button>
-            ) : null}
+              />
+              <span className="summary-arrow" aria-hidden="true">
+                →
+              </span>
+              <DateField
+                kicker="To"
+                value={summary?.to ? formatPlainDate(summary.to) : "—"}
+                open={anchor === "to"}
+                onClick={() => openRange("to", summary?.to ?? summary?.from ?? "")}
+                calendar={
+                  picker && anchor === "to" ? (
+                    <RangeCalendar
+                      picker={picker}
+                      preview={preview}
+                      onPicker={setPicker}
+                      onPick={chooseDay}
+                      onClose={() => {
+                        setPicker(null);
+                        setAnchor(null);
+                      }}
+                    />
+                  ) : null
+                }
+              />
+              <div className="summary-chips">
+                {months.map((month) => {
+                  const selected = summary?.from === month.from && summary?.to === month.to;
+                  return (
+                    <button
+                      key={month.from}
+                      type="button"
+                      className={selected ? "summary-chip is-selected" : "summary-chip"}
+                      onClick={() => commit(month)}
+                    >
+                      {monthYearLabel(month.from)}
+                    </button>
+                  );
+                })}
+                {year ? (
+                  <button
+                    type="button"
+                    className={
+                      summary?.from === year.from && summary?.to === year.to
+                        ? "summary-chip is-selected"
+                        : "summary-chip"
+                    }
+                    onClick={() => commit(year)}
+                  >
+                    {wholeYearLabel(Number(year.from.slice(0, 4)))}
+                  </button>
+                ) : null}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div className="summary-meta">
-        {summary?.latestFrom && summary.latestTo ? <p>{summaryOpensOn(showing || plainRangeLabel(summary.latestFrom, summary.latestTo))}</p> : <p />}
-        <p>
-          {loading && summary ? <span className="summary-updating">{SUMMARY_UPDATING}</span> : null}
-          {summary?.currencyLabel ? summaryAmountsNote(summary.currencyLabel) : null}
-        </p>
-      </div>
+          <div className="summary-meta">
+            {summary?.latestFrom && summary.latestTo ? (
+              <p>{summaryOpensOn(showing || plainRangeLabel(summary.latestFrom, summary.latestTo))}</p>
+            ) : (
+              <p />
+            )}
+            <p>
+              {loading && summary ? <span className="summary-updating">{SUMMARY_UPDATING}</span> : null}
+              {summary?.currencyLabel ? summaryAmountsNote(summary.currencyLabel) : null}
+            </p>
+          </div>
+        </>
+      ) : (
+        <div className="summary-meta">
+          <p>{SUMMARY_ONE_LEAD}</p>
+          <p />
+        </div>
+      )}
 
       {error ? (
         <p className="summary-error" role="alert">
@@ -373,8 +402,10 @@ function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (rang
 
       {summary && hasRange && !active ? (
         <div className="summary-empty">
-          <p>{summary.from && summary.to ? summaryEmptyRange(plainRangeLabel(summary.from, summary.to)) : SUMMARY_EMPTY}</p>
-          <Link className="expenses-go-chat" href="/app">
+          <p>
+            {summary.from && summary.to ? summaryEmptyRange(plainRangeLabel(summary.from, summary.to)) : SUMMARY_EMPTY}
+          </p>
+          <Link className="expenses-go-chat" href="/chat">
             {SUMMARY_GO_CHAT}
           </Link>
         </div>
@@ -383,7 +414,7 @@ function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (rang
       {summary && !hasRange && !loading ? (
         <div className="summary-empty">
           <p>{SUMMARY_EMPTY}</p>
-          <Link className="expenses-go-chat" href="/app">
+          <Link className="expenses-go-chat" href="/chat">
             {SUMMARY_GO_CHAT}
           </Link>
         </div>
@@ -459,7 +490,7 @@ function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (rang
             <ul className="summary-lines">
               {summary.largest.map((row) => (
                 <li key={row.id}>
-                  <Link href={`/app/expenses?focus=${row.id}`}>
+                  <Link href={`/expenses?focus=${row.id}`}>
                     <p className="summary-line-title">{formatRowDate(row.date)}</p>
                     <p className="summary-line-sub">{expenseDetail(row)}</p>
                   </Link>
@@ -477,9 +508,11 @@ function OnePeriod({ range, onRange }: { range: DateRange | null; onRange: (rang
 function ComparePeriods({
   compare,
   onCompare,
+  empty,
 }: {
   compare: CompareRanges | null;
   onCompare: (compare: CompareRanges) => void;
+  empty: boolean;
 }) {
   const [summary, setSummary] = useState<CompareSummary | null>(null);
   const [error, setError] = useState("");
@@ -553,19 +586,19 @@ function ComparePeriods({
         open={picker?.field === id}
         align={align}
         onClick={() => openField(id, value || compare?.a.from || "")}
-            calendar={
-              picker?.field === id ? (
-                <Calendar
-                  month={picker.month}
-                  low={value || null}
-                  high={value || null}
-                  hoverRange={false}
-                  onMonth={(iso) => setPicker({ field: id, month: iso })}
-                  onPick={chooseDay}
-                  onClose={() => setPicker(null)}
-                />
-              ) : null
-            }
+        calendar={
+          picker?.field === id ? (
+            <Calendar
+              month={picker.month}
+              low={value || null}
+              high={value || null}
+              hoverRange={false}
+              onMonth={(iso) => setPicker({ field: id, month: iso })}
+              onPick={chooseDay}
+              onClose={() => setPicker(null)}
+            />
+          ) : null
+        }
       />
     );
   }
@@ -581,7 +614,15 @@ function ComparePeriods({
           {error}
         </p>
       ) : null}
-      {!compare || (loading && !summary) ? <p className="summary-status">Loading summary…</p> : null}
+      {!compare && empty ? (
+        <div className="summary-empty">
+          <p>{SUMMARY_EMPTY}</p>
+          <Link className="expenses-go-chat" href="/chat">
+            {SUMMARY_GO_CHAT}
+          </Link>
+        </div>
+      ) : null}
+      {(!compare && !empty) || (loading && !summary) ? <p className="summary-status">Loading summary…</p> : null}
       {summary && compare && currency ? (
         <section className="summary-panel">
           <div className="summary-periods">
@@ -594,12 +635,7 @@ function ComparePeriods({
                 </span>
                 {field("a", "to", "start")}
               </div>
-              <PeriodStats
-                currency={currency}
-                income={summary.income}
-                expenses={summary.expenses}
-                net={summary.net}
-              />
+              <PeriodStats currency={currency} income={summary.income} expenses={summary.expenses} net={summary.net} />
             </article>
             <article className="summary-period">
               <p className="summary-period-label">Period B</p>
@@ -870,11 +906,19 @@ function Calendar({
       }}
     >
       <div className="summary-calendar-head">
-        <button type="button" onClick={() => earlier && onMonth(earlier)} aria-label={earlier ? monthYearLabel(earlier) : "Earlier"}>
+        <button
+          type="button"
+          onClick={() => earlier && onMonth(earlier)}
+          aria-label={earlier ? monthYearLabel(earlier) : "Earlier"}
+        >
           ‹
         </button>
         <strong>{monthYearLabel(range.from)}</strong>
-        <button type="button" onClick={() => later && onMonth(later)} aria-label={later ? monthYearLabel(later) : "Later"}>
+        <button
+          type="button"
+          onClick={() => later && onMonth(later)}
+          aria-label={later ? monthYearLabel(later) : "Later"}
+        >
           ›
         </button>
       </div>
@@ -889,13 +933,10 @@ function Calendar({
           const iso = isoDate(year, monthNumber, day);
           const selected = iso === start || iso === rangeEnd;
           const inside = Boolean(previewLow && previewHigh && iso > previewLow && iso < previewHigh);
-          const className = [
-            selected ? "is-selected" : "",
-            inside ? "is-inside" : "",
-            iso === cursor ? "is-focused" : "",
-          ]
-            .filter(Boolean)
-            .join(" ") || undefined;
+          const className =
+            [selected ? "is-selected" : "", inside ? "is-inside" : "", iso === cursor ? "is-focused" : ""]
+              .filter(Boolean)
+              .join(" ") || undefined;
           return (
             <button
               key={iso}

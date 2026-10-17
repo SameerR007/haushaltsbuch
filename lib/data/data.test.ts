@@ -12,14 +12,14 @@ import { GET as getSqlite } from "../../app/api/export/sqlite/route";
 import { GET as getXlsx } from "../../app/api/export/xlsx/route";
 import { GET as getHousehold } from "../../app/api/household/route";
 import { POST as postReset } from "../../app/api/setup/reset/route";
-import { PATCH as patchTransaction } from "../../app/api/transactions/[id]/route";
+import { DELETE as deleteTransactionRoute, PATCH as patchTransaction } from "../../app/api/transactions/[id]/route";
 import { GET as getTransactions } from "../../app/api/transactions/route";
 import { amountKeepingSign } from "../chat/money";
 import { parseAmount } from "../chat/validate-rows";
 import { confirmTransactions } from "../chat/transactions";
 import { loadHousehold } from "../chat/household";
 import { CHAT_STORAGE_KEY } from "../chat/persist";
-import { PDF_DISCLOSURE_KEY, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
+import { PDF_DISCLOSURE_KEY, assistantLines, clearConnection, rememberActiveBanks, writeConnection } from "../connection";
 import { SUMMARY_STORAGE_KEY } from "../data/summary-state";
 import { closeDb, readHealth, resolveDbPath, saveHousehold } from "../db";
 import { EXPECTED_CATEGORIES } from "../setup/categories";
@@ -85,6 +85,17 @@ function expense(amount: number, date: string, description: string, bank = "Spar
   return { date, description, category: "grocery", bank, amount };
 }
 
+test("a local assistant shows where it runs once, then each model on its own line", () => {
+  const local = { type: "local" as const, address: "http://localhost:11434", model: "gemma4:12b-mlx" };
+  assert.deepEqual(assistantLines({ ...local, ocrModel: "glm-ocr" }), [
+    "on this computer",
+    "Model: gemma4:12b-mlx",
+    "OCR: glm-ocr",
+  ]);
+  assert.deepEqual(assistantLines(local), ["on this computer", "Model: gemma4:12b-mlx"]);
+  assert.deepEqual(assistantLines({ type: "openai", apiKey: "sk-test" }), ["on OpenAI"]);
+});
+
 test("date and bank copy", () => {
   assert.equal(transactionCountLabel(0), "no transactions");
   assert.equal(transactionCountLabel(1), "1 transaction");
@@ -128,25 +139,29 @@ test("comma decimals keep the row sign", () => {
 test("tracker nav order, Open tracker, and the empty expenses state", () => {
   assert.deepEqual(
     TRACKER_NAV.map((item) => item.label),
-    ["Home", "Expenses", "Chat", "Summary", "Insights ↗"],
+    ["Home", "Setup", "Expenses", "Chat", "Summary", "Insights ↗"],
   );
   assert.equal(TRACKER_NAV[0]?.href, "/");
   assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.external, true);
-  assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.href, "/app/insights");
-  assert.equal(TRACKER_HOME, "/app/expenses");
-  assert.equal(TRACKER_NAV[1]?.href, TRACKER_HOME);
+  assert.equal(TRACKER_NAV[TRACKER_NAV.length - 1]?.href, "/insights");
+  assert.equal(TRACKER_HOME, "/expenses");
+  assert.equal(TRACKER_NAV[2]?.href, TRACKER_HOME);
   const home = TRACKER_NAV[0]!;
-  const expenses = TRACKER_NAV[1]!;
-  const chat = TRACKER_NAV[2]!;
+  const setup = TRACKER_NAV[1]!;
+  const expenses = TRACKER_NAV[2]!;
+  const chat = TRACKER_NAV[3]!;
+  assert.equal(isTrackerNavActive("/setup", setup), true);
+  assert.equal(isTrackerNavActive("/setup/chat", setup), true);
+  assert.equal(isTrackerNavActive("/", setup), false);
   assert.equal(isTrackerNavActive("/", home), true);
-  assert.equal(isTrackerNavActive("/app", home), false);
-  assert.equal(isTrackerNavActive("/app/expenses", home), false);
-  assert.equal(isTrackerNavActive("/app/summary", home), false);
-  assert.equal(isTrackerNavActive("/app/insights", home), false);
-  assert.equal(isTrackerNavActive("/app", chat), true);
-  assert.equal(isTrackerNavActive("/app/expenses", chat), false);
-  assert.equal(isTrackerNavActive("/app/expenses", expenses), true);
-  assert.equal(isTrackerNavActive("/app", expenses), false);
+  assert.equal(isTrackerNavActive("/chat", home), false);
+  assert.equal(isTrackerNavActive("/expenses", home), false);
+  assert.equal(isTrackerNavActive("/summary", home), false);
+  assert.equal(isTrackerNavActive("/insights", home), false);
+  assert.equal(isTrackerNavActive("/chat", chat), true);
+  assert.equal(isTrackerNavActive("/expenses", chat), false);
+  assert.equal(isTrackerNavActive("/expenses", expenses), true);
+  assert.equal(isTrackerNavActive("/chat", expenses), false);
   assert.equal(
     EXPENSES_EMPTY_LEAD,
     "Here you will see all your expenses once you have added some. Go to Chat to add your first expense, or import a bank statement PDF.",
@@ -158,10 +173,10 @@ test("tracker nav order, Open tracker, and the empty expenses state", () => {
   assert.equal(EXPENSES_EMPTY_ACTION, "Go to Chat");
   assert.equal(showExpensesDownload(0), false);
   assert.equal(showExpensesDownload(1), true);
-  for (const file of ["app/page.tsx", "components/data/your-data.tsx", "components/setup/setup-chat.tsx"]) {
+  for (const file of ["app/setup/page.tsx", "components/data/your-data.tsx", "components/setup/setup-chat.tsx"]) {
     const source = readFileSync(file, "utf8");
     assert.equal(source.includes("TRACKER_HOME"), true, file);
-    assert.equal(source.includes('href="/app"'), false, file);
+    assert.equal(source.includes('href="/chat"'), false, file);
   }
 
   const banks = readFileSync("components/data/bank-manager.tsx", "utf8");
@@ -429,6 +444,34 @@ test("transactions list newest first and patch validates without touching batch_
     assert.equal(row.bank, "Sparkasse");
     assert.equal(row.batch_id, batch.batch_id);
     assert.equal(row.batch_id, second.batchId);
+  });
+});
+
+test("delete removes one expense and leaves the rest of its batch", async () => {
+  await withTempDb(async () => {
+    seed();
+    const saved = confirmTransactions([expense(-1, "2026-09-01", "Keep"), expense(-2, "2026-09-02", "Drop")]);
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    const id = String(saved.ids[1]);
+    const removed = await deleteTransactionRoute(new Request(`http://local/api/transactions/${id}`, { method: "DELETE" }), {
+      params: Promise.resolve({ id }),
+    });
+    assert.equal(removed.status, 200);
+    const again = await deleteTransactionRoute(new Request(`http://local/api/transactions/${id}`, { method: "DELETE" }), {
+      params: Promise.resolve({ id }),
+    });
+    assert.equal(again.status, 400);
+    const crossSite = await deleteTransactionRoute(
+      new Request(`http://local/api/transactions/${saved.ids[0]}`, {
+        method: "DELETE",
+        headers: { "sec-fetch-site": "cross-site" },
+      }),
+      { params: Promise.resolve({ id: String(saved.ids[0]) }) },
+    );
+    assert.equal(crossSite.status, 403);
+    const body = await jsonBody(await getTransactions());
+    assert.deepEqual((body.transactions as { notes: string }[]).map((row) => row.notes), ["Keep"]);
   });
 });
 

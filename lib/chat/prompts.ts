@@ -1,7 +1,7 @@
 import type { BankRef } from "./types";
 
 export const RUN_SQL_RULE =
-  "Call run_sql before you answer with any amount, total, balance, count, or other figure from this household's money. Do not use numbers from memory.";
+  "Call run_sql before you answer with any amount, total, balance, count, or other figure from this household's money. Do not use numbers from memory. Do every sum, difference, and comparison in SQL. Report the number run_sql returns as it is; never add or change numbers yourself. When the question names several categories, use GROUP BY category and take each total, and the combined total, from SQL. In SQL, use category names exactly as listed; map the user's word to the listed name it means (misc means miscellaneous).";
 
 export const SIGNED_AMOUNT_RULE =
   "Amounts are signed: expenses are negative, income (salary and other incoming money) is positive. A balance is a plain SUM of amount.";
@@ -24,7 +24,7 @@ export const PROPOSE_RULE =
  * Used for typed adds and for the PDF import instructions.
  */
 export const STATEMENT_ROWS_RULE =
-  "A bank statement or ledger import always includes every row, never only the negative ones, whatever wording the user uses (expenses, spending, transactions, or add this). Expenses are negative amounts. Income, including salary, refunds, and other incoming money, is positive. Use the salary category for salary.";
+  "By default a statement import includes every row, money in and money out. Words like expenses, spending, transactions, all of it, or add this still mean every row, including salary, refunds, and other incoming money. Only leave rows out when the user clearly narrows it: a date or date range, a payee or shop, a category, or only money in or only money out. Then include exactly the rows that match. Expenses are negative amounts. Income, including salary, refunds, and other incoming money, is positive. Use the salary category for salary.";
 
 export function todayIso(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -74,6 +74,9 @@ export function suggestedPrompts(input: {
   currency?: string | null;
   now?: Date;
   statement?: boolean;
+  /** Local chat uses a paperclip prompt at the end. OpenAI keeps the middle prompt. */
+  statementPrompt?: string;
+  statementLast?: boolean;
 }): string[] {
   const { monthName, dayPhrase } = previousFullMonth(input.now ?? new Date());
   const amount = sampleAmount(input.currency);
@@ -82,7 +85,11 @@ export function suggestedPrompts(input: {
     ? `Add ${amount} groceries from ${bank} on ${dayPhrase}`
     : `Add ${amount} groceries on ${dayPhrase}`;
   const prompts = [add, `How much did I spend on food in ${monthName}?`];
-  if (input.statement !== false) prompts.splice(1, 0, "Add the transactions from this bank statement");
+  if (input.statement !== false) {
+    const label = input.statementPrompt ?? "Add the transactions from this bank statement";
+    if (input.statementLast) prompts.push(label);
+    else prompts.splice(1, 0, label);
+  }
   return prompts;
 }
 
@@ -90,7 +97,8 @@ export function householdInstructions(input: {
   currency: string;
   categories: readonly string[];
   banks: readonly BankRef[];
-  today: string;
+  /** Statement import only. Chat puts today's date on the user's message instead (lib/chat/reframe.ts). */
+  today?: string;
 }): string {
   const banks = input.banks.length
     ? input.banks.map((bank) => `- ${bank.name} (${bank.initials})`).join("\n")
@@ -120,13 +128,24 @@ ${STATEMENT_ROWS_RULE}
 
 ${AMBIGUITY_RULE}
 
-Today's date is ${input.today}. You resolve words such as today and yesterday. The app does not rewrite dates.
+${
+    input.today
+      ? `Today's date is ${input.today}. You resolve words such as today and yesterday.`
+      : "Each user message ends with today's date. Use it for words such as today and yesterday. A month in the message already has its year."
+  }
 
-For a question, reply in plain sentences after run_sql. For new money rows, call propose_transactions and do not claim they were saved.`;
+For a question, answer after run_sql in plain, friendly sentences, the way a person would explain it. Do not use Markdown: no bold, headings, tables, or | separators. To list transactions, put each on its own short line, for example: 12 Aug, McDonald's, 5.99 spent. For new money rows, call propose_transactions and do not claim they were saved.`;
 }
 
 export function withPdfInstructions(instructions: string): string {
   return `${instructions}
 
 A bank statement PDF is attached. Read the file itself. The app does not extract its text. Answer only by calling propose_transactions. One row per transaction on the statement. ${STATEMENT_ROWS_RULE} If a row is unclear, set uncertain to true. Do not guess a category or a bank when several are possible.`;
+}
+
+/** Local import already extracted the statement on this computer. The PDF is not attached. */
+export function withLocalStatementInstructions(instructions: string): string {
+  return `${instructions}
+
+The statement text was read on this computer and is in the user message. Pages marked fallback were read from an image because OCR failed: set uncertain to true for every transaction from those pages and copy the payee exactly. Answer only by calling propose_transactions. One row per transaction. ${STATEMENT_ROWS_RULE} If a row is unclear, set uncertain to true. Do not guess a category or a bank when several are possible.`;
 }

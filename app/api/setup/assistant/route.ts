@@ -1,5 +1,6 @@
 import { probeAssistant } from "@/lib/assistant/probe";
 import { parseProbeRequest } from "@/lib/assistant/target";
+import { checkImageCapability, describeImageCapability } from "@/lib/llm/capabilities";
 import { jsonResult, readJsonBody } from "@/lib/setup/http";
 
 export const runtime = "nodejs";
@@ -13,6 +14,25 @@ export async function POST(request: Request) {
   if (!body.ok) return body.response;
   const parsed = parseProbeRequest(body.body);
   if (!parsed.ok) return jsonResult({ ok: false, code: "invalid", error: parsed.error }, 400);
+  if (parsed.value.kind === "ocr") {
+    const capability = await checkImageCapability({ baseUrl: parsed.value.baseUrl, model: parsed.value.model });
+    const described = describeImageCapability(parsed.value.model, capability);
+    if (described.ok) {
+      return jsonResult({ ok: true, status: described.status, title: described.title, detail: described.detail ?? "" }, 200);
+    }
+    return jsonResult(
+      {
+        ok: false,
+        code: "rejected",
+        status: described.status,
+        title: described.title,
+        detail: described.detail ?? "",
+        ...(described.command ? { command: described.command } : {}),
+        error: described.title,
+      },
+      422,
+    );
+  }
   const result = await probeAssistant(parsed.value);
   if (result.ok) {
     return jsonResult(

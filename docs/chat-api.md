@@ -62,6 +62,8 @@ The model page used for the id is [GPT-5.6 Luna](https://developers.openai.com/a
 }
 ```
 
+Before the last user message goes to the model, the route reads this computer's clock and rewrites it (`lib/chat/reframe.ts`). If the message has no year, every month in it gets the current year ("in August" → "in August 2026"). A message with a year is left as it is. Then the line `Today is Friday, 16 October 2026 (2026-10-16).` is added. The system instructions carry no date for chat. When the question changed, the response has `sentAs` with the rewritten question. The chat keeps it with the message and sends it as that turn's history; it is not shown on screen (Langfuse traces show what the model received).
+
 When the model proposes rows, `proposal` is a review card and `reply` may be empty. `proposal.rows` are validated. They are not saved.
 
 ```json
@@ -99,13 +101,35 @@ Multipart form fields:
 | Field | |
 | --- | --- |
 | `apiKey` | OpenAI key, when the assistant is OpenAI. Not stored. |
-| `assistant` | Optional JSON. Local `{ "type": "local", "baseUrl", "model" }` or endpoint `{ "type": "endpoint", "baseUrl", "model", "apiKey" }`. A local assistant cannot import a statement yet: the route returns HTTP 400, `Statement import on this computer is coming soon. You can still add expenses by typing.`, before it reads the file. |
-| `instruction` | What to do with the statement. |
-| `file` | The PDF. About 25 MB maximum. |
+| `assistant` | Optional JSON. Local `{ "type": "local", "baseUrl", "model", "ocrModel"? }` or endpoint `{ "type": "endpoint", "baseUrl", "model", "apiKey" }`. |
+| `instruction` | What to do with the statement. Not needed for `step=read`. |
+| `file` | The PDF. About 25 MB maximum. Not sent with `step=propose`. |
 | `messages` | Optional JSON array of earlier chat turns. |
-| `sessionId` | Optional. Same conversation id as the chat request; used only for tracing. |
+| `step` | Local assistant only. `read` reads the PDF and returns its pages. `propose` takes `pages` (and `filename`) back with an instruction and returns rows. Omitted, the local route does both in one request. |
+| `pages` | With `step=propose`: the `read.pages` array from the read step, `[{ "page", "kind", "text" }]`. |
+| `sessionId` | Optional. Same conversation id as the chat request; used only for tracing. A local import is traced as `pdf-read`, `pdf-propose`, or `pdf-import`. |
 
-The server sends the PDF bytes to the Responses API as an `input_file` with base64 `file_data`. It does not extract the statement text locally. The first PDF step forces `propose_transactions`, and the turn stops once that proposal comes back. The model may answer only through `propose_transactions`. A statement is a ledger: every row is proposed, expenses as negative amounts and income (salary, refunds, and other incoming money) as positive amounts, even when the user says “add the expenses”. The app does not drop positive amounts. Salary uses the `salary` category. The review card shows a plus sign on income rows.
+OpenAI and an OpenAI-compatible endpoint receive the PDF bytes as a file part. The server does not extract that statement locally and does not fall back to the local pipeline. The first PDF step forces `propose_transactions`, and the turn stops once that proposal comes back. The model may answer only through `propose_transactions`. By default every row is proposed, expenses as negative amounts and income (salary, refunds, and other incoming money) as positive amounts, even when the user says “add the expenses”. Rows are left out only when the instruction clearly narrows them: a date range, a payee, a category, or only money in or out. The app does not drop positive amounts. Salary uses the `salary` category. The review card shows a plus sign on income rows.
+
+An endpoint that rejects the file or the tool call with HTTP 400 comes back as HTTP 422:
+
+```json
+{
+  "ok": false,
+  "code": "rejected",
+  "error": "example-model-32b couldn't read the PDF. Pick a model that reads PDF files, or use On this computer.",
+  "changeAssistant": true,
+  "detail": "Nothing was saved. You can still type expenses."
+}
+```
+
+The same 400 from OpenAI stays the generic OpenAI failure and does not use that sentence.
+
+A local assistant reads the PDF on this machine. The route answers `application/x-ndjson` with HTTP 200. Text pages are extracted together (`unpdf`, `mergePages: false`) and sent once to the chat model as text. The PDF file is not attached. Pages without a usable text layer are rendered and sent one by one to `ocrModel` through the same OpenAI-compatible provider. Empty or garbled OCR falls back to the chat model when that model can read images. With no OCR model, a vision chat model reads those pages; otherwise they are skipped and the review says so. Progress events look like `{ "type": "progress", "phase": "scan", "page": 2, "total": 2, "model": "glm-ocr", "textPages": 2, "scannedPages": 2 }`. A text-only PDF sends no scan event. The last line is `{ "type": "result", "ok": true, "proposal": { …, "statement": { … } } }`. Cancelling the request returns `{ "type": "result", "ok": false, "cancelled": true, "error": "Cancelled. Nothing was saved." }`. Nothing is written before confirm.
+
+The chat uses two steps for a local assistant. **Import** posts `step=read`, which makes no chat model call and ends with `{ "type": "result", "ok": true, "read": { "pages": [ … ] } }`. Then the user's note is posted with `step=propose` and those pages, without the file. A local proposal drops every `uncertain` flag except on rows from a page read after OCR failed, and the review card asks the user to check every row instead.
+
+When the extracted text has an opening and a closing balance, and no page was skipped or unreadable, the review checks that the row amounts add up to closing minus opening. A mismatch keeps the rows and lets the user edit uncertain amounts or add a missing row. An unreadable page offers the rows from the pages that were read.
 
 A file over 25 MB is rejected with: `That PDF is larger than 25 MB. Attach a smaller statement.`
 

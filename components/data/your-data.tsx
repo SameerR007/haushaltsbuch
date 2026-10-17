@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TRACKER_HOME } from "@/components/tracker/nav";
 import {
-  assistantSummary,
+  assistantLines,
   assistantUsesKey,
   readConnection,
   rememberActiveBanks,
@@ -67,7 +67,15 @@ export function YourData({ updated }: { updated: boolean }) {
         </div>
         <div>
           <dt>Assistant</dt>
-          <dd>{assistant ? assistantSummary(assistant) : "not saved"}</dd>
+          <dd>
+            {assistant
+              ? assistantLines(assistant).map((line) => (
+                  <span key={line} className="data-line">
+                    {line}
+                  </span>
+                ))
+              : "not saved"}
+          </dd>
         </div>
         <div>
           <dt>Currency</dt>
@@ -87,7 +95,7 @@ export function YourData({ updated }: { updated: boolean }) {
           Open tracker
         </Link>
         {assistant && assistantUsesKey(assistant) ? (
-          <Link className="data-secondary" href="/setup?mode=keys">
+          <Link className="data-secondary" href="/setup/chat?mode=keys">
             Change keys
           </Link>
         ) : null}

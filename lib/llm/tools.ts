@@ -1,4 +1,9 @@
 import { jsonSchema, tool } from "ai";
+import { proposedArgsValid } from "./rows-schema";
+
+/** How the household database is laid out. Sent with run_sql so the model does not guess column names. */
+export const SQL_SCHEMA_NOTE =
+  "Tables: transactions(id, date TEXT as YYYY-MM-DD, category TEXT, amount REAL signed with expenses negative and income positive, bank TEXT, notes TEXT holding the payee or description, batch_id TEXT); categories(name); banks(name, initials, active 1 or 0, removed_at). There is no description column; use notes.";
 
 /** Tool results sent back to the model are cut at this many JSON characters. */
 export const TOOL_OUTPUT_CAP = 80_000;
@@ -25,8 +30,42 @@ function sqlShape(value: unknown): boolean {
 
 function proposeShape(value: unknown): boolean {
   if (isInvalidArguments(value)) return true;
-  if (typeof value !== "object" || value === null) return false;
-  return Array.isArray((value as { rows?: unknown }).rows);
+  return proposedArgsValid(value);
+}
+
+const ROW_KEYS = ["date", "description", "category", "bank", "amount", "uncertain"] as const;
+
+/**
+ * A model sometimes writes a row key in the wrong case ("Date" for "date"). Rename such keys so
+ * one capital letter does not throw away the whole proposal. Returns null when nothing changed
+ * or the input is still not a valid proposal.
+ */
+export function normalizeProposeInput(input: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || !Array.isArray((parsed as { rows?: unknown }).rows)) return null;
+  let changed = false;
+  const rows = (parsed as { rows: unknown[] }).rows.map((row) => {
+    if (typeof row !== "object" || row === null) return row;
+    const fixed: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row)) {
+      const known = ROW_KEYS.find((name) => name === key.toLowerCase());
+      if (known && known !== key && !(known in row)) {
+        fixed[known] = value;
+        changed = true;
+      } else {
+        fixed[key] = value;
+      }
+    }
+    return fixed;
+  });
+  if (!changed) return null;
+  const next = { ...(parsed as object), rows };
+  return proposedArgsValid(next) ? JSON.stringify(next) : null;
 }
 
 /** True when the tool input should be repaired. Valid JSON of the right shape is fine. */
@@ -123,7 +162,7 @@ export function createChatTools(options: {
   return {
     run_sql: tool({
       description:
-        "Run one read-only SELECT or WITH query against the household SQLite database. Call this before stating any amount, total, balance, or count. Results are capped at about 200 rows.",
+        `Run one read-only SELECT or WITH query against the household SQLite database. Call this before stating any amount, total, balance, or count. Results are capped at about 200 rows. ${SQL_SCHEMA_NOTE}`,
       inputSchema: jsonSchema(SQL_PARAMETERS, schemaOptions(options.validateShape ? sqlShape : undefined)),
       strict: true,
       execute: async (input) => run("run_sql", input),

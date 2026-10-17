@@ -95,7 +95,7 @@ export function StartOver() {
         return;
       }
       clearConnection();
-      router.push("/setup");
+      router.push("/setup/chat");
     } catch {
       setError("Could not delete the saved data.");
     } finally {
