@@ -557,7 +557,7 @@ test("a row key in the wrong case is repaired, and a rejected proposal gets its 
   const base = {
     pages,
     baseUrl: "http://127.0.0.1:11434/v1",
-    model: "gemma4:12b-mlx",
+    model: "bonsai-2:9b",
     ocrModel: null,
     instruction: "Add everything",
     messages: [],

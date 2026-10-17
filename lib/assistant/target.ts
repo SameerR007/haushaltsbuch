@@ -78,7 +78,7 @@ export function parseProbeRequest(
 ): { ok: true; value: ProbeRequest } | { ok: false; error: string } {
   const type = body.type;
   const model = typeof body.model === "string" ? body.model.trim() : "";
-  if (!modelNameOk(model)) return { ok: false, error: "Enter a model name such as gemma4:12b-mlx." };
+  if (!modelNameOk(model)) return { ok: false, error: "Enter a model name such as bonsai-2:9b." };
   if (type === "local" || type === "ocr") {
     const address = typeof body.address === "string" ? body.address : "";
     const addressError = localAddressError(address);
@@ -124,7 +124,7 @@ export function parseAssistantTarget(
     const model = typeof row.model === "string" ? row.model.trim() : "";
     const addressError = localAddressError(address);
     if (addressError) return { ok: false, error: addressError };
-    if (!modelNameOk(model)) return { ok: false, error: "Enter a model name such as gemma4:12b-mlx." };
+    if (!modelNameOk(model)) return { ok: false, error: "Enter a model name such as bonsai-2:9b." };
     const ocrModel = optionalModel(row.ocrModel);
     if (ocrModel === "invalid") return { ok: false, error: "Enter an OCR model name such as glm-ocr." };
     return {
