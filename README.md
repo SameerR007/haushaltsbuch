@@ -132,11 +132,11 @@ Switch at any time under **Your data → Change assistant**. Your banks, currenc
 
 ### Tested with
 
-**OpenAI**, **Ollama with `bonsai-2:9b`**, and an **OpenAI-compatible endpoint**, using statements from **one bank**. Other models and banks should work, but they're untested, so check the review card before you confirm.
+**OpenAI**, **Ollama with `bonsai-2:9b`**, and an **OpenAI-compatible endpoint**, using statements from **one bank**. Other models and banks should work, but they're untested.
 
 **Picking a model:**
 
-- **Ollama:** needs **tool calling** and good **instruction following**. The app reads the PDF itself: it extracts the text, or uses the OCR model for scanned pages.
+- **Ollama:** needs **tool calling** and good **instruction following**. The model **doesn't need to read PDFs**: the app reads the PDF itself, extracting the text or using the OCR model for scanned pages.
 - **Endpoint:** needs **tool calling**, and must be able to **read PDF files**, since the PDF is sent to it.
 
 ---
