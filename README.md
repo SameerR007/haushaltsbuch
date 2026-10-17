@@ -2,7 +2,7 @@
 
 Your household's money in a database on your computer that you can **ask questions in plain language**: *"How much did we spend on groceries in March?"*, *"Which month was the most expensive this year?"*. The answers come straight from your data.
 
-Keep the database up to date whenever you like, by chatting (*"Rent 850 on the 3rd"*) or by dropping in a bank statement PDF. It stays saved between visits.
+Keep the database up to date whenever you like, by chatting (*"Rent 850 on the 3rd"*) or by dropping in a bank statement PDF. **It stays saved between visits.**
 
 ![A 55-second tour: add expenses by chat or statement PDF, confirm them, see them in the Expenses table, ask a question, and open the monthly summary.](promo/tour.gif)
 
