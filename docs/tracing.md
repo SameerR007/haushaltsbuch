@@ -6,15 +6,15 @@ When it is on, every chat message and every statement import becomes one trace i
 
 ## Turn it on
 
-1. Create a Langfuse project, either on [Langfuse Cloud](https://cloud.langfuse.com) or [self-hosted](https://langfuse.com/self-hosting) (for example `docker compose up` from the Langfuse repository, which serves `http://localhost:3000`, so start this app on another port).
+1. Create a Langfuse project, either on [Langfuse Cloud](https://cloud.langfuse.com) or self-hosted on your computer. Self-hosted Langfuse serves `http://localhost:3000` by default, which clashes with this app, so run it on 3040: in the Langfuse repository's `docker-compose.yml` change `- 3000:3000` under `langfuse-web` to `- 3040:3000`, then run `NEXTAUTH_URL=http://localhost:3040 docker compose up -d`. The [README](../README.md#optional-tracing-with-langfuse) has the full steps.
 2. In the project settings, create an API key pair.
-3. Put the keys in `.env.local` in the repository root (gitignored by `.env*`):
+3. Copy `.env.example` to `.env.local` in the repository root (gitignored by `.env*`) and fill in the keys:
 
 ```bash
 LANGFUSE_PUBLIC_KEY="pk-lf-..."
 LANGFUSE_SECRET_KEY="sk-lf-..."
-# EU cloud (default). US: https://us.cloud.langfuse.com. Self-hosted: your URL.
-LANGFUSE_BASE_URL="https://cloud.langfuse.com"
+# Self-hosted on 3040 (the default in .env.example). Cloud: https://cloud.langfuse.com (EU) or https://us.cloud.langfuse.com (US).
+LANGFUSE_BASE_URL="http://localhost:3040"
 # Optional, shown as the trace environment. Default: local
 # LANGFUSE_TRACING_ENVIRONMENT="local"
 ```

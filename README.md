@@ -1,7 +1,13 @@
 # Haushaltsbuch
 
-A household expense tracker that runs on your own computer. You add expenses by chatting or by dropping in a bank statement PDF. You ask questions like *"How much did we spend on groceries in March?"* in plain language.
+Your household's money in a database on your computer that you can **ask questions in plain language**: *"How much did we spend on groceries in March?"*, *"Which month was the most expensive this year?"*. The answers come straight from your data.
 
+Keep the database up to date whenever you like, by chatting (*"Rent 850 on the 3rd"*) or by dropping in a bank statement PDF. It stays saved between visits.
+
+![A 55-second tour: add expenses by chat or statement PDF, confirm them, see them in the Expenses table, ask a question, and open the monthly summary.](promo/tour.gif)
+
+- **Ask your database anything.** Totals, comparisons, biggest expenses, trends: any question your saved data can answer.
+- **Add data any time.** One expense in a chat message or a whole statement PDF. It all goes into the same database.
 - **Your money data stays local.** Everything is saved in one SQLite file on your computer. There is no cloud database.
 - **You pick the AI.** Use OpenAI, a model on your computer (Ollama), or any OpenAI-compatible endpoint.
 - **Nothing is saved without you.** The assistant only *proposes* rows. You review them and press **Confirm**, and you can undo.
@@ -11,7 +17,11 @@ A household expense tracker that runs on your own computer. You add expenses by 
 
 ## Quick start
 
+You need [Git](https://git-scm.com/downloads) and [Node.js](https://nodejs.org) 20+. In a terminal, git clone the repository and start the app:
+
 ```bash
+git clone https://github.com/SameerR007/haushaltsbuch.git
+cd haushaltsbuch
 npm install
 npm run dev
 ```
@@ -31,13 +41,18 @@ Open [http://localhost:3000](http://localhost:3000) and click **Get started**. A
 
 ```mermaid
 flowchart LR
-    A["1. Set up once"] --> B["2. Add spending<br/>by chat or PDF"]
-    B --> C["3. Check the<br/>review card"]
-    C --> D["4. Confirm"]
-    D --> E["5. See it in<br/>Expenses and Summary"]
+    ADD["Add data<br/>chat or statement PDF"] -->|"you confirm"| DB[("Your database<br/>on your computer")]
+    DB <-->|"question in,<br/>answer out"| ASK["Ask questions<br/>in plain language"]
+    DB --> VIEW["Browse it<br/>Expenses and Summary"]
 ```
 
-You can also ask the chat questions at any time, such as *"What did we spend on rent this year?"*. It answers from your saved data.
+After a one-time setup, everything works on the same database, in any order, as often as you like:
+
+- **Ask** about anything already in it.
+- **Add** more whenever new spending comes in.
+- **Browse** it as a table or a summary.
+
+It stays saved between visits: just run `npm run dev` again.
 
 | Page | What it's for |
 | --- | --- |
@@ -175,7 +190,7 @@ Request and response shapes: [setup](docs/setup-api.md) · [chat, import & trans
 
 ## Configuration
 
-Everything is optional. Put variables in `.env.local` (gitignored) or pass them on the command line.
+Everything is optional. Copy `.env.example` to `.env.local` (gitignored) and edit it, or pass variables on the command line.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -195,17 +210,34 @@ HAUSHALTSBUCH_DB_PATH=~/Documents/haushaltsbuch.sqlite npm run dev
 
 Want to see exactly what the assistant did: the prompt, every model call, each SQL query and its rows? Turn on [Langfuse](https://langfuse.com) tracing. **It's off by default**, and without keys nothing is traced or sent.
 
-**1. Get keys.** Create a project on [Langfuse Cloud](https://cloud.langfuse.com), or [self-host it](https://langfuse.com/self-hosting), and create an API key pair.
+Langfuse uses port 3000 by default, the same as this app, so run it on **3040** instead. You need [Docker](https://www.docker.com/products/docker-desktop/).
 
-**2. Add them to `.env.local`:**
+**1. Start Langfuse on your computer** (in a separate folder, not inside `haushaltsbuch`):
 
 ```bash
-LANGFUSE_PUBLIC_KEY="pk-lf-..."
-LANGFUSE_SECRET_KEY="sk-lf-..."
-LANGFUSE_BASE_URL="https://cloud.langfuse.com"   # US: https://us.cloud.langfuse.com · or your self-hosted URL
+git clone https://github.com/langfuse/langfuse.git
+cd langfuse
 ```
 
-**3. Restart** `npm run dev`, send a chat message and open **Tracing** in Langfuse.
+Open `docker-compose.yml`, find the line `- 3000:3000` under `langfuse-web`, and change it to `- 3040:3000`. Then:
+
+```bash
+NEXTAUTH_URL=http://localhost:3040 docker compose up -d
+```
+
+**2. Get keys.** Open [http://localhost:3040](http://localhost:3040), sign up (the account is local), create a project, then **Settings → API Keys → Create new API keys**.
+
+**3. Add the keys.** In the `haushaltsbuch` folder:
+
+```bash
+cp .env.example .env.local
+```
+
+Paste the two keys into `.env.local`. `LANGFUSE_BASE_URL` already points to `http://localhost:3040`.
+
+**4. Restart** `npm run dev`, send a chat message and open **Tracing** in Langfuse.
+
+> Prefer not to run Docker? Use [Langfuse Cloud](https://cloud.langfuse.com) instead: skip step 1, get keys there, and switch `LANGFUSE_BASE_URL` in `.env.local` to the cloud line.
 
 Each chat message and each statement import shows up as one trace. All messages from one conversation are grouped together. In a trace you can see:
 
@@ -213,7 +245,7 @@ Each chat message and each statement import shows up as one trace. All messages 
 - each database query the model asked for, whether it was allowed, and the rows it got back
 - the rows the model suggested, before and after the app checked them
 
-> ⚠️ **Privacy:** with tracing on, prompts, SQL results (amounts, payees) and attached PDFs are sent to the Langfuse server you configured. API keys are masked. To keep everything on your computer, self-host Langfuse locally.
+> ⚠️ **Privacy:** with tracing on, prompts, SQL results (amounts, payees) and attached PDFs are sent to the Langfuse server you configured. API keys are masked. With Langfuse on your computer (steps above), nothing leaves it.
 
 To turn it off, remove the two keys and restart. Full details: [docs/tracing.md](docs/tracing.md).
 
