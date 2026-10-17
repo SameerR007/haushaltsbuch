@@ -1,11 +1,11 @@
 # Haushaltsbuch
 
-A household expense tracker that runs on your own computer and keeps a lasting record of your money. Add expenses by chatting or by dropping in a bank statement PDF, then come back next week or next month and add more. Every confirmed row is saved, so your history keeps growing, and you can ask questions about all of it in plain language: *"How much did we spend on groceries in March?"* or *"Did we spend more on eating out this year than last year?"*
+A household expense tracker that runs on your own computer and keeps a lasting record of your money. Add expenses by chatting or by dropping in a bank statement PDF, then come back next week or next month and add more. Every confirmed row is saved in a database on your computer, so your records keep growing, and you can ask questions about all of it in plain language: *"How much did we spend on groceries in March?"* or *"Did we spend more on eating out this year than last year?"*
 
 It is not a one-off "upload a file and ask about it" chat. Your data stays saved between visits, and every question is answered from everything you have added so far.
 
 - **Your data stays saved, and keeps growing.** Close the app, come back later, add the next statement. Nothing is lost between visits.
-- **Ask about everything you've saved.** Questions are answered from your whole history, not just the last file you uploaded.
+- **Ask about everything you've saved.** Questions are answered from your whole database, not just the last file you uploaded.
 - **Your money data stays local.** Everything is saved in one SQLite file on your computer. There is no cloud database.
 - **You pick the AI.** Use OpenAI, a model on your computer (Ollama), or any OpenAI-compatible endpoint.
 - **Nothing is saved without you.** The assistant only *proposes* rows. You review them and press **Confirm**, and you can undo.
@@ -57,17 +57,17 @@ flowchart LR
         direction TB
         A1["Chat, or drop in<br/>a statement PDF"] --> A2["Check the<br/>review card"] --> A3["Confirm"]
     end
-    A3 --> H[("Your saved history<br/>grows with every visit")]
+    A3 --> H[("Your database<br/>on your computer,<br/>grows with every visit")]
     subgraph ASK["Ask, whenever you like"]
         direction TB
-        Q1["Ask in plain language<br/>What did we spend on<br/>groceries in March?"] --> Q2["Get an answer from<br/>your whole history"]
+        Q1["Ask in plain language<br/>What did we spend on<br/>groceries in March?"] --> Q2["Get an answer from<br/>your whole database"]
     end
     H -->|"answers come from here"| Q2
 ```
 
 After a one-time setup, you do two things, as often as you like:
 
-- **Add.** Write *"Rent 850 on the 3rd"* or drop in this month's statement, check the review card, and press **Confirm**. Next month, add the next one. Everything goes into the same saved history, and nothing is lost between visits.
+- **Add.** Write *"Rent 850 on the 3rd"* or drop in this month's statement, check the review card, and press **Confirm**. Next month, add the next one. Everything goes into the same database on your computer, and nothing is lost between visits.
 - **Ask.** Ask the chat anything about your money: *"What did we spend on rent this year?"*, *"Compare groceries in June and July"*, *"What were our five biggest expenses last quarter?"*. The answer comes from everything you have saved so far, not just the last file, so the more you add, the more you can ask.
 
 You can also browse everything on the **Expenses** and **Summary** pages.
