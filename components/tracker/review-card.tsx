@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { missingPageBalanceNote, unreadablePageNote } from "@/lib/assistant/copy";
-import { confirmLabel, REVIEW_FOOTER, REVIEW_NOTE, reviewIntro, totalLabel } from "@/lib/chat/copy";
+import {
+  confirmLabel,
+  REVIEW_FOOTER,
+  REVIEW_NOTE,
+  REVIEW_NOTE_CATEGORIES,
+  REVIEW_NOTE_END,
+  reviewIntro,
+  totalLabel,
+} from "@/lib/chat/copy";
 import { amountKeepingSign, formatReviewAmount, formatRowDate } from "@/lib/chat/money";
 import {
   balanceMismatchText,
@@ -85,7 +93,10 @@ export function ReviewCard({
         <>
           <p>{reviewIntro(rows.length, proposal.sourceName)}</p>
           <div className="statement-banner is-check" role="note" data-testid="review-note">
-            <p>{REVIEW_NOTE}</p>
+            <p>
+              {REVIEW_NOTE} <strong>{REVIEW_NOTE_CATEGORIES}</strong>
+              {REVIEW_NOTE_END}
+            </p>
           </div>
         </>
       ) : (

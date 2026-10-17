@@ -26,7 +26,13 @@ export const REATTACH_PDF = "Attach the statement again. The file is not kept in
 export const NEW_CHAT_CONFIRM = "Discard the review card? It is not saved yet.";
 
 export const REVIEW_NOTE =
-  "Please check every row before you save. The assistant can sometimes misread a date or an amount, or add a row that should not be there. Click any cell to change it. When you confirm, the rows are saved as shown.";
+  "Please check every row before you save. The assistant can sometimes misread a date, an amount, and";
+
+/** Shown in bold inside the review note: categories are the guess most often wrong. */
+export const REVIEW_NOTE_CATEGORIES = "especially a category";
+
+export const REVIEW_NOTE_END =
+  ", or add a row that should not be there. Click any cell to change it. When you confirm, the rows are saved as shown.";
 
 export const REVIEW_FOOTER = "Bank and currency come from your setup. Categories are suggestions.";
 
