@@ -12,18 +12,22 @@ export default function Home() {
         <h1 className="home-title">Haushaltsbuch</h1>
         <p className="home-tagline">Your household budget, in plain language.</p>
         <p className="home-desc">
-          Haushaltsbuch keeps all your expenses in a database on your own
-          computer. Type in what you spent or upload a bank statement, then chat
-          with your data to see where your money went.
+          Haushaltsbuch keeps your household&rsquo;s expenses in a database on your
+          own computer that you can chat with. Ask anything about your money, and
+          the answer comes from everything you have saved.{" "}
+          <strong>It stays saved between visits</strong>, so you can add more
+          whenever you like.
         </p>
         <ul className="home-points">
           <li>
-            <strong>Add expenses your way.</strong> Type them in the chat, or upload a
-            bank statement PDF and review the rows before saving.
+            <strong>Add expenses your way, saved for good.</strong> Type them in the
+            chat, or upload a bank statement PDF and review the rows. Everything goes
+            into a persistent database on your computer, so you can come back and add
+            more any time.
           </li>
           <li>
-            <strong>Chat with your money.</strong> Ask “what did I spend on groceries in
-            March?” and get a straight answer.
+            <strong>Chat with your expenses.</strong> Ask &ldquo;what did I spend on
+            groceries in March?&rdquo; and get a straight answer from your database.
           </li>
           <li>
             <strong>Analyse any period.</strong> Look at a month or any date range, and
