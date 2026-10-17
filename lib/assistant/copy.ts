@@ -34,6 +34,16 @@ export const OLLAMA_ERROR_TITLE = "Ollama returned an error.";
 export const EMPTY_REPLY_TITLE = "Connected, but the model sent an empty reply.";
 export const EMPTY_REPLY_DETAIL = "Try another model, then test again.";
 
+export const PLAIN_HTTP_TITLE = "This address isn't encrypted.";
+export const PLAIN_HTTP_DETAIL =
+  "Your key, questions and statements would cross the network as plain text. Use an https:// address if the service has one.";
+
+export function cloudModelTitle(model: string): string {
+  return `${model.trim()} runs on Ollama's servers, not on this computer.`;
+}
+export const CLOUD_MODEL_DETAIL =
+  "Models ending in cloud send your questions and statements to ollama.com. To keep everything here, pick a model you downloaded.";
+
 /** The service's own error message, or its HTTP status when it sent none. */
 export function serviceErrorDetail(message: string | null, status: number): string {
   // Never show anything shaped like a key, even if a service echoes one back.

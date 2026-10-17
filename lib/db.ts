@@ -1,4 +1,4 @@
-import { mkdirSync, existsSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { describeCurrency, UNKNOWN_CURRENCY_ERROR } from "./currency";
@@ -67,7 +67,8 @@ function openDatabase(): Database.Database {
   const dbPath = resolveDbPath();
   if (cached && cachedPath === dbPath) return cached;
   if (cached) cached.close();
-  mkdirSync(dirname(dbPath), { recursive: true });
+  mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
+  ownerOnly(dbPath);
   const database = new Database(dbPath);
   database.pragma("journal_mode = WAL");
   database.pragma("foreign_keys = ON");
@@ -75,6 +76,21 @@ function openDatabase(): Database.Database {
   cached = database;
   cachedPath = dbPath;
   return database;
+}
+
+/**
+ * Only this user account may read the money data. SQLite gives the -wal and -shm files the
+ * same permissions as the database file. A folder that already exists is left as it is.
+ */
+function ownerOnly(dbPath: string): void {
+  try {
+    if (!existsSync(dbPath)) closeSync(openSync(dbPath, "a", 0o600));
+    for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+      if (existsSync(path)) chmodSync(path, 0o600);
+    }
+  } catch {
+    // A file system without Unix permissions (or a read-only copy) still opens.
+  }
 }
 
 function tableNames(database: Database.Database): Set<string> {
