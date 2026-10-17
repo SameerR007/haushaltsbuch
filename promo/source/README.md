@@ -1,14 +1,16 @@
 # Promo video source
 
-The homepage promo (about 51 seconds) is generated from these files. Nothing here is used by the app.
+The homepage promo (about 55 seconds) is generated from these files. Nothing here is used by the app.
 
-- `promo.html`: the animation. Scenes are laid out on a 30-second grid, and `SEG` stretches that grid into the real pacing (longer holds, quick cuts). `render(T)` draws the frame at output time `T`. `CUES` lists the sound-effect times, already mapped to output time.
+Story: add expenses by chatting → review and confirm → or import a statement PDF → everything lands in the Expenses table → ask a question → see the month in Summary → your data stays on your computer. The same made-up household data runs through every scene, so the numbers match.
+
+- `promo.html`: the animation. `T` holds the timeline in seconds, `render(t)` draws the frame at time `t`, and `CUES` lists the sound-effect times.
 - `capture.js`: renders frames with Playwright (`npm i playwright-core`) and encodes `video.mp4`. It also writes `cues.json`.
-- `synth.py`: synthesizes the score and sound effects from `cues.json` into `audio.wav` (needs numpy and scipy). The tempo is fitted so the drop lands on the logo and the final chord lands on the end card.
+- `synth.py`: synthesizes a minimal ambient bed (slow pads, sparse felt piano, no drums) and the UI sounds from `cues.json` into `audio.wav` (needs numpy and scipy). The tempo is fitted so the last chord lands on the end card.
 - `mux.sh`: combines the two into the master and the web copy.
 
 ```bash
-node capture.js stills 7.5,17.5     # preview single frames (output seconds)
+node capture.js stills 8.5,29.4     # preview single frames (seconds)
 node capture.js video video.mp4
 python3 synth.py
 zsh mux.sh ../haushaltsbuch-promo.mp4 ../../public/home/demo.mp4
