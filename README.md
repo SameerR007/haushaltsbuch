@@ -52,17 +52,25 @@ npm run dev
 
 ```mermaid
 flowchart LR
-    A["1. Set up once"] --> B["2. Add spending<br/>by chat or PDF"]
-    B --> C["3. Check the<br/>review card"]
-    C --> D["4. Confirm"]
-    D --> E["5. See it in<br/>Expenses and Summary"]
-    E -.->|"come back,<br/>add more"| B
-    E --> F["Ask questions about<br/>your whole history"]
+    S["Set up once"] --> A1
+    subgraph ADD["Add, whenever you like"]
+        direction TB
+        A1["Chat, or drop in<br/>a statement PDF"] --> A2["Check the<br/>review card"] --> A3["Confirm"]
+    end
+    A3 --> H[("Your saved history<br/>grows with every visit")]
+    subgraph ASK["Ask, whenever you like"]
+        direction TB
+        Q1["Ask in plain language<br/>What did we spend on<br/>groceries in March?"] --> Q2["Get an answer from<br/>your whole history"]
+    end
+    H -->|"answers come from here"| Q2
 ```
 
-You only set up once. After that, steps 2 to 5 repeat whenever you like: add this month's statement, next month's, a cash expense from yesterday. Everything you confirm is added to the same saved record.
+After a one-time setup, you do two things, as often as you like:
 
-And at any time, ask the chat questions such as *"What did we spend on rent this year?"* or *"Compare groceries in June and July"*. It answers from everything you have saved so far, so the answers get richer as your history grows.
+- **Add.** Write *"Rent 850 on the 3rd"* or drop in this month's statement, check the review card, and press **Confirm**. Next month, add the next one. Everything goes into the same saved history, and nothing is lost between visits.
+- **Ask.** Ask the chat anything about your money: *"What did we spend on rent this year?"*, *"Compare groceries in June and July"*, *"What were our five biggest expenses last quarter?"*. The answer comes from everything you have saved so far, not just the last file, so the more you add, the more you can ask.
+
+You can also browse everything on the **Expenses** and **Summary** pages.
 
 To pick up where you left off, run `npm run dev` again in the `haushaltsbuch` folder and open [http://localhost:3000](http://localhost:3000). Your data is still there.
 
