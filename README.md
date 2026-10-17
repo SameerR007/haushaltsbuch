@@ -130,6 +130,15 @@ With an assistant on your computer, the PDF never leaves your computer. To read 
 
 Switch at any time under **Your data → Change assistant**. Your banks, currency and transactions stay.
 
+### Tested with
+
+**OpenAI**, **Ollama with `bonsai-2:9b`**, and an **OpenAI-compatible endpoint**, using statements from **one bank**. Other models and banks should work, but they're untested, so check the review card before you confirm.
+
+**Picking a model:**
+
+- **Ollama:** needs **tool calling** and good **instruction following**. The app reads the PDF itself: it extracts the text, or uses the OCR model for scanned pages.
+- **Endpoint:** needs **tool calling**, and must be able to **read PDF files**, since the PDF is sent to it.
+
 ---
 
 ## Routes
