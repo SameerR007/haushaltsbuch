@@ -44,7 +44,7 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: visitStateScript }} />
         <script dangerouslySetInnerHTML={{ __html: chatBootScript(serverBootId()) }} />
       </head>
-      <body>{children}</body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
