@@ -17,6 +17,7 @@ import {
   NO_TOOLS_TITLE,
   OLLAMA_NOT_RUNNING_DETAIL,
   OLLAMA_NOT_RUNNING_TITLE,
+  OLLAMA_SERVE_COMMAND,
   pullCommand,
   SLOW_PROBE_MS,
   SLOW_TITLE,
@@ -113,6 +114,7 @@ function unreachable(kind: ProbeRequest["kind"]): ProbeFailure {
     status: "unreachable",
     title: OLLAMA_NOT_RUNNING_TITLE,
     detail: OLLAMA_NOT_RUNNING_DETAIL,
+    command: OLLAMA_SERVE_COMMAND,
   };
 }
 
