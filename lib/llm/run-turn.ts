@@ -35,6 +35,15 @@ function proposalAccepted({ steps }: { steps: ReadonlyArray<{ content: ReadonlyA
 }
 const REPLY_CAP = 8_000;
 const STEP_TIMEOUT_MS = 120_000;
+/**
+ * A statement on a model you host writes every row as tool-call JSON. At about 14 tokens a second
+ * (gemma4:12b-mlx on a Mac), 40 rows take around three and a half minutes, so these get four.
+ */
+const HOSTED_STATEMENT_STEP_TIMEOUT_MS = 240_000;
+
+export function stepTimeoutMs(assistant: Pick<AssistantTarget, "type">, mode: "chat" | "pdf"): number {
+  return mode === "pdf" && assistant.type !== "openai" ? HOSTED_STATEMENT_STEP_TIMEOUT_MS : STEP_TIMEOUT_MS;
+}
 
 export class OpenAiError extends Error {
   readonly fileRejected: boolean;
@@ -223,7 +232,7 @@ export async function runChatTurn(options: {
       },
       maxRetries: 0,
       abortSignal: options.signal,
-      timeout: { stepMs: STEP_TIMEOUT_MS },
+      timeout: { stepMs: stepTimeoutMs(assistant, options.mode) },
     });
 
     let reply = "";

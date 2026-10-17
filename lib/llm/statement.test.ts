@@ -19,7 +19,7 @@ import { checkImageCapability, describeImageCapability } from "./capabilities";
 import { proposeFromPages, readLocalStatement, readStatementPages, type ScanProgress } from "./local-statement";
 import { buildStatementPdf } from "./pdf-fixture";
 import { extractPageTexts } from "./pdf-text";
-import { OpenAiError, runChatTurn } from "./run-turn";
+import { OpenAiError, runChatTurn, stepTimeoutMs } from "./run-turn";
 
 const household: Household = {
   currency: "EUR",
@@ -631,4 +631,11 @@ test("a saved local assistant keeps the OCR model on the home label", () => {
   assert.match(ui, /disabled=\{pending \|\| ocrPending\}\s*data-testid="ocr-model"/);
   assert.match(ui, /disabled=\{pending \|\| ocrPending\}[\s\S]{0,80}data-testid="assistant-continue"/);
   assert.match(ui, /OCR_NONE_NOTE/);
+});
+
+test("a statement on a hosted model gets four minutes per step, everything else two", () => {
+  assert.equal(stepTimeoutMs({ type: "local" }, "pdf"), 240_000);
+  assert.equal(stepTimeoutMs({ type: "endpoint" }, "pdf"), 240_000);
+  assert.equal(stepTimeoutMs({ type: "openai" }, "pdf"), 120_000);
+  assert.equal(stepTimeoutMs({ type: "local" }, "chat"), 120_000);
 });

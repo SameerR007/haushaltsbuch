@@ -189,6 +189,7 @@ export async function POST(request: Request) {
 
     const apiKey = assistant.apiKey;
     const messages: ChatTurn[] = recentModelTurns([...prior, { role: "user", content: String(instruction).trim() }]);
+    let reply = "";
     const rows = await withTrace(
       {
         name: "pdf-import",
@@ -199,7 +200,7 @@ export async function POST(request: Request) {
       },
       async (root) => {
         let proposalArgs: unknown = null;
-        await runChatTurn({
+        const turn = await runChatTurn({
           apiKey,
           assistant,
           instructions: withPdfInstructions(
@@ -221,6 +222,7 @@ export async function POST(request: Request) {
             return { ok: false, error: "Only propose_transactions is available for a statement." };
           },
         });
+        reply = turn.reply;
         const reviewed = proposalArgs
           ? await withSpan("review-rows", "span", proposalArgs, (span) => {
               const result = reviewProposedRows(rowsOf(proposalArgs), household);
@@ -234,7 +236,7 @@ export async function POST(request: Request) {
     );
     if (!rows.length) {
       return jsonResult(
-        { ok: false, code: "rejected", error: "No transactions were read from that statement." },
+        { ok: false, code: "rejected", error: reply.trim() || "No transactions were read from that statement." },
         422,
       );
     }
@@ -285,7 +287,7 @@ function proposalEvent(result: LocalStatementResult, filename: string, household
   if (!result.rows.length) {
     const error = result.statement.failedPage
       ? `Couldn't read page ${result.statement.failedPage}. Nothing was saved.`
-      : "No transactions matched that. Try saying it another way.";
+      : result.reply.trim() || "No transactions matched that. Try saying it another way.";
     return { type: "result", ok: false, code: "rejected", error };
   }
   const proposal: Proposal = {

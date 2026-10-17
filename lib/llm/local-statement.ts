@@ -32,6 +32,8 @@ export type LocalStatementResult = {
   statement: StatementReview;
   rows: ReviewRow[];
   proposalArgs: unknown | null;
+  /** What the model wrote, shown as is when it proposed no rows. */
+  reply: string;
 };
 
 type ReadOptions = {
@@ -114,7 +116,7 @@ export async function proposeFromPages(options: ProposeOptions): Promise<LocalSt
   const facts = parseStatementFacts(combined);
   const statement = toStatement(pages, facts);
   if (!combined.trim()) {
-    return { pages, statement, rows: [], proposalArgs: null };
+    return { pages, statement, rows: [], proposalArgs: null, reply: "" };
   }
 
   throwIfAborted(options.signal);
@@ -157,7 +159,7 @@ export async function proposeFromPages(options: ProposeOptions): Promise<LocalSt
     existing: options.household.existing,
   }).map((row) => ({ ...row, flags: row.flags.filter((flag) => flag !== "uncertain") }));
   const rows = markFallback(reviewed, fallbackText);
-  return { pages, statement, rows, proposalArgs: turn.proposalArgs };
+  return { pages, statement, rows, proposalArgs: turn.proposalArgs, reply: turn.reply };
 }
 
 async function readScannedPages(options: {
