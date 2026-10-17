@@ -1,5 +1,5 @@
 import { looksLikeOpenAiKey } from "@/lib/setup/guards";
-import { LOCAL_NUM_CTX } from "./copy";
+import { CLOUD_MODEL_DETAIL, cloudModelTitle, LOCAL_NUM_CTX, PLAIN_HTTP_DETAIL, PLAIN_HTTP_TITLE } from "./copy";
 
 export type AssistantKind = "openai" | "local" | "endpoint";
 
@@ -66,6 +66,28 @@ export function localAddressError(address: string): string | null {
 export function endpointAddressError(address: string): string | null {
   if (!chatBaseUrl(address)) return "Enter an address that starts with http:// or https://.";
   return null;
+}
+
+export type PrivacyWarning = { title: string; detail: string };
+
+/** Ollama's hosted models are named like gpt-oss:120b-cloud or glm-4.6:cloud. */
+export function isCloudModel(model: string): boolean {
+  return /(?:^|[-:])cloud$/i.test(model.trim());
+}
+
+/** A model typed under "On this computer" that would still send data away. Shown, not blocked. */
+export function localModelWarning(model: string): PrivacyWarning | null {
+  if (!isCloudModel(model)) return null;
+  return { title: cloudModelTitle(model), detail: CLOUD_MODEL_DETAIL };
+}
+
+/** An endpoint on another machine over http://. Shown, not blocked: a home server may have no https. */
+export function endpointWarning(address: string): PrivacyWarning | null {
+  const base = chatBaseUrl(address);
+  if (!base) return null;
+  const url = new URL(base);
+  if (url.protocol !== "http:" || isLoopbackHost(url.hostname)) return null;
+  return { title: PLAIN_HTTP_TITLE, detail: PLAIN_HTTP_DETAIL };
 }
 
 export type ProbeRequest =

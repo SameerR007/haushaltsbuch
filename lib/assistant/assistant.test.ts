@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { POST as postAssistant } from "../../app/api/setup/assistant/route";
 import { probeAssistant } from "./probe";
+import { endpointWarning, localModelWarning } from "./target";
+import { extraHostNames, hostAllowed } from "../local-host";
 import { clearConnection, parseConnection, writeConnection } from "../connection";
 
 const OPENAI_KEY = "sk-openai-example-key";
@@ -262,4 +264,30 @@ test("An endpoint gets reasoning off, and the field is dropped if the model refu
   assert.equal(bodies.length, 4);
   assert.equal((JSON.parse(bodies[0]) as { reasoning_effort?: string }).reasoning_effort, "none");
   assert.equal("reasoning_effort" in (JSON.parse(bodies[1]) as object), false);
+});
+
+test("The app only answers when addressed as this computer", () => {
+  for (const host of ["localhost:3000", "127.0.0.1:3000", "[::1]:3000", "LOCALHOST", "app.localhost:3000"]) {
+    assert.equal(hostAllowed(host), true, host);
+  }
+  for (const host of [null, "", "evil.example:3000", "192.168.1.20:3000", "localhost.evil.example", "[::1"]) {
+    assert.equal(hostAllowed(host), false, String(host));
+  }
+  const extra = extraHostNames(" haushaltsbuch.test , my-mac.local:3000 ");
+  assert.deepEqual(extra, ["haushaltsbuch.test", "my-mac.local"]);
+  assert.equal(hostAllowed("haushaltsbuch.test:443", extra), true);
+  assert.equal(hostAllowed("other.test", extra), false);
+});
+
+test("Setup warns, without blocking, when data would leave this computer", () => {
+  assert.equal(localModelWarning("bonsai-2:9b"), null);
+  assert.equal(localModelWarning("glm-ocr"), null);
+  assert.ok(localModelWarning("gpt-oss:120b-cloud"));
+  assert.ok(localModelWarning("glm-4.6:cloud"));
+  assert.equal(endpointWarning("https://api.example.com/v1"), null);
+  assert.equal(endpointWarning("http://localhost:8080/v1"), null);
+  assert.equal(endpointWarning("http://127.0.0.1:1234"), null);
+  assert.ok(endpointWarning("http://192.168.1.20:11434"));
+  assert.ok(endpointWarning("http://api.example.com/v1"));
+  assert.equal(endpointWarning("not a url"), null);
 });

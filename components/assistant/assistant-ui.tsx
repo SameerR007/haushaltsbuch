@@ -17,7 +17,12 @@ import {
   OCR_SECTION_TITLE,
   SUGGESTED_OCR_MODEL,
 } from "@/lib/assistant/copy";
-import type { AssistantKind } from "@/lib/assistant/target";
+import {
+  endpointWarning,
+  localModelWarning,
+  type AssistantKind,
+  type PrivacyWarning,
+} from "@/lib/assistant/target";
 
 export type ProbeView = {
   ok: boolean;
@@ -245,6 +250,7 @@ export function LocalConnectionCard({
         ) : null}
       </div>
       <ProbeBanner probe={probe} copied={copied} onCopy={setCopied} />
+      <PrivacyBanner warning={localModelWarning(model)} />
       <hr className="assistant-split" />
       <p>
         <strong>{OCR_SECTION_TITLE}</strong> <span className="setup-hint">(optional)</span>
@@ -290,7 +296,10 @@ export function LocalConnectionCard({
           <p>{OCR_NONE_NOTE}</p>
         </div>
       ) : (
-        <ProbeBanner probe={ocrProbe} copied={ocrCopied} onCopy={setOcrCopied} />
+        <>
+          <ProbeBanner probe={ocrProbe} copied={ocrCopied} onCopy={setOcrCopied} />
+          <PrivacyBanner warning={localModelWarning(ocrModel)} />
+        </>
       )}
       {continueLabel && onContinue && ready ? (
         <div className="setup-chips">
@@ -427,6 +436,7 @@ export function EndpointConnectionCard({
         ) : null}
       </div>
       <ProbeBanner probe={probe} />
+      <PrivacyBanner warning={endpointWarning(baseUrl)} />
       {ready ? (
         <div className="assistant-banner is-warn" data-testid="endpoint-import-note">
           <p>
@@ -494,6 +504,19 @@ export function ProbeBanner({
           </button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Where data would leave this computer though the choice suggests it wouldn't. The same for every assistant. */
+export function PrivacyBanner({ warning }: { warning: PrivacyWarning | null }) {
+  if (!warning) return null;
+  return (
+    <div className="assistant-banner is-warn" role="status" data-testid="privacy-warning">
+      <p>
+        <strong>{warning.title}</strong>
+      </p>
+      <p>{warning.detail}</p>
     </div>
   );
 }

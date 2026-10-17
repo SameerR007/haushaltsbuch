@@ -108,7 +108,7 @@ When you write *"Rent 850 on the 3rd"* or attach a statement, the AI suggests ro
 ```mermaid
 flowchart TD
     P["Statement PDF"] --> Q{"Where does<br/>your AI run?"}
-    Q -->|Online| O["Sent to OpenAI or your endpoint,<br/>after you agree"]
+    Q -->|Online| O["Sent to OpenAI or your endpoint<br/>(the chat says so first)"]
     Q -->|Your computer| L["Read on your computer.<br/>Scanned pages use the OCR model"]
     O --> R["Review card"]
     L --> R
@@ -125,8 +125,8 @@ With an assistant on your computer, the PDF never leaves your computer. To read 
 | --- | --- | --- | --- |
 | **You enter** | API key | Address (default `http://localhost:11434`), model, optional OCR model | Base URL, key, model |
 | **Default model** | `gpt-5.6-luna` | `bonsai-2:9b` | your choice |
-| **Statement PDFs** | Sent to OpenAI (asks first) | Read locally | Sent to the endpoint (asks first) |
-| **Data leaves your computer?** | Prompts and query results go to OpenAI | No | Prompts and query results go to the endpoint |
+| **Statement PDFs** | Sent to OpenAI (the chat says so before you send) | Read locally | Sent to the endpoint (the chat says so before you send) |
+| **Data leaves your computer?** | Prompts and query results go to OpenAI | No, unless you pick an Ollama cloud model (setup warns you) | Prompts and query results go to the endpoint |
 
 Switch at any time under **Your data → Change assistant**. Your banks, currency and transactions stay.
 
@@ -136,8 +136,8 @@ Switch at any time under **Your data → Change assistant**. Your banks, currenc
 
 **Picking a model:**
 
-- **Ollama:** needs **tool calling** and good **instruction following**. The model **doesn't need to read PDFs**: the app reads the PDF itself, extracting the text or using the OCR model for scanned pages.
-- **Endpoint:** needs **tool calling**, and must be able to **read PDF files**, since the PDF is sent to it.
+- **Ollama:** needs **tool calling** and good **instruction following**. Models whose name ends in `cloud` (such as `gpt-oss:120b-cloud`) run on ollama.com, not on your computer. The model **doesn't need to read PDFs**: the app reads the PDF itself, extracting the text or using the OCR model for scanned pages.
+- **Endpoint:** needs **tool calling**, and must be able to **read PDF files**, since the PDF is sent to it. Use an `https://` address when the service has one; setup warns you about a plain `http://` address on another machine.
 
 ---
 
@@ -206,6 +206,7 @@ Everything is optional. Copy `.env.example` to `.env.local` (gitignored) and edi
 | `HAUSHALTSBUCH_DB_PATH` | `data/haushaltsbuch.sqlite` | Where the database file lives |
 | `HAUSHALTSBUCH_CHAT_MODEL` | `gpt-5.6-luna` | OpenAI model for chat and PDF import |
 | `HAUSHALTSBUCH_STUB_OPENAI` | off | Set to `1` to fake OpenAI replies for UI testing (no network) |
+| `HAUSHALTSBUCH_ALLOWED_HOSTS` | unset | Extra host names the app answers to, comma-separated (for example behind a reverse proxy). `localhost` always works |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | unset | Turn on tracing (see below) |
 | `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse server |
 
@@ -268,6 +269,10 @@ To turn it off, remove the two keys and restart. Full details: [docs/tracing.md]
 | Assistant choice, API key, chat history | Your browser's `localStorage` |
 | API key on the server | Never stored, logged, or written to the database |
 
+- **Only your computer can open the app.** It listens on `127.0.0.1` and refuses requests addressed to any other name, so other devices on your network and other websites can't reach your data. There is no login, so keep it that way: anyone who can reach the app can read and change your data.
+- **The database file** is readable by your user account only.
+- **The browser keeps the API key** for the address you open, such as `http://localhost:3000`. Another project you run on the same port can read it, so you may prefer to start this app on its own port: `npm run dev -- --port 3417`.
+- **Next.js usage reports are off.** The dev server still checks npm once for a newer Next.js version; nothing about you or your data is in that request.
 - Amounts are signed: expenses are negative and income is positive.
 - **Set up completely new** offers an Excel and SQLite backup first, then wipes and vacuums the file.
 
